@@ -2,10 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, MoreVertical, Check, CheckCheck, Search, Ban, Trash2, Lock } from "lucide-react";
+import { ArrowLeft, MoreVertical, Check, CheckCheck, Search, Trash2, Lock } from "lucide-react";
 import { ChatMessage, PinnedMessageInfo } from "@/lib/types";
 import { Avatar } from "@/components/ui/Avatar";
-import { getChatMessages, sendMessage } from "@/lib/api/chat";
+import { BlockButton } from "@/components/ui/BlockButton";
+import { getChatMessages, sendMessage, sendAlbumMessage } from "@/lib/api/chat";
+import { SelectedMedia } from "./MediaGalleryPicker";
 import { currentUser } from "@/data/mock/users";
 import { mockChats } from "@/data/mock/chats";
 import { formatChatTime } from "@/lib/utils/format";
@@ -41,8 +43,9 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const sendingRef = useRef(false);
   const chat = mockChats.find((c) => c.id === chatId);
-  const { blockUser, deleteChat, isBlocked } = usePrototype();
+  const { deleteChat, isBlocked } = usePrototype();
   const { showToast } = useToast();
   const blocked = chat ? isBlocked(chat.participant.id) : false;
 
@@ -59,21 +62,53 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
 
   const pinnedMessage = pinned ? messages.find((m) => m.id === pinned.messageId) : null;
 
+  const appendMessage = (msg: ChatMessage) => {
+    setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
+  };
+
   const handleSend = async (
     content: string,
     type: "text" | "image" | "video" | "gif" = "text",
     extras?: Partial<ChatMessage>
   ) => {
-    if (blocked) return;
-    const msg = await sendMessage(chatId, {
-      chatId,
-      senderId: currentUser.id,
-      type,
-      content,
-      ...extras,
-    });
-    setMessages((prev) => [...prev, msg]);
-    setReplyTo(null);
+    if (blocked || sendingRef.current) return;
+    sendingRef.current = true;
+    try {
+      const msg = await sendMessage(chatId, {
+        chatId,
+        senderId: currentUser.id,
+        type,
+        content,
+        ...extras,
+      });
+      appendMessage(msg);
+      setReplyTo(null);
+    } finally {
+      sendingRef.current = false;
+    }
+  };
+
+  const handleSendAlbum = async (items: SelectedMedia[], caption: string) => {
+    if (blocked || sendingRef.current || items.length === 0) return;
+    sendingRef.current = true;
+    try {
+      const msg = await sendAlbumMessage(chatId, {
+        senderId: currentUser.id,
+        album: items.map((m) => ({
+          type: m.item.type,
+          url: m.item.url,
+          rotation: m.rotation,
+        })),
+        caption: caption || undefined,
+        spoiler: items.some((m) => m.spoiler),
+        paidStars: items[0]?.paidStars,
+        replyTo: replyTo?.id,
+      });
+      appendMessage(msg);
+      setReplyTo(null);
+    } finally {
+      sendingRef.current = false;
+    }
   };
 
   const handleDelete = () => {
@@ -113,7 +148,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
 
   return (
     <div className="flex flex-col h-dvh max-w-2xl mx-auto w-full">
-      <div className="sticky top-0 z-30 px-3 pt-3 safe-top">
+      <div className="sticky top-0 z-30 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-1">
         <div className="glass-nav rounded-2xl px-2 py-2 flex items-center gap-2">
           <Link href="/chat/" className="p-2 rounded-full hover:bg-surface/60 transition-colors shrink-0" aria-label="Back">
             <ArrowLeft className="w-5 h-5" />
@@ -141,15 +176,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
                 <button className="flex items-center gap-2 w-full px-4 py-2.5 text-sm hover:bg-surface/80">
                   <Search className="w-4 h-4" /> Search
                 </button>
-                <button
-                  onClick={() => {
-                    if (chat) blockUser(chat.participant.id);
-                    setMenuOpen(false);
-                  }}
-                  className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-like hover:bg-surface/80"
-                >
-                  <Ban className="w-4 h-4" /> Block
-                </button>
+                {chat && <BlockButton userId={chat.participant.id} variant="menu" onAction={() => setMenuOpen(false)} />}
                 <button
                   onClick={() => {
                     setDeleteConfirm(true);
@@ -186,7 +213,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {messages.map((msg) => {
           const isMe = msg.senderId === currentUser.id;
-          const isPaid = msg.paidStars && !isMe && !unlocked.has(msg.id) && !msg.paidUnlocked;
+          const isPaid = !!msg.paidStars && !isMe && !unlocked.has(msg.id) && !msg.paidUnlocked;
           const replySource = msg.replyTo ? messages.find((m) => m.id === msg.replyTo) : null;
 
           return (
@@ -251,6 +278,43 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
                     )}
                   </div>
                 )}
+                {msg.type === "album" && msg.album && (
+                  <div
+                    className={cn(
+                      "grid gap-0.5 rounded-xl overflow-hidden",
+                      msg.album.length === 1 ? "grid-cols-1" : "grid-cols-2",
+                      isPaid && "cursor-pointer"
+                    )}
+                    onClick={() => (isPaid ? setPaidModal(msg) : undefined)}
+                  >
+                    {isPaid ? (
+                      <div className="col-span-2 w-48 h-36 bg-surface flex flex-col items-center justify-center gap-1 text-sm rounded-xl">
+                        <Lock className="w-4 h-4 text-text-muted" />
+                        <span className="flex items-center gap-1">
+                          <TelegramStarIcon variant="post" size={16} />
+                          {msg.paidStars}
+                        </span>
+                        <span className="text-[11px] text-text-muted">Tap to unlock</span>
+                      </div>
+                    ) : (
+                      msg.album.map((item, i) => (
+                        <div key={i} className="relative w-24 h-24 bg-surface">
+                          {item.type === "video" ? (
+                            <video src={item.url} className="w-full h-full object-cover" muted playsInline />
+                          ) : (
+                            <Image
+                              src={item.url}
+                              alt=""
+                              fill
+                              className={cn("object-cover", msg.spoiler && "blur-lg")}
+                              unoptimized
+                            />
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
                 {msg.type === "video" &&
                   (isPaid ? (
                     <button
@@ -290,6 +354,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
 
       <ChatInput
         onSend={handleSend}
+        onSendAlbum={handleSendAlbum}
         disabled={blocked}
         disabledMessage="You cannot message this user"
         replyTo={replyTo}

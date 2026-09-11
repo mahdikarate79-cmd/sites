@@ -60,11 +60,17 @@ export interface Donator {
   anonymous?: boolean;
 }
 
+export interface ChatMediaItem {
+  type: "image" | "video" | "gif";
+  url: string;
+  rotation?: number;
+}
+
 export interface ChatMessage {
   id: string;
   chatId: string;
   senderId: string;
-  type: "text" | "image" | "video" | "gif";
+  type: "text" | "image" | "video" | "gif" | "album";
   content: string;
   objectKey?: string;
   createdAt: string;
@@ -78,6 +84,8 @@ export interface ChatMessage {
   paidUnlocked?: boolean;
   caption?: string;
   rotation?: number;
+  album?: ChatMediaItem[];
+  groupId?: string;
 }
 
 export interface PinnedMessageInfo {

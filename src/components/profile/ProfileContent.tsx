@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowLeft, MoreVertical, FileText, ImageIcon, Video, Flag, Ban, Link2, Info } from "lucide-react";
+import { ArrowLeft, MoreVertical, FileText, ImageIcon, Video, Flag, Link2, Info } from "lucide-react";
+import { BlockButton } from "@/components/ui/BlockButton";
 import { User, Post } from "@/lib/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { VerifiedBadge } from "@/components/ui/VerifiedBadge";
@@ -32,7 +33,7 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
-  const { isBlocked, blockUser } = usePrototype();
+  const { isBlocked } = usePrototype();
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -63,11 +64,11 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
     <div>
       <div className="relative h-36 sm:h-44 bg-surface">
         {user.cover && <Image src={user.cover} alt="Cover" fill className="object-cover" priority sizes="100vw" />}
-        <div className="absolute top-0 left-0 right-0 flex items-center justify-between p-3 safe-top">
-          <Link href="/" className="p-2 rounded-full bg-black/30 backdrop-blur-sm">
+        <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3">
+          <Link href="/" className="p-2.5 rounded-full bg-black/30 backdrop-blur-sm mt-1">
             <ArrowLeft className="w-5 h-5 text-white" />
           </Link>
-          <button onClick={() => setMenuOpen(!menuOpen)} className="p-2 rounded-full bg-black/30 backdrop-blur-sm">
+          <button onClick={() => setMenuOpen(!menuOpen)} className="p-2.5 rounded-full bg-black/30 backdrop-blur-sm mt-1">
             <MoreVertical className="w-5 h-5 text-white" />
           </button>
         </div>
@@ -76,7 +77,7 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
             {!isOwnProfile && (
               <>
                 <button onClick={() => { setReportOpen(true); setMenuOpen(false); }} className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-like"><Flag className="w-4 h-4" /> Report</button>
-                <button onClick={() => { blockUser(user.id); setMenuOpen(false); }} className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-like"><Ban className="w-4 h-4" /> Block</button>
+                <BlockButton userId={user.id} variant="menu" onAction={() => setMenuOpen(false)} />
               </>
             )}
             <button onClick={copyProfileLink} className="flex items-center gap-2 w-full px-4 py-2.5 text-sm"><Link2 className="w-4 h-4" /> Copy profile link</button>
@@ -101,6 +102,7 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
             ) : (
               <>
                 <FollowButton userId={user.id} />
+                <BlockButton userId={user.id} />
                 <Link
                   href={`/chat/c1/`}
                   className={cn(

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { MoreVertical, Film, Video as VideoIcon, Check } from "lucide-react";
+import { DollarSign, Film, Video as VideoIcon, Check } from "lucide-react";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { TelegramStarIcon } from "@/components/ui/TelegramStarIcon";
 import { MediaEditor } from "./MediaEditor";
@@ -36,6 +36,7 @@ export function MediaGalleryPicker({ open, onClose, onSend }: MediaGalleryPicker
   const [paidOpen, setPaidOpen] = useState(false);
 
   const editingItem = mockGalleryItems.find((i) => i.id === editingId);
+  const selectedItems = mockGalleryItems.filter((i) => selected.has(i.id));
 
   const toggleSelect = (id: string) => {
     setSelected((prev) => {
@@ -50,35 +51,33 @@ export function MediaGalleryPicker({ open, onClose, onSend }: MediaGalleryPicker
     setEditingId(id);
     setRotation(0);
     setCrop("original");
-    setSpoiler(false);
-    setPaidStars(0);
   };
 
-  const handleSend = () => {
-    const items: SelectedMedia[] = mockGalleryItems
-      .filter((i) => selected.has(i.id))
-      .map((item) => ({
-        item,
-        rotation: editingId === item.id ? rotation : 0,
-        crop: editingId === item.id ? crop : "original",
-        spoiler,
-        paidStars: paidStars > 0 ? paidStars : undefined,
-      }));
-
-    if (items.length === 0) return;
-    onSend(items, caption);
+  const reset = () => {
     setSelected(new Set());
     setCaption("");
     setEditingId(null);
     setPaidStars(0);
     setSpoiler(false);
+  };
+
+  const handleSend = () => {
+    const items: SelectedMedia[] = selectedItems.map((item) => ({
+      item,
+      rotation: editingId === item.id ? rotation : 0,
+      crop: editingId === item.id ? crop : "original",
+      spoiler,
+      paidStars: paidStars > 0 ? paidStars : undefined,
+    }));
+
+    if (items.length === 0) return;
+    onSend(items, caption);
+    reset();
     onClose();
   };
 
   const handleClose = () => {
-    setSelected(new Set());
-    setCaption("");
-    setEditingId(null);
+    reset();
     onClose();
   };
 
@@ -88,14 +87,32 @@ export function MediaGalleryPicker({ open, onClose, onSend }: MediaGalleryPicker
         <div className="px-4 pb-4">
           <div className="flex items-center justify-between py-2 mb-2">
             <h2 className="text-base font-semibold">Gallery</h2>
-            <button
-              onClick={() => setPaidOpen(true)}
-              className="p-2 rounded-full hover:bg-surface transition-colors"
-              aria-label="More"
-            >
-              <MoreVertical className="w-5 h-5 text-text-muted" />
-            </button>
+            {selected.size > 0 && (
+              <button
+                onClick={() => setPaidOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface text-xs font-medium"
+              >
+                <DollarSign className="w-4 h-4 text-gold" />
+                Make this media paid
+              </button>
+            )}
           </div>
+
+          {selectedItems.length > 0 && (
+            <div className="flex gap-1.5 mb-3 overflow-x-auto scrollbar-hide pb-1">
+              {selectedItems.map((item) => (
+                <div key={item.id} className="relative w-14 h-14 rounded-lg overflow-hidden shrink-0 bg-surface">
+                  <Image
+                    src={item.thumbnail ?? item.url}
+                    alt=""
+                    fill
+                    className="object-cover"
+                    unoptimized
+                  />
+                </div>
+              ))}
+            </div>
+          )}
 
           {editingItem && (
             <div className="mb-3 p-3 rounded-xl bg-surface border border-border">
@@ -158,9 +175,7 @@ export function MediaGalleryPicker({ open, onClose, onSend }: MediaGalleryPicker
             })}
           </div>
 
-          <p className="text-[11px] text-text-muted mb-3">Double-tap a item to edit crop & rotate</p>
-
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 pt-1">
             <input
               value={caption}
               onChange={(e) => setCaption(e.target.value)}
@@ -170,7 +185,7 @@ export function MediaGalleryPicker({ open, onClose, onSend }: MediaGalleryPicker
             <button
               onClick={handleSend}
               disabled={selected.size === 0}
-              className="relative px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] text-white text-sm font-medium disabled:opacity-40 shrink-0"
+              className="relative px-4 py-2.5 rounded-xl bg-[#3b82f6] text-white text-sm font-semibold disabled:opacity-40 shrink-0"
             >
               Send{selected.size > 0 ? ` ${selected.size}` : ""}
             </button>

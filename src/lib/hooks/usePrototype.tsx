@@ -11,6 +11,7 @@ interface PrototypeContextValue {
   isBlocked: (userId: string) => boolean;
   toggleFollow: (userId: string) => void;
   blockUser: (userId: string) => void;
+  unblockUser: (userId: string) => void;
   markInterested: (post: Post) => void;
   markNotInterested: (post: Post) => void;
   hidePost: (postId: string) => void;
@@ -61,6 +62,13 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
       ...s,
       blocked: [...new Set([...s.blocked, userId])],
       following: s.following.filter((id) => id !== userId),
+    }));
+  }, [update]);
+
+  const unblockUser = useCallback((userId: string) => {
+    update((s) => ({
+      ...s,
+      blocked: s.blocked.filter((id) => id !== userId),
     }));
   }, [update]);
 
@@ -168,10 +176,9 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
       posts.filter(
         (p) =>
           !state.hiddenPosts.includes(p.id) &&
-          !state.blocked.includes(p.author.id) &&
           !state.notInterestedPosts.includes(p.id)
       ),
-    [state.hiddenPosts, state.blocked, state.notInterestedPosts]
+    [state.hiddenPosts, state.notInterestedPosts]
   );
 
   const sortPosts = useCallback(
@@ -198,6 +205,7 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
         isBlocked,
         toggleFollow,
         blockUser,
+        unblockUser,
         markInterested,
         markNotInterested,
         hidePost,

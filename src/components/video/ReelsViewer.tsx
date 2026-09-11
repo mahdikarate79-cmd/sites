@@ -18,6 +18,7 @@ import { ReportModal } from "@/components/feed/ReportModal";
 import { usePrototype } from "@/lib/hooks/usePrototype";
 import { useToast } from "@/components/ui/ToastProvider";
 import { formatCount } from "@/lib/utils/format";
+import { lockScroll, unlockScroll } from "@/lib/utils/scrollLock";
 import { cn } from "@/lib/utils/cn";
 
 interface ReelsViewerProps {
@@ -40,7 +41,6 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
   const [speed2x, setSpeed2x] = useState(false);
   const [progress, setProgress] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const imageTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastTap = useRef(0);
   const tapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -57,8 +57,10 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
   useEffect(() => {
     if (!open) return;
     setIndex(initialIndex);
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = ""; };
+    setPaused(false);
+    setProgress(0);
+    lockScroll();
+    return () => unlockScroll();
   }, [open, initialIndex]);
 
   useEffect(() => {
@@ -70,67 +72,61 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
 
   useEffect(() => {
     setProgress(0);
-    if (imageTimerRef.current) clearInterval(imageTimerRef.current);
-
-    if (!open || isVideo) return;
-
-    const start = Date.now();
-    const duration = 5000;
-    imageTimerRef.current = setInterval(() => {
-      const elapsed = Date.now() - start;
-      setProgress(Math.min(100, (elapsed / duration) * 100));
-    }, 50);
-
-    return () => {
-      if (imageTimerRef.current) clearInterval(imageTimerRef.current);
-    };
-  }, [index, isVideo, open]);
-
-  useEffect(() => {
     const video = videoRef.current;
     if (!video || !isVideo) return;
 
     const onTimeUpdate = () => {
       if (video.duration) setProgress((video.currentTime / video.duration) * 100);
     };
-    const onEnded = () => setProgress(100);
 
     video.addEventListener("timeupdate", onTimeUpdate);
-    video.addEventListener("ended", onEnded);
-    return () => {
-      video.removeEventListener("timeupdate", onTimeUpdate);
-      video.removeEventListener("ended", onEnded);
-    };
+    return () => video.removeEventListener("timeupdate", onTimeUpdate);
   }, [index, isVideo]);
 
   const goNext = useCallback(() => {
-    if (index < items.length - 1) setIndex((i) => i + 1);
+    if (index < items.length - 1) {
+      setIndex((i) => i + 1);
+      setProgress(0);
+      setPaused(false);
+    }
   }, [index, items.length]);
 
   const goPrev = useCallback(() => {
-    if (index > 0) setIndex((i) => i - 1);
+    if (index > 0) {
+      setIndex((i) => i - 1);
+      setProgress(0);
+      setPaused(false);
+    }
   }, [index]);
 
-  const handleTap = (e: React.MouseEvent) => {
-    if (!post) return;
+  const handleVideoTap = (e: React.MouseEvent) => {
+    if (!post || !isVideo) return;
+    const target = e.target as HTMLElement;
+    if (target.closest("[data-reel-ui]")) return;
+
     const now = Date.now();
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const relX = (e.clientX - rect.left) / rect.width;
+    const inCenter = relX > 0.2 && relX < 0.8;
 
-    if (now - lastTap.current < 300 && relX > 0.25 && relX < 0.75) {
-      if (tapTimer.current) clearTimeout(tapTimer.current);
+    if (now - lastTap.current < 300 && inCenter) {
+      if (tapTimer.current) {
+        clearTimeout(tapTimer.current);
+        tapTimer.current = null;
+      }
+      lastTap.current = 0;
       toggleLike(post.id);
       setShowHeart(true);
       setTimeout(() => setShowHeart(false), 600);
-      lastTap.current = 0;
       return;
     }
 
     lastTap.current = now;
     if (tapTimer.current) clearTimeout(tapTimer.current);
     tapTimer.current = setTimeout(() => {
-      if (isVideo && relX > 0.25 && relX < 0.75) setPaused((p) => !p);
-    }, 300);
+      if (inCenter) setPaused((p) => !p);
+      tapTimer.current = null;
+    }, 280);
   };
 
   const handleWheel = (e: React.WheelEvent) => {
@@ -149,9 +145,11 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
   };
 
   const handlePointerDown = (e: React.PointerEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest("[data-reel-ui]")) return;
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const relX = (e.clientX - rect.left) / rect.width;
-    if (relX <= 0.2 || relX >= 0.8) {
+    if (relX <= 0.15 || relX >= 0.85) {
       holdTimer.current = setTimeout(() => setSpeed2x(true), 300);
     }
   };
@@ -187,22 +185,10 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
     <div className="fixed inset-0 z-50 bg-black" ref={containerRef}>
       {!fullscreen && (
         <>
-          <div className="absolute top-0 left-0 right-0 z-20 flex gap-1 px-3 pt-3 safe-top pointer-events-none">
-            {items.map((_, i) => (
-              <div key={i} className="flex-1 h-[2px] bg-white/25 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-white rounded-full transition-[width] duration-75 ease-linear"
-                  style={{
-                    width: i < index ? "100%" : i === index ? `${progress}%` : "0%",
-                  }}
-                />
-              </div>
-            ))}
-          </div>
-          <button onClick={onClose} className="absolute top-8 left-4 z-20 p-2" aria-label="Back">
+          <button onClick={onClose} className="absolute top-4 left-4 z-20 p-2 safe-top" data-reel-ui aria-label="Back">
             <ArrowLeft className="w-6 h-6 text-white drop-shadow" />
           </button>
-          <button onClick={() => setMenuOpen(true)} className="absolute top-8 right-4 z-20 p-2" aria-label="More">
+          <button onClick={() => setMenuOpen(true)} className="absolute top-4 right-4 z-20 p-2 safe-top" data-reel-ui aria-label="More">
             <MoreVertical className="w-6 h-6 text-white drop-shadow" />
           </button>
         </>
@@ -210,7 +196,7 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
 
       <div
         className="relative w-full h-dvh"
-        onClick={handleTap}
+        onClick={isVideo ? handleVideoTap : undefined}
         onWheel={handleWheel}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
@@ -239,6 +225,7 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
             <button
               onClick={(e) => { e.stopPropagation(); setMuted(!muted); }}
               className="mb-4 p-2 rounded-full bg-black/40 pointer-events-auto"
+              data-reel-ui
             >
               {muted ? <VolumeX className="w-5 h-5 text-white" /> : <Volume2 className="w-5 h-5 text-white" />}
             </button>
@@ -260,7 +247,7 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
 
         {!fullscreen && (
           <>
-            <div className="absolute right-3 bottom-28 flex flex-col items-center gap-5 z-10">
+            <div className="absolute right-3 bottom-28 flex flex-col items-center gap-5 z-10" data-reel-ui>
               <button onClick={(e) => { e.stopPropagation(); toggleLike(post.id); }} className="flex flex-col items-center gap-0.5">
                 <Heart className={cn("w-7 h-7", liked ? "text-like fill-like" : "text-white")} />
                 <span className="text-white text-xs font-medium">{formatCount(post.likes)}</span>
@@ -278,7 +265,7 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
               </button>
             </div>
 
-            <div className="absolute bottom-20 left-4 right-16 z-10">
+            <div className="absolute bottom-20 left-4 right-16 z-10" data-reel-ui>
               <div className="flex items-center gap-2 mb-2">
                 <Link href={`/profile/${post.author.username}/`} onClick={(e) => e.stopPropagation()}>
                   <Avatar src={post.author.avatar} alt={post.author.displayName} size="sm" />
@@ -306,12 +293,21 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
           <button
             onClick={() => setFullscreen(false)}
             className="absolute bottom-6 right-4 z-20 p-2 rounded-full bg-black/50"
+            data-reel-ui
             aria-label="Exit fullscreen"
           >
             <Minimize2 className="w-5 h-5 text-white" />
           </button>
         )}
 
+        {!fullscreen && isVideo && (
+          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white/20 z-10 pointer-events-none">
+            <div
+              className="h-full bg-white/80 transition-[width] duration-100 ease-linear"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        )}
       </div>
 
       <BottomSheet open={menuOpen} onClose={() => setMenuOpen(false)} title="More">

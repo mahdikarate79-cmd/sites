@@ -28,9 +28,7 @@ export function PostCard({ post, onHide, allPosts }: PostCardProps) {
   const [donateOpen, setDonateOpen] = useState(false);
   const [reelsOpen, setReelsOpen] = useState(false);
   const [reelMediaIndex, setReelMediaIndex] = useState(0);
-  const { isFollowing, isBlocked } = usePrototype();
-
-  if (isBlocked(post.author.id)) return null;
+  const { isFollowing } = usePrototype();
 
   const reelItems = useMemo(() => buildReelItems(allPosts ?? mockPosts), [allPosts]);
   const hasReelMedia = post.media?.some((m) => m.type === "video" || m.type === "image" || m.type === "gif");

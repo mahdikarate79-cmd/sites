@@ -46,7 +46,6 @@ export function PostMenu({ post, onHide }: PostMenuProps) {
 
   const handleBlock = () => {
     blockUser(post.author.id);
-    onHide?.();
     showToast("User blocked");
     setOpen(false);
   };

@@ -13,43 +13,50 @@ interface StarsSliderProps {
 
 export function StarsSlider({ value, min = 1, max = 10000, topThreshold = 0, onChange }: StarsSliderProps) {
   const percent = ((value - min) / (max - min)) * 100;
-  const markerPercent = topThreshold > 0 ? ((topThreshold + 1) / (max - min)) * 100 : null;
 
   return (
-    <div className="relative pt-12 pb-2 px-1">
+    <div className="relative pt-14 pb-3 px-1">
+      {/* Amount bubble */}
       <div
         className="absolute top-0 z-10 pointer-events-none transition-[left] duration-75 ease-out"
-        style={{ left: `clamp(28px, ${percent}%, calc(100% - 28px))`, transform: "translateX(-50%)" }}
+        style={{ left: `clamp(32px, ${percent}%, calc(100% - 32px))`, transform: "translateX(-50%)" }}
       >
         <div className="relative">
-          <div className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-gold shadow-sm">
-            <TelegramStarIcon variant="donate" size={16} />
-            <span className="text-sm text-black/80 tabular-nums font-normal">{formatStars(value)}</span>
+          <div className="absolute -inset-3 pointer-events-none">
+            {[0, 1, 2].map((i) => (
+              <span
+                key={i}
+                className="absolute w-1 h-1 rounded-full bg-gold/60 animate-[gold-sparkle_2s_ease-in-out_infinite]"
+                style={{ top: `${20 + i * 12}%`, left: `${10 + i * 30}%`, animationDelay: `${i * 0.4}s` }}
+              />
+            ))}
           </div>
-          <div className="absolute left-1/2 -translate-x-1/2 -bottom-1.5 w-2 h-2 bg-gold rotate-45" />
+          <div className="relative flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-[#e8b923]">
+            <TelegramStarIcon variant="donate" size={18} />
+            <span className="text-sm text-black/85 tabular-nums font-medium">{formatStars(value)}</span>
+          </div>
+          <div className="absolute left-1/2 -translate-x-1/2 -bottom-1.5 w-2.5 h-2.5 bg-[#e8b923] rotate-45" />
         </div>
       </div>
 
-      <div className="relative h-3 rounded-full overflow-visible glass-pill">
-        <div className="absolute inset-0 rounded-full bg-gold/10" />
+      {/* Track */}
+      <div className="relative h-3.5 rounded-full overflow-visible">
+        <div className="absolute inset-0 rounded-full bg-[#2a2a2a] border border-white/5" />
         <div
           className="absolute inset-y-0 left-0 rounded-full overflow-hidden transition-[width] duration-75 ease-out"
           style={{ width: `${percent}%` }}
         >
-          <div className="absolute inset-0 bg-gradient-to-r from-[#c99a00]/70 to-[#ffd966]" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[#b8860b] via-[#e8b923] to-[#ffd966]" />
+          <div className="absolute inset-0 opacity-30 bg-[radial-gradient(circle_at_30%_50%,white_1px,transparent_1px)] bg-[length:8px_8px]" />
         </div>
-        {markerPercent !== null && markerPercent <= 100 && (
-          <div
-            className="absolute top-1/2 -translate-y-1/2 z-20 flex flex-col items-center pointer-events-none"
-            style={{ left: `clamp(0%, ${markerPercent}%, 100%)`, transform: "translate(-50%, -50%)" }}
-          >
-            <span className="text-[10px] text-gold font-medium mb-6 whitespace-nowrap">Top</span>
-            <div className="w-0.5 h-5 bg-gold/80 rounded-full" />
-          </div>
+        {topThreshold > 0 && (
+          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gold tracking-wider pointer-events-none">
+            TOP
+          </span>
         )}
         <div
-          className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow pointer-events-none z-10 transition-[left] duration-75 ease-out"
-          style={{ left: `calc(${percent}% - 6px)` }}
+          className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-md pointer-events-none z-10 transition-[left] duration-75 ease-out"
+          style={{ left: `calc(${percent}% - 8px)` }}
         />
       </div>
 
@@ -60,7 +67,7 @@ export function StarsSlider({ value, min = 1, max = 10000, topThreshold = 0, onC
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
         className="absolute left-0 right-0 w-full opacity-0 cursor-pointer z-30"
-        style={{ top: "48px", height: "20px" }}
+        style={{ top: "52px", height: "24px" }}
         aria-label="Stars amount"
       />
     </div>

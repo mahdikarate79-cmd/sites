@@ -24,7 +24,12 @@ export function TelegramStarIcon({ variant = "post", size = 20, className }: Tel
       alt=""
       width={size}
       height={size}
-      className={cn("shrink-0 object-contain", className)}
+      className={cn(
+        "shrink-0 object-contain",
+        variant === "post" && "opacity-90 saturate-110",
+        variant === "donate" && "opacity-95",
+        className
+      )}
       aria-hidden
       unoptimized
       draggable={false}

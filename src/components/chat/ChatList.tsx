@@ -13,7 +13,7 @@ import { usePrototype } from "@/lib/hooks/usePrototype";
 export function ChatList() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [loading, setLoading] = useState(true);
-  const { isBlocked, isChatDeleted } = usePrototype();
+  const { isChatDeleted } = usePrototype();
 
   useEffect(() => {
     getChats().then((data) => {
@@ -22,7 +22,7 @@ export function ChatList() {
     });
   }, []);
 
-  const visible = chats.filter((c) => !isChatDeleted(c.id) && !isBlocked(c.participant.id));
+  const visible = chats.filter((c) => !isChatDeleted(c.id));
 
   if (loading) {
     return (
@@ -60,7 +60,7 @@ export function ChatList() {
             </div>
             <div className="flex items-center justify-between gap-2 mt-0.5">
               <p className="text-sm text-text-muted truncate">
-                {chat.lastMessage.type === "image" ? "Photo" : chat.lastMessage.type === "video" ? "Video" : chat.lastMessage.type === "gif" ? "GIF" : chat.lastMessage.content}
+                {chat.lastMessage.type === "image" ? "Photo" : chat.lastMessage.type === "video" ? "Video" : chat.lastMessage.type === "gif" ? "GIF" : chat.lastMessage.type === "album" ? "Album" : chat.lastMessage.content}
               </p>
               {chat.unreadCount > 0 && (
                 <span className="relative shrink-0 w-5 h-5 flex items-center justify-center">
