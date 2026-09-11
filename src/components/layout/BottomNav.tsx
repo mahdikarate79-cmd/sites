@@ -1,0 +1,53 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Home, Search, Plus, User } from "lucide-react";
+import { cn } from "@/lib/utils/cn";
+import { StarParticles } from "@/components/ui/StarParticles";
+import { withBasePath } from "@/lib/hooks/useBasePath";
+
+const navItems = [
+  { href: "/", icon: Home, label: "Home" },
+  { href: "/explore", icon: Search, label: "Explore" },
+  { href: "/new-post", icon: Plus, label: "New Post" },
+  { href: "/profile", icon: User, label: "Profile" },
+];
+
+export function BottomNav() {
+  const pathname = usePathname();
+  const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+
+  const isActive = (href: string) => {
+    const full = base + (href === "/" ? "" : href);
+    if (href === "/") return pathname === "/" || pathname === base || pathname === `${base}/`;
+    return pathname.startsWith(full);
+  };
+
+  return (
+    <nav className="fixed bottom-0 left-0 right-0 z-40 px-4 pb-4 safe-bottom pointer-events-none">
+      <div className="glass-nav rounded-2xl max-w-sm mx-auto pointer-events-auto">
+        <div className="flex items-center justify-around h-14 px-2">
+          {navItems.map(({ href, icon: Icon, label }) => {
+            const active = isActive(href);
+            return (
+              <Link
+                key={href}
+                href={withBasePath(href)}
+                className={cn(
+                  "relative flex flex-col items-center justify-center w-14 h-12 rounded-xl transition-colors",
+                  active ? "text-text" : "text-text-muted"
+                )}
+                aria-label={label}
+                aria-current={active ? "page" : undefined}
+              >
+                {active && <StarParticles count={3} />}
+                <Icon className={cn("w-5 h-5", active && "stroke-[2.5]")} />
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+    </nav>
+  );
+}

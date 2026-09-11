@@ -1,0 +1,98 @@
+"use client";
+
+import { useState } from "react";
+import { Post } from "@/lib/types";
+import { Avatar } from "@/components/ui/Avatar";
+import { VerifiedBadge } from "@/components/ui/VerifiedBadge";
+import { LazyImage } from "@/components/ui/LazyImage";
+import { LazyVideo } from "@/components/ui/LazyVideo";
+import { PostMenu } from "./PostMenu";
+import { PostActions } from "./PostActions";
+import { DonateModal } from "@/components/donate/DonateModal";
+import { VideoViewer } from "@/components/video/VideoViewer";
+import { formatTimeAgo } from "@/lib/utils/format";
+import { cn } from "@/lib/utils/cn";
+
+interface PostCardProps {
+  post: Post;
+}
+
+export function PostCard({ post }: PostCardProps) {
+  const [donateOpen, setDonateOpen] = useState(false);
+  const [videoOpen, setVideoOpen] = useState(false);
+  const [activeVideo, setActiveVideo] = useState<{ src: string; thumbnail?: string } | null>(null);
+
+  const handleVideoClick = (src: string, thumbnail?: string) => {
+    setActiveVideo({ src, thumbnail });
+    setVideoOpen(true);
+  };
+
+  return (
+    <>
+      <article className="px-4 py-3 border-b border-border">
+        <div className="flex gap-3">
+          <Avatar src={post.author.avatar} alt={post.author.displayName} size="md" />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-1 min-w-0 flex-wrap">
+                <span className="font-semibold text-sm truncate">{post.author.displayName}</span>
+                {post.author.verified && <VerifiedBadge />}
+                <span className="text-text-muted text-sm truncate">@{post.author.username}</span>
+                <span className="text-text-muted text-sm">·</span>
+                <span className="text-text-muted text-sm">{formatTimeAgo(post.createdAt)}</span>
+              </div>
+              <PostMenu />
+            </div>
+
+            {post.content && (
+              <p className="mt-1 text-[15px] leading-relaxed whitespace-pre-wrap break-words">
+                {post.content}
+              </p>
+            )}
+
+            {post.media && post.media.length > 0 && (
+              <div className={cn("mt-3 rounded-xl overflow-hidden border border-border", post.media.length > 1 && "grid grid-cols-2 gap-0.5")}>
+                {post.media.map((m, i) =>
+                  m.type === "video" ? (
+                    <LazyVideo
+                      key={i}
+                      src={m.url}
+                      thumbnail={m.thumbnail}
+                      className="aspect-video"
+                      onPlay={() => handleVideoClick(m.url, m.thumbnail)}
+                    />
+                  ) : (
+                    <LazyImage
+                      key={i}
+                      src={m.url}
+                      thumbnail={m.thumbnail}
+                      alt="Post image"
+                      className="aspect-[4/3]"
+                    />
+                  )
+                )}
+              </div>
+            )}
+
+            <PostActions post={post} onDonate={() => setDonateOpen(true)} />
+          </div>
+        </div>
+      </article>
+
+      <DonateModal
+        open={donateOpen}
+        onClose={() => setDonateOpen(false)}
+        post={post}
+      />
+
+      {activeVideo && (
+        <VideoViewer
+          open={videoOpen}
+          onClose={() => { setVideoOpen(false); setActiveVideo(null); }}
+          src={activeVideo.src}
+          thumbnail={activeVideo.thumbnail}
+        />
+      )}
+    </>
+  );
+}
