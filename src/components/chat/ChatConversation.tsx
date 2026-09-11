@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, MoreVertical, Check, CheckCheck, Search, Ban, Trash2, Lock } from "lucide-react";
-import { ChatMessage } from "@/lib/types";
+import { ChatMessage, PinnedMessageInfo } from "@/lib/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { getChatMessages, sendMessage } from "@/lib/api/chat";
 import { currentUser } from "@/data/mock/users";
@@ -11,14 +11,22 @@ import { mockChats } from "@/data/mock/chats";
 import { formatChatTime } from "@/lib/utils/format";
 import { ChatInput } from "./ChatInput";
 import { PaidMediaModal } from "./PaidMediaModal";
+import { PinnedMessageBar } from "./PinnedMessageBar";
+import { MessageContextMenu } from "./MessageContextMenu";
 import { TelegramStarIcon } from "@/components/ui/TelegramStarIcon";
 import { usePrototype } from "@/lib/hooks/usePrototype";
+import { useToast } from "@/components/ui/ToastProvider";
 import Image from "next/image";
 import { cn } from "@/lib/utils/cn";
 
 interface ChatConversationProps {
   chatId: string;
 }
+
+const INITIAL_PINNED: Record<string, PinnedMessageInfo> = {
+  c1: { messageId: "c1m2", scope: "both" },
+  c2: { messageId: "c2m1", scope: "me" },
+};
 
 export function ChatConversation({ chatId }: ChatConversationProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -27,9 +35,15 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [paidModal, setPaidModal] = useState<ChatMessage | null>(null);
   const [unlocked, setUnlocked] = useState<Set<string>>(new Set());
+  const [pinned, setPinned] = useState<PinnedMessageInfo | null>(INITIAL_PINNED[chatId] ?? null);
+  const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
+  const [contextMsg, setContextMsg] = useState<ChatMessage | null>(null);
+  const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const chat = mockChats.find((c) => c.id === chatId);
   const { blockUser, deleteChat, isBlocked } = usePrototype();
+  const { showToast } = useToast();
   const blocked = chat ? isBlocked(chat.participant.id) : false;
 
   useEffect(() => {
@@ -43,7 +57,13 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleSend = async (content: string, type: "text" | "image" | "video" | "gif" = "text", extras?: Partial<ChatMessage>) => {
+  const pinnedMessage = pinned ? messages.find((m) => m.id === pinned.messageId) : null;
+
+  const handleSend = async (
+    content: string,
+    type: "text" | "image" | "video" | "gif" = "text",
+    extras?: Partial<ChatMessage>
+  ) => {
     if (blocked) return;
     const msg = await sendMessage(chatId, {
       chatId,
@@ -53,12 +73,40 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
       ...extras,
     });
     setMessages((prev) => [...prev, msg]);
+    setReplyTo(null);
   };
 
   const handleDelete = () => {
     deleteChat(chatId);
     setDeleteConfirm(false);
     setMenuOpen(false);
+  };
+
+  const handleDeleteMessage = (msgId: string) => {
+    setMessages((prev) => prev.filter((m) => m.id !== msgId));
+    if (pinned?.messageId === msgId) setPinned(null);
+  };
+
+  const handlePin = (msg: ChatMessage, scope: "me" | "both") => {
+    setPinned({ messageId: msg.id, scope });
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === msg.id ? { ...m, pinned: true, pinnedScope: scope } : { ...m, pinned: false, pinnedScope: undefined }
+      )
+    );
+    showToast(scope === "both" ? "Pinned for both" : "Pinned for you");
+  };
+
+  const scrollToMessage = (msgId: string) => {
+    messageRefs.current[msgId]?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+
+  const startLongPress = (msg: ChatMessage) => {
+    longPressTimer.current = setTimeout(() => setContextMsg(msg), 450);
+  };
+
+  const cancelLongPress = () => {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
   };
 
   if (loading) return <div className="flex-1 flex items-center justify-center text-text-muted">Loading...</div>;
@@ -117,6 +165,18 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
         </div>
       </div>
 
+      {pinnedMessage && pinned && (
+        <PinnedMessageBar
+          message={pinnedMessage}
+          scope={pinned.scope}
+          onClick={() => scrollToMessage(pinned.messageId)}
+          onUnpin={() => {
+            setPinned(null);
+            setMessages((prev) => prev.map((m) => ({ ...m, pinned: false, pinnedScope: undefined })));
+          }}
+        />
+      )}
+
       {blocked && (
         <div className="mx-4 mt-2 px-3 py-2 rounded-xl bg-surface/60 border border-border text-xs text-text-muted text-center">
           You blocked this user. They cannot send you messages.
@@ -127,14 +187,41 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
         {messages.map((msg) => {
           const isMe = msg.senderId === currentUser.id;
           const isPaid = msg.paidStars && !isMe && !unlocked.has(msg.id) && !msg.paidUnlocked;
+          const replySource = msg.replyTo ? messages.find((m) => m.id === msg.replyTo) : null;
 
           return (
-            <div key={msg.id} className={cn("flex gap-2 group", isMe && "flex-row-reverse")}>
+            <div
+              key={msg.id}
+              ref={(el) => { messageRefs.current[msg.id] = el; }}
+              className={cn("flex gap-2 group", isMe && "flex-row-reverse")}
+              onTouchStart={() => startLongPress(msg)}
+              onTouchEnd={cancelLongPress}
+              onTouchMove={cancelLongPress}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setContextMsg(msg);
+              }}
+            >
               {!isMe && chat && <Avatar src={chat.participant.avatar} alt="" size="xs" className="mt-1" />}
               <div className={cn("max-w-[75%]", isMe && "items-end")}>
+                {replySource && (
+                  <div className="text-[10px] text-text-muted mb-0.5 px-1 border-l-2 border-[#8b5cf6] pl-1.5 truncate">
+                    {replySource.type === "text" ? replySource.content : replySource.type}
+                  </div>
+                )}
                 {msg.type === "text" && (
-                  <div className={cn("px-3.5 py-2 rounded-2xl text-sm leading-relaxed", isMe ? "bg-text text-bg rounded-br-md" : "bg-surface rounded-bl-md")}>
-                    {msg.spoiler ? <span className="blur-sm hover:blur-none transition-all">{msg.content}</span> : msg.content}
+                  <div
+                    className={cn(
+                      "px-3.5 py-2 rounded-2xl text-sm leading-relaxed",
+                      isMe ? "bg-text text-bg rounded-br-md" : "bg-surface rounded-bl-md"
+                    )}
+                    style={msg.rotation ? { transform: `rotate(${msg.rotation}deg)` } : undefined}
+                  >
+                    {msg.spoiler ? (
+                      <span className="blur-sm hover:blur-none transition-all">{msg.content}</span>
+                    ) : (
+                      msg.content
+                    )}
                   </div>
                 )}
                 {(msg.type === "image" || msg.type === "gif") && (
@@ -152,7 +239,15 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
                         <span className="text-[11px] text-text-muted">Tap to unlock</span>
                       </div>
                     ) : (
-                      <Image src={msg.content} alt="" fill className={cn("object-cover", msg.spoiler && "blur-lg")} loading="lazy" sizes="192px" />
+                      <Image
+                        src={msg.content}
+                        alt=""
+                        fill
+                        className={cn("object-cover", msg.spoiler && "blur-lg")}
+                        style={msg.rotation ? { transform: `rotate(${msg.rotation}deg)` } : undefined}
+                        loading="lazy"
+                        sizes="192px"
+                      />
                     )}
                   </div>
                 )}
@@ -170,8 +265,16 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
                       <span className="text-[11px] text-text-muted">Tap to unlock</span>
                     </button>
                   ) : (
-                    <video src={msg.content} className="w-48 rounded-xl" controls playsInline preload="none" />
+                    <video
+                      src={msg.content}
+                      className="w-48 rounded-xl"
+                      style={msg.rotation ? { transform: `rotate(${msg.rotation}deg)` } : undefined}
+                      controls
+                      playsInline
+                      preload="none"
+                    />
                   ))}
+                {msg.caption && <p className="text-xs text-text-muted mt-1 px-1">{msg.caption}</p>}
                 <div className="flex items-center gap-1 mt-0.5 px-1">
                   <span className={cn("text-[10px]", !isMe && !msg.read ? "text-[#8b5cf6]" : "text-text-muted")}>
                     {formatChatTime(msg.createdAt)}
@@ -185,7 +288,31 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
         <div ref={bottomRef} />
       </div>
 
-      <ChatInput onSend={handleSend} disabled={blocked} disabledMessage="You cannot message this user" />
+      <ChatInput
+        onSend={handleSend}
+        disabled={blocked}
+        disabledMessage="You cannot message this user"
+        replyTo={replyTo}
+        onCancelReply={() => setReplyTo(null)}
+      />
+
+      <MessageContextMenu
+        open={!!contextMsg}
+        message={contextMsg}
+        isMedia={contextMsg ? contextMsg.type !== "text" : false}
+        onClose={() => setContextMsg(null)}
+        onReply={() => contextMsg && setReplyTo(contextMsg)}
+        onForward={() => showToast("Forwarded")}
+        onCopy={async () => {
+          if (contextMsg) {
+            await navigator.clipboard.writeText(contextMsg.content);
+            showToast("Copied");
+          }
+        }}
+        onPin={(scope) => contextMsg && handlePin(contextMsg, scope)}
+        onDelete={() => contextMsg && handleDeleteMessage(contextMsg.id)}
+        onSave={() => showToast("Saved to gallery")}
+      />
 
       {deleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">

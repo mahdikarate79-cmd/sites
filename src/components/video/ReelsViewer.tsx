@@ -38,7 +38,9 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
   const [reportOpen, setReportOpen] = useState(false);
   const [showHeart, setShowHeart] = useState(false);
   const [speed2x, setSpeed2x] = useState(false);
+  const [progress, setProgress] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const imageTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastTap = useRef(0);
   const tapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -65,6 +67,41 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
     if (paused) videoRef.current.pause();
     else videoRef.current.play().catch(() => {});
   }, [paused, speed2x, index, isVideo]);
+
+  useEffect(() => {
+    setProgress(0);
+    if (imageTimerRef.current) clearInterval(imageTimerRef.current);
+
+    if (!open || isVideo) return;
+
+    const start = Date.now();
+    const duration = 5000;
+    imageTimerRef.current = setInterval(() => {
+      const elapsed = Date.now() - start;
+      setProgress(Math.min(100, (elapsed / duration) * 100));
+    }, 50);
+
+    return () => {
+      if (imageTimerRef.current) clearInterval(imageTimerRef.current);
+    };
+  }, [index, isVideo, open]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !isVideo) return;
+
+    const onTimeUpdate = () => {
+      if (video.duration) setProgress((video.currentTime / video.duration) * 100);
+    };
+    const onEnded = () => setProgress(100);
+
+    video.addEventListener("timeupdate", onTimeUpdate);
+    video.addEventListener("ended", onEnded);
+    return () => {
+      video.removeEventListener("timeupdate", onTimeUpdate);
+      video.removeEventListener("ended", onEnded);
+    };
+  }, [index, isVideo]);
 
   const goNext = useCallback(() => {
     if (index < items.length - 1) setIndex((i) => i + 1);
@@ -150,11 +187,23 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
     <div className="fixed inset-0 z-50 bg-black" ref={containerRef}>
       {!fullscreen && (
         <>
-          <button onClick={onClose} className="absolute top-4 left-4 z-20 p-2 safe-top" aria-label="Back">
-            <ArrowLeft className="w-6 h-6 text-white" />
+          <div className="absolute top-0 left-0 right-0 z-20 flex gap-1 px-3 pt-3 safe-top pointer-events-none">
+            {items.map((_, i) => (
+              <div key={i} className="flex-1 h-[2px] bg-white/25 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-white rounded-full transition-[width] duration-75 ease-linear"
+                  style={{
+                    width: i < index ? "100%" : i === index ? `${progress}%` : "0%",
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+          <button onClick={onClose} className="absolute top-8 left-4 z-20 p-2" aria-label="Back">
+            <ArrowLeft className="w-6 h-6 text-white drop-shadow" />
           </button>
-          <button onClick={() => setMenuOpen(true)} className="absolute top-4 right-4 z-20 p-2 safe-top" aria-label="More">
-            <MoreVertical className="w-6 h-6 text-white" />
+          <button onClick={() => setMenuOpen(true)} className="absolute top-8 right-4 z-20 p-2" aria-label="More">
+            <MoreVertical className="w-6 h-6 text-white drop-shadow" />
           </button>
         </>
       )}
@@ -263,9 +312,6 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
           </button>
         )}
 
-        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white/20 z-10">
-          <div className="h-full bg-white/80 transition-all duration-300" style={{ width: `${((index + 1) / items.length) * 100}%` }} />
-        </div>
       </div>
 
       <BottomSheet open={menuOpen} onClose={() => setMenuOpen(false)} title="More">

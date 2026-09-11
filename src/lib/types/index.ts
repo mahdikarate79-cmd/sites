@@ -72,10 +72,17 @@ export interface ChatMessage {
   delivered?: boolean;
   replyTo?: string;
   pinned?: boolean;
+  pinnedScope?: "me" | "both";
   spoiler?: boolean;
   paidStars?: number;
   paidUnlocked?: boolean;
   caption?: string;
+  rotation?: number;
+}
+
+export interface PinnedMessageInfo {
+  messageId: string;
+  scope: "me" | "both";
 }
 
 export interface Chat {
@@ -83,6 +90,14 @@ export interface Chat {
   participant: User;
   lastMessage: ChatMessage;
   unreadCount: number;
+  pinned?: PinnedMessageInfo;
+}
+
+export interface GalleryItem {
+  id: string;
+  type: "image" | "video" | "gif";
+  url: string;
+  thumbnail?: string;
 }
 
 export interface MediaObject {
