@@ -52,14 +52,16 @@ export function computeDonationRank(
   topDonators: Donator[],
   anonymous: boolean
 ): { rank: number; preview: Donator[] } {
+  const withoutCurrent = topDonators.filter((d) => d.user.id !== currentUser.id);
+  const prevUser = topDonators.find((d) => d.user.id === currentUser.id);
   const current = {
     rank: 0,
     user: currentUser,
-    stars: amount,
+    stars: (prevUser?.stars ?? 0) + amount,
     anonymous,
   };
 
-  const all = [...topDonators, current].sort((a, b) => b.stars - a.stars);
+  const all = [...withoutCurrent, current].sort((a, b) => b.stars - a.stars);
   const preview = all.slice(0, 3).map((d, i) => ({ ...d, rank: i + 1 }));
   const rank = all.findIndex((d) => d.user.id === currentUser.id) + 1;
   return { rank, preview };

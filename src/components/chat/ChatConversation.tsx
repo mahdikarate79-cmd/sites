@@ -13,7 +13,6 @@ import { formatChatTime } from "@/lib/utils/format";
 import { ChatInput } from "./ChatInput";
 import { PaidMediaModal } from "./PaidMediaModal";
 import { usePrototype } from "@/lib/hooks/usePrototype";
-import { withBasePath } from "@/lib/hooks/useBasePath";
 import Image from "next/image";
 import { cn } from "@/lib/utils/cn";
 
@@ -44,7 +43,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
   }, [messages]);
 
   if (chat && isBlocked(chat.participant.id)) {
-    return <div className="flex-1 flex items-center justify-center text-text-muted text-sm">نمی‌توانید با این کاربر پیام دهید</div>;
+    return <div className="flex-1 flex items-center justify-center text-text-muted text-sm">You cannot message this user</div>;
   }
 
   const handleSend = async (content: string, type: "text" | "image" | "video" | "gif" = "text", extras?: Partial<ChatMessage>) => {
@@ -69,11 +68,11 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
   return (
     <div className="flex flex-col h-[calc(100dvh-3.5rem)]">
       <div className="flex items-center gap-3 px-3 py-2 border-b border-border bg-bg/90 backdrop-blur-sm">
-        <Link href={withBasePath("/chat")} className="p-1.5 rounded-full hover:bg-surface">
+        <Link href="/chat/" className="p-1.5 rounded-full hover:bg-surface">
           <ArrowLeft className="w-5 h-5" />
         </Link>
         {chat && (
-          <div className="flex-1 flex flex-col items-center min-w-0">
+          <Link href={`/profile/${chat.participant.username}/`} className="flex-1 flex flex-col items-center min-w-0">
             <div className="flex items-center gap-1.5">
               <Avatar src={chat.participant.avatar} alt="" size="xs" />
               <span className="font-semibold text-sm truncate">{chat.participant.displayName}</span>
@@ -81,7 +80,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
             </div>
             <span className="text-[11px] text-text-muted">@{chat.participant.username}</span>
             <span className="text-[10px] text-text-muted">{chat.participant.lastSeen ?? "last seen recently"}</span>
-          </div>
+          </Link>
         )}
         <div className="relative">
           <button onClick={() => setMenuOpen(!menuOpen)} className="p-1.5 rounded-full hover:bg-surface">
@@ -151,10 +150,10 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/50" onClick={() => setDeleteConfirm(false)} />
           <div className="relative bg-bg rounded-2xl p-5 mx-4 max-w-sm w-full">
-            <p className="text-sm mb-4">آیا از حذف این گفتگو مطمئن هستید؟</p>
+            <p className="text-sm mb-4">Are you sure you want to delete this conversation?</p>
             <div className="flex gap-2">
-              <button onClick={() => setDeleteConfirm(false)} className="flex-1 py-2.5 rounded-xl bg-surface text-sm">لغو</button>
-              <button onClick={handleDelete} className="flex-1 py-2.5 rounded-xl bg-like text-white text-sm">حذف</button>
+              <button onClick={() => setDeleteConfirm(false)} className="flex-1 py-2.5 rounded-xl bg-surface text-sm">Cancel</button>
+              <button onClick={handleDelete} className="flex-1 py-2.5 rounded-xl bg-like text-white text-sm">Delete</button>
             </div>
           </div>
         </div>

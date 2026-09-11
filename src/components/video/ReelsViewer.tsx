@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import {
   ArrowLeft, Heart, MessageCircle, Share2, MoreVertical,
   Volume2, VolumeX, Play, Minimize2,
@@ -101,7 +102,7 @@ export function ReelsViewer({ open, onClose, posts, initialIndex }: ReelsViewerP
 
   const copyLink = async () => {
     await navigator.clipboard.writeText(`https://sheytoni.app/post/${post.id}`);
-    showToast("🔗 لینک کپی شد");
+    showToast("Link copied");
     setMenuOpen(false);
   };
 
@@ -182,14 +183,18 @@ export function ReelsViewer({ open, onClose, posts, initialIndex }: ReelsViewerP
 
             <div className="absolute bottom-20 left-4 right-16 z-10">
               <div className="flex items-center gap-2 mb-2">
-                <Avatar src={post.author.avatar} alt={post.author.displayName} size="sm" />
-                <div className="flex items-center gap-1 min-w-0">
+                <Link href={`/profile/${post.author.username}/`} onClick={(e) => e.stopPropagation()}>
+                  <Avatar src={post.author.avatar} alt={post.author.displayName} size="sm" />
+                </Link>
+                <Link href={`/profile/${post.author.username}/`} onClick={(e) => e.stopPropagation()} className="flex items-center gap-1 min-w-0">
                   <span className="text-white font-semibold text-sm truncate">{post.author.displayName}</span>
                   {post.author.verified && <VerifiedBadge className="w-3.5 h-3.5" />}
-                </div>
+                </Link>
                 {!following && <FollowButton userId={post.author.id} size="sm" />}
               </div>
-              <p className="text-white text-xs mb-0.5">@{post.author.username}</p>
+              <Link href={`/profile/${post.author.username}/`} onClick={(e) => e.stopPropagation()} className="text-white text-xs mb-0.5 block">
+                @{post.author.username}
+              </Link>
               {post.content && (
                 <button
                   onClick={(e) => { e.stopPropagation(); setCaptionOpen(!captionOpen); }}

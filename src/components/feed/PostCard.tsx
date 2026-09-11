@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Post } from "@/lib/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { VerifiedBadge } from "@/components/ui/VerifiedBadge";
@@ -33,18 +34,25 @@ export function PostCard({ post, onHide, videoPosts, videoIndex }: PostCardProps
   const hasVideo = post.media?.some((m) => m.type === "video");
   const reels = videoPosts ?? mockPosts.filter((p) => p.media?.some((m) => m.type === "video"));
   const reelIdx = videoIndex ?? reels.findIndex((p) => p.id === post.id);
+  const profileHref = `/profile/${post.author.username}/`;
 
   return (
     <>
       <article className="px-4 py-3 border-b border-border">
         <div className="flex gap-3">
-          <Avatar src={post.author.avatar} alt={post.author.displayName} size="md" />
+          <Link href={profileHref} className="shrink-0">
+            <Avatar src={post.author.avatar} alt={post.author.displayName} size="md" />
+          </Link>
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-1 min-w-0 flex-wrap">
-                <span className="font-semibold text-sm truncate">{post.author.displayName}</span>
+                <Link href={profileHref} className="font-semibold text-sm truncate hover:underline">
+                  {post.author.displayName}
+                </Link>
                 {post.author.verified && <VerifiedBadge />}
-                <span className="text-text-muted text-sm truncate">@{post.author.username}</span>
+                <Link href={profileHref} className="text-text-muted text-sm truncate hover:underline">
+                  @{post.author.username}
+                </Link>
                 <span className="text-text-muted text-sm">·</span>
                 <span className="text-text-muted text-sm">{formatTimeAgo(post.createdAt)}</span>
                 {!isFollowing(post.author.id) && post.author.id !== "u1" && (

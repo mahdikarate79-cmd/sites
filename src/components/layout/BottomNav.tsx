@@ -5,23 +5,20 @@ import { usePathname } from "next/navigation";
 import { Home, Search, Plus, User } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { PremiumParticles } from "@/components/ui/PremiumParticles";
-import { withBasePath } from "@/lib/hooks/useBasePath";
 
 const navItems = [
   { href: "/", icon: Home, label: "Home" },
-  { href: "/explore", icon: Search, label: "Explore" },
-  { href: "/new-post", icon: Plus, label: "New Post" },
-  { href: "/profile", icon: User, label: "Profile" },
+  { href: "/explore/", icon: Search, label: "Explore" },
+  { href: "/new-post/", icon: Plus, label: "New Post" },
+  { href: "/profile/", icon: User, label: "Profile" },
 ];
 
 export function BottomNav() {
   const pathname = usePathname();
-  const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
   const isActive = (href: string) => {
-    const full = base + (href === "/" ? "" : href);
-    if (href === "/") return pathname === "/" || pathname === base || pathname === `${base}/`;
-    return pathname.startsWith(full);
+    if (href === "/") return pathname === "/" || pathname === "";
+    return pathname.startsWith(href.replace(/\/$/, ""));
   };
 
   return (
@@ -33,7 +30,7 @@ export function BottomNav() {
             return (
               <Link
                 key={href}
-                href={withBasePath(href)}
+                href={href}
                 className={cn(
                   "relative flex flex-col items-center justify-center w-14 h-12 rounded-xl transition-colors",
                   active ? "text-text" : "text-text-muted"
@@ -41,8 +38,8 @@ export function BottomNav() {
                 aria-label={label}
                 aria-current={active ? "page" : undefined}
               >
-                {active && <PremiumParticles count={3} />}
-                <Icon className={cn("w-5 h-5", active && "stroke-[2.5]")} />
+                {active && <PremiumParticles count={4} centered />}
+                <Icon className={cn("w-5 h-5 relative z-[1]", active && "stroke-[2.5]")} />
               </Link>
             );
           })}

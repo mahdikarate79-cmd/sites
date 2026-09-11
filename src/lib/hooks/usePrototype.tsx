@@ -96,10 +96,11 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
   const donate = useCallback((postId: string, stars: number, anonymous: boolean, authorId: string) => {
     update((s) => {
       const existing = getPostDonation(s, postId);
+      const prevUser = existing.topDonators.find((d) => d.user.id === currentUser.id);
       const newDonator: Donator = {
         rank: 0,
         user: currentUser,
-        stars,
+        stars: (prevUser?.stars ?? 0) + stars,
         anonymous,
       };
       const merged = [...existing.topDonators.filter((d) => d.user.id !== currentUser.id), newDonator]

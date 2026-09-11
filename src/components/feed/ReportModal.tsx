@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRight, X } from "lucide-react";
-import { Modal } from "@/components/ui/Modal";
+import { ArrowLeft, X } from "lucide-react";
+import { BottomSheet } from "@/components/ui/BottomSheet";
 import { useToast } from "@/components/ui/ToastProvider";
 
 interface ReportModalProps {
@@ -11,11 +11,11 @@ interface ReportModalProps {
 }
 
 const CATEGORIES: Record<string, string[]> = {
-  "کودک‌آزاری": ["کودک‌آزاری جنسی", "کودک‌آزاری جسمی"],
-  "خشونت": ["خشونت فیزیکی", "تهدید"],
-  "کلاهبرداری": ["کلاهبرداری مالی", "فریب"],
-  "حق تکثیر": ["محتوای دزدیده‌شده", "نقض کپی‌رایت"],
-  "هرزنامه": ["تبلیغات ناخواسته", "محتوای تکراری"],
+  "Child abuse": ["Sexual child abuse", "Physical child abuse"],
+  "Violence": ["Physical violence", "Threats"],
+  "Scam": ["Financial scam", "Fraud"],
+  "Copyright": ["Stolen content", "Copyright violation"],
+  "Spam": ["Unwanted ads", "Repetitive content"],
 };
 
 type Step = "main" | "sub" | "detail";
@@ -46,18 +46,18 @@ export function ReportModal({ open, onClose }: ReportModalProps) {
   };
 
   const handleSubmit = () => {
-    showToast("🛡️ گزارش ارسال شد\nاز گزارش شما متشکریم.");
+    showToast("Report submitted. Thank you.");
     handleClose();
   };
 
-  const title = step === "main" ? "🚨 گزارش محتوا" : category;
+  const title = step === "main" ? "Report content" : category;
 
   return (
-    <Modal open={open} onClose={handleClose}>
+    <BottomSheet open={open} onClose={handleClose}>
       <div className="px-4 pb-6">
-        <div className="flex items-center gap-3 py-3 border-b border-border -mx-4 px-4">
+        <div className="flex items-center gap-3 py-2 border-b border-border -mx-4 px-4 mb-2">
           <button onClick={handleBack} className="p-1 rounded-full hover:bg-surface" aria-label="Back">
-            <ArrowRight className="w-5 h-5 rotate-180" />
+            <ArrowLeft className="w-5 h-5" />
           </button>
           <h2 className="flex-1 text-center font-semibold">{title}</h2>
           <button onClick={handleClose} className="p-1 rounded-full hover:bg-surface" aria-label="Close">
@@ -66,62 +66,60 @@ export function ReportModal({ open, onClose }: ReportModalProps) {
         </div>
 
         {step === "main" && (
-          <div className="mt-2">
+          <div>
             {Object.keys(CATEGORIES).map((cat) => (
               <button
                 key={cat}
                 onClick={() => { setCategory(cat); setStep("sub"); }}
-                className="flex items-center justify-between w-full py-3.5 border-b border-border text-sm hover:bg-surface/50 transition-colors text-right"
+                className="flex items-center justify-between w-full py-3.5 border-b border-border text-sm hover:bg-surface/50 transition-colors text-left"
               >
                 {cat}
-                <ArrowRight className="w-4 h-4 text-text-muted rotate-180" />
+                <ArrowLeft className="w-4 h-4 text-text-muted rotate-180" />
               </button>
             ))}
             <button
-              onClick={() => { setCategory("سایر موارد مهم"); setStep("detail"); }}
-              className="flex items-center justify-between w-full py-3.5 text-sm hover:bg-surface/50 transition-colors text-right"
+              onClick={() => { setCategory("Other"); setStep("detail"); }}
+              className="flex items-center justify-between w-full py-3.5 text-sm hover:bg-surface/50 transition-colors text-left"
             >
-              سایر موارد مهم
-              <ArrowRight className="w-4 h-4 text-text-muted rotate-180" />
+              Other important issues
+              <ArrowLeft className="w-4 h-4 text-text-muted rotate-180" />
             </button>
           </div>
         )}
 
         {step === "sub" && (
-          <div className="mt-2">
+          <div>
             {(CATEGORIES[category] ?? []).map((sub) => (
               <button
                 key={sub}
                 onClick={() => { setSubcategory(sub); setStep("detail"); }}
-                className="flex items-center justify-between w-full py-3.5 border-b border-border text-sm hover:bg-surface/50 transition-colors text-right"
+                className="flex items-center justify-between w-full py-3.5 border-b border-border text-sm hover:bg-surface/50 transition-colors text-left"
               >
                 {sub}
-                <ArrowRight className="w-4 h-4 text-text-muted rotate-180" />
+                <ArrowLeft className="w-4 h-4 text-text-muted rotate-180" />
               </button>
             ))}
           </div>
         )}
 
         {step === "detail" && (
-          <div className="mt-4">
-            {subcategory && (
-              <p className="text-sm text-text-muted mb-3">دسته: {subcategory}</p>
-            )}
+          <div className="mt-2">
+            {subcategory && <p className="text-sm text-text-muted mb-3">Category: {subcategory}</p>}
             <textarea
               value={detail}
               onChange={(e) => setDetail(e.target.value)}
-              placeholder="توضیحات اختیاری..."
+              placeholder="Optional details..."
               className="w-full h-24 px-3 py-2 rounded-xl bg-surface border border-border text-sm outline-none resize-none"
             />
             <button
               onClick={handleSubmit}
-              className="w-full mt-4 py-3 rounded-xl bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] text-white font-semibold text-sm"
+              className="w-full mt-4 py-3 rounded-xl bg-[#3b82f6] text-white font-medium text-sm"
             >
-              ارسال گزارش
+              Submit report
             </button>
           </div>
         )}
       </div>
-    </Modal>
+    </BottomSheet>
   );
 }

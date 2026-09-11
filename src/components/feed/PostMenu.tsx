@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { MoreHorizontal } from "lucide-react";
+import { MoreHorizontal, Heart, ThumbsDown, Flag, Link2, Ban } from "lucide-react";
 import { Post } from "@/lib/types";
 import { ReportModal } from "./ReportModal";
 import { usePrototype } from "@/lib/hooks/usePrototype";
@@ -30,9 +30,8 @@ export function PostMenu({ post, onHide }: PostMenuProps) {
   }, []);
 
   const copyLink = async () => {
-    const link = `https://sheytoni.app/post/${post.id}`;
-    await navigator.clipboard.writeText(link);
-    showToast("🔗 لینک کپی شد");
+    await navigator.clipboard.writeText(`https://sheytoni.app/post/${post.id}`);
+    showToast("Link copied");
     setOpen(false);
   };
 
@@ -40,7 +39,7 @@ export function PostMenu({ post, onHide }: PostMenuProps) {
     setBurst(true);
     setTimeout(() => setBurst(false), 500);
     markInterested(post);
-    showToast("❤️ به علاقه‌مندی‌ها اضافه شد");
+    showToast("Added to interests");
     setOpen(false);
   };
 
@@ -48,23 +47,23 @@ export function PostMenu({ post, onHide }: PostMenuProps) {
     markNotInterested(post);
     hidePost(post.id);
     onHide?.();
-    showToast("👎 پست کمتر نمایش داده می‌شود");
+    showToast("You'll see fewer posts like this");
     setOpen(false);
   };
 
   const handleBlock = () => {
     blockUser(post.author.id);
     onHide?.();
-    showToast("🚫 کاربر بلاک شد");
+    showToast("User blocked");
     setOpen(false);
   };
 
   const items = [
-    { emoji: "❤️", label: "علاقه دارم", action: handleInterested },
-    { emoji: "👎", label: "علاقه ندارم", action: handleNotInterested },
-    { emoji: "🚨", label: "گزارش", action: () => { setReportOpen(true); setOpen(false); }, danger: true },
-    { emoji: "🔗", label: "کپی لینک", action: copyLink },
-    { emoji: "🚫", label: "بلاک کردن کاربر", action: handleBlock, danger: true },
+    { icon: Heart, label: "Interested", action: handleInterested },
+    { icon: ThumbsDown, label: "Not interested", action: handleNotInterested },
+    { icon: Flag, label: "Report", action: () => { setReportOpen(true); setOpen(false); }, danger: true },
+    { icon: Link2, label: "Copy link", action: copyLink },
+    { icon: Ban, label: "Block user", action: handleBlock, danger: true },
   ];
 
   return (
@@ -79,16 +78,16 @@ export function PostMenu({ post, onHide }: PostMenuProps) {
           <MoreHorizontal className="w-4 h-4 text-text-muted" />
         </button>
         {open && (
-          <div className="absolute right-0 top-full mt-1 w-52 bg-surface border border-border rounded-xl shadow-lg z-20 py-1 overflow-hidden">
-            {items.map(({ emoji, label, action, danger }) => (
+          <div className="absolute right-0 top-full mt-1 w-48 bg-surface border border-border rounded-xl shadow-lg z-20 py-1 overflow-hidden">
+            {items.map(({ icon: Icon, label, action, danger }) => (
               <button
                 key={label}
                 onClick={action}
-                className={`flex items-center gap-3 w-full px-4 py-2.5 text-sm hover:bg-bg transition-colors text-right ${
+                className={`flex items-center gap-3 w-full px-4 py-2.5 text-sm hover:bg-bg transition-colors text-left ${
                   danger ? "text-like" : ""
                 }`}
               >
-                <span>{emoji}</span>
+                <Icon className={`w-4 h-4 shrink-0 ${danger ? "text-like" : "text-text-muted"}`} />
                 {label}
               </button>
             ))}

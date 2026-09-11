@@ -18,7 +18,6 @@ import { usePrototype } from "@/lib/hooks/usePrototype";
 import { useTheme } from "@/lib/hooks/useTheme";
 import { useToast } from "@/components/ui/ToastProvider";
 import { Sun, Moon } from "lucide-react";
-import { withBasePath } from "@/lib/hooks/useBasePath";
 import { cn } from "@/lib/utils/cn";
 
 type ProfileTab = "videos" | "photos" | "posts";
@@ -45,7 +44,7 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
   if (!isOwnProfile && isBlocked(user.id)) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-text-muted">
-        <p className="text-sm">این پروفایل در دسترس نیست</p>
+        <p className="text-sm">This profile is unavailable</p>
       </div>
     );
   }
@@ -64,7 +63,7 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
 
   const copyProfileLink = async () => {
     await navigator.clipboard.writeText(`https://sheytoni.app/@${user.username}`);
-    showToast("🔗 لینک پروفایل کپی شد");
+    showToast("Profile link copied");
     setMenuOpen(false);
   };
 
@@ -73,7 +72,7 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
       <div className="relative h-36 sm:h-44 bg-surface">
         {user.cover && <Image src={user.cover} alt="Cover" fill className="object-cover" priority sizes="100vw" />}
         <div className="absolute top-0 left-0 right-0 flex items-center justify-between p-3 safe-top">
-          <Link href={withBasePath("/")} className="p-2 rounded-full bg-black/30 backdrop-blur-sm">
+          <Link href="/" className="p-2 rounded-full bg-black/30 backdrop-blur-sm">
             <ArrowLeft className="w-5 h-5 text-white" />
           </Link>
           <button onClick={() => setMenuOpen(!menuOpen)} className="p-2 rounded-full bg-black/30 backdrop-blur-sm">
@@ -108,7 +107,7 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
             ) : (
               <>
                 <FollowButton userId={user.id} />
-                <Link href={withBasePath(`/chat/c1`)} className="px-4 py-1.5 rounded-full border border-border text-sm font-medium glass-nav">
+                <Link href="/chat/c1/" className="px-4 py-1.5 rounded-full border border-border text-sm font-medium glass-nav">
                   Message
                 </Link>
               </>

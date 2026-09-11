@@ -8,7 +8,6 @@ import { VerifiedBadge } from "@/components/ui/VerifiedBadge";
 import { NotificationBadge } from "@/components/ui/NotificationBadge";
 import { formatChatTime } from "@/lib/utils/format";
 import { getChats } from "@/lib/api/chat";
-import { withBasePath } from "@/lib/hooks/useBasePath";
 import { usePrototype } from "@/lib/hooks/usePrototype";
 
 export function ChatList() {
@@ -44,15 +43,14 @@ export function ChatList() {
   return (
     <div>
       {visible.map((chat) => (
-        <Link
+        <div
           key={chat.id}
-          href={withBasePath(`/chat/${chat.id}`)}
           className="flex items-center gap-3 px-4 py-3 border-b border-border hover:bg-surface/50 transition-colors"
         >
-          <div className="relative">
+          <Link href={`/profile/${chat.participant.username}/`} className="shrink-0">
             <Avatar src={chat.participant.avatar} alt={chat.participant.displayName} size="lg" />
-          </div>
-          <div className="flex-1 min-w-0">
+          </Link>
+          <Link href={`/chat/${chat.id}/`} className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-1 min-w-0">
                 <span className="font-semibold text-sm truncate">{chat.participant.displayName}</span>
@@ -62,7 +60,7 @@ export function ChatList() {
             </div>
             <div className="flex items-center justify-between gap-2 mt-0.5">
               <p className="text-sm text-text-muted truncate">
-                {chat.lastMessage.type === "image" ? "📷 Photo" : chat.lastMessage.type === "video" ? "🎬 Video" : chat.lastMessage.type === "gif" ? "GIF" : chat.lastMessage.content}
+                {chat.lastMessage.type === "image" ? "Photo" : chat.lastMessage.type === "video" ? "Video" : chat.lastMessage.type === "gif" ? "GIF" : chat.lastMessage.content}
               </p>
               {chat.unreadCount > 0 && (
                 <span className="relative shrink-0 w-5 h-5 flex items-center justify-center">
@@ -70,8 +68,8 @@ export function ChatList() {
                 </span>
               )}
             </div>
-          </div>
-        </Link>
+          </Link>
+        </div>
       ))}
     </div>
   );
