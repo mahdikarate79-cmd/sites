@@ -4,10 +4,13 @@ import { useEffect, useState } from "react";
 import { Post } from "@/lib/types";
 import { PostCard } from "./PostCard";
 import { getFeedPosts } from "@/lib/api/posts";
+import { usePrototype } from "@/lib/hooks/usePrototype";
 
 export function FeedList() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const { filterPosts, sortPosts } = usePrototype();
 
   useEffect(() => {
     getFeedPosts().then((data) => {
@@ -15,6 +18,13 @@ export function FeedList() {
       setLoading(false);
     });
   }, []);
+
+  const videoPosts = posts.filter((p) => p.media?.some((m) => m.type === "video"));
+  const visible = sortPosts(filterPosts(posts)).filter((p) => !hidden.has(p.id));
+
+  const handleHide = (postId: string) => {
+    setHidden((prev) => new Set([...prev, postId]));
+  };
 
   if (loading) {
     return (
@@ -26,7 +36,6 @@ export function FeedList() {
               <div className="flex-1 space-y-2">
                 <div className="h-4 bg-surface rounded w-1/3" />
                 <div className="h-3 bg-surface rounded w-full" />
-                <div className="h-3 bg-surface rounded w-2/3" />
               </div>
             </div>
           </div>
@@ -37,8 +46,13 @@ export function FeedList() {
 
   return (
     <div>
-      {posts.map((post) => (
-        <PostCard key={post.id} post={post} />
+      {visible.map((post) => (
+        <PostCard
+          key={post.id}
+          post={post}
+          onHide={() => handleHide(post.id)}
+          videoPosts={videoPosts}
+        />
       ))}
     </div>
   );

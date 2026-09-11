@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Home, Search, Plus, User } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
-import { StarParticles } from "@/components/ui/StarParticles";
+import { PremiumParticles } from "@/components/ui/PremiumParticles";
 import { withBasePath } from "@/lib/hooks/useBasePath";
 
 const navItems = [
@@ -41,7 +41,7 @@ export function BottomNav() {
                 aria-label={label}
                 aria-current={active ? "page" : undefined}
               >
-                {active && <StarParticles count={3} />}
+                {active && <PremiumParticles count={3} />}
                 <Icon className={cn("w-5 h-5", active && "stroke-[2.5]")} />
               </Link>
             );

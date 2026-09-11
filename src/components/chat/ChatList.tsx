@@ -5,13 +5,16 @@ import Link from "next/link";
 import { Chat } from "@/lib/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { VerifiedBadge } from "@/components/ui/VerifiedBadge";
+import { NotificationBadge } from "@/components/ui/NotificationBadge";
 import { formatChatTime } from "@/lib/utils/format";
 import { getChats } from "@/lib/api/chat";
 import { withBasePath } from "@/lib/hooks/useBasePath";
+import { usePrototype } from "@/lib/hooks/usePrototype";
 
 export function ChatList() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [loading, setLoading] = useState(true);
+  const { isBlocked, isChatDeleted } = usePrototype();
 
   useEffect(() => {
     getChats().then((data) => {
@@ -19,6 +22,8 @@ export function ChatList() {
       setLoading(false);
     });
   }, []);
+
+  const visible = chats.filter((c) => !isChatDeleted(c.id) && !isBlocked(c.participant.id));
 
   if (loading) {
     return (
@@ -38,30 +43,30 @@ export function ChatList() {
 
   return (
     <div>
-      {chats.map((chat) => (
+      {visible.map((chat) => (
         <Link
           key={chat.id}
           href={withBasePath(`/chat/${chat.id}`)}
           className="flex items-center gap-3 px-4 py-3 border-b border-border hover:bg-surface/50 transition-colors"
         >
-          <Avatar src={chat.participant.avatar} alt={chat.participant.displayName} size="lg" />
+          <div className="relative">
+            <Avatar src={chat.participant.avatar} alt={chat.participant.displayName} size="lg" />
+          </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-1 min-w-0">
                 <span className="font-semibold text-sm truncate">{chat.participant.displayName}</span>
                 {chat.participant.verified && <VerifiedBadge className="w-3.5 h-3.5" />}
               </div>
-              <span className="text-xs text-text-muted shrink-0">
-                {formatChatTime(chat.lastMessage.createdAt)}
-              </span>
+              <span className="text-xs text-text-muted shrink-0">{formatChatTime(chat.lastMessage.createdAt)}</span>
             </div>
             <div className="flex items-center justify-between gap-2 mt-0.5">
               <p className="text-sm text-text-muted truncate">
-                {chat.lastMessage.type === "image" ? "📷 Photo" : chat.lastMessage.type === "video" ? "🎬 Video" : chat.lastMessage.content}
+                {chat.lastMessage.type === "image" ? "📷 Photo" : chat.lastMessage.type === "video" ? "🎬 Video" : chat.lastMessage.type === "gif" ? "GIF" : chat.lastMessage.content}
               </p>
               {chat.unreadCount > 0 && (
-                <span className="shrink-0 w-5 h-5 rounded-full bg-text text-bg text-xs flex items-center justify-center font-medium">
-                  {chat.unreadCount}
+                <span className="relative shrink-0 w-5 h-5 flex items-center justify-center">
+                  <NotificationBadge count={chat.unreadCount} />
                 </span>
               )}
             </div>

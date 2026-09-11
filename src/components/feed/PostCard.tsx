@@ -4,28 +4,35 @@ import { useState } from "react";
 import { Post } from "@/lib/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { VerifiedBadge } from "@/components/ui/VerifiedBadge";
+import { FollowButton } from "@/components/ui/FollowButton";
 import { LazyImage } from "@/components/ui/LazyImage";
 import { LazyVideo } from "@/components/ui/LazyVideo";
 import { PostMenu } from "./PostMenu";
 import { PostActions } from "./PostActions";
 import { DonateModal } from "@/components/donate/DonateModal";
-import { VideoViewer } from "@/components/video/VideoViewer";
+import { ReelsViewer } from "@/components/video/ReelsViewer";
 import { formatTimeAgo } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
+import { usePrototype } from "@/lib/hooks/usePrototype";
+import { mockPosts } from "@/data/mock/posts";
 
 interface PostCardProps {
   post: Post;
+  onHide?: () => void;
+  videoPosts?: Post[];
+  videoIndex?: number;
 }
 
-export function PostCard({ post }: PostCardProps) {
+export function PostCard({ post, onHide, videoPosts, videoIndex }: PostCardProps) {
   const [donateOpen, setDonateOpen] = useState(false);
-  const [videoOpen, setVideoOpen] = useState(false);
-  const [activeVideo, setActiveVideo] = useState<{ src: string; thumbnail?: string } | null>(null);
+  const [reelsOpen, setReelsOpen] = useState(false);
+  const { isFollowing, isBlocked } = usePrototype();
 
-  const handleVideoClick = (src: string, thumbnail?: string) => {
-    setActiveVideo({ src, thumbnail });
-    setVideoOpen(true);
-  };
+  if (isBlocked(post.author.id)) return null;
+
+  const hasVideo = post.media?.some((m) => m.type === "video");
+  const reels = videoPosts ?? mockPosts.filter((p) => p.media?.some((m) => m.type === "video"));
+  const reelIdx = videoIndex ?? reels.findIndex((p) => p.id === post.id);
 
   return (
     <>
@@ -40,14 +47,15 @@ export function PostCard({ post }: PostCardProps) {
                 <span className="text-text-muted text-sm truncate">@{post.author.username}</span>
                 <span className="text-text-muted text-sm">·</span>
                 <span className="text-text-muted text-sm">{formatTimeAgo(post.createdAt)}</span>
+                {!isFollowing(post.author.id) && post.author.id !== "u1" && (
+                  <FollowButton userId={post.author.id} size="sm" className="ml-1" />
+                )}
               </div>
-              <PostMenu />
+              <PostMenu post={post} onHide={onHide} />
             </div>
 
             {post.content && (
-              <p className="mt-1 text-[15px] leading-relaxed whitespace-pre-wrap break-words">
-                {post.content}
-              </p>
+              <p className="mt-1 text-[15px] leading-relaxed whitespace-pre-wrap break-words">{post.content}</p>
             )}
 
             {post.media && post.media.length > 0 && (
@@ -58,17 +66,11 @@ export function PostCard({ post }: PostCardProps) {
                       key={i}
                       src={m.url}
                       thumbnail={m.thumbnail}
-                      className="aspect-video"
-                      onPlay={() => handleVideoClick(m.url, m.thumbnail)}
+                      className="aspect-[9/16] max-h-[480px]"
+                      onPlay={() => setReelsOpen(true)}
                     />
                   ) : (
-                    <LazyImage
-                      key={i}
-                      src={m.url}
-                      thumbnail={m.thumbnail}
-                      alt="Post image"
-                      className="aspect-[4/3]"
-                    />
+                    <LazyImage key={i} src={m.url} thumbnail={m.thumbnail} alt="Post image" className="aspect-[4/3]" />
                   )
                 )}
               </div>
@@ -79,18 +81,14 @@ export function PostCard({ post }: PostCardProps) {
         </div>
       </article>
 
-      <DonateModal
-        open={donateOpen}
-        onClose={() => setDonateOpen(false)}
-        post={post}
-      />
+      <DonateModal open={donateOpen} onClose={() => setDonateOpen(false)} post={post} />
 
-      {activeVideo && (
-        <VideoViewer
-          open={videoOpen}
-          onClose={() => { setVideoOpen(false); setActiveVideo(null); }}
-          src={activeVideo.src}
-          thumbnail={activeVideo.thumbnail}
+      {hasVideo && reelsOpen && (
+        <ReelsViewer
+          open
+          onClose={() => setReelsOpen(false)}
+          posts={reels}
+          initialIndex={reelIdx >= 0 ? reelIdx : 0}
         />
       )}
     </>

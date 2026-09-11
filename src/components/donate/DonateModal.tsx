@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Post } from "@/lib/types";
 import { Modal } from "@/components/ui/Modal";
 import { Avatar } from "@/components/ui/Avatar";
 import { TelegramStar } from "@/components/ui/TelegramStar";
-import { VerifiedBadge } from "@/components/ui/VerifiedBadge";
 import { formatStars } from "@/lib/utils/format";
-import { donateStars } from "@/lib/api/donate";
+import { usePrototype } from "@/lib/hooks/usePrototype";
+import { useToast } from "@/components/ui/ToastProvider";
+import { computeDonationRank } from "@/lib/store/prototypeStore";
+import { cn } from "@/lib/utils/cn";
 
 interface DonateModalProps {
   open: boolean;
@@ -15,115 +17,128 @@ interface DonateModalProps {
   post: Post;
 }
 
-const PRESETS = [10, 50, 100, 500, 1000];
-
 export function DonateModal({ open, onClose, post }: DonateModalProps) {
   const [stars, setStars] = useState(100);
+  const [anonymous, setAnonymous] = useState(false);
   const [donating, setDonating] = useState(false);
-  const [done, setDone] = useState(false);
+  const { getDonation, donate } = usePrototype();
+  const { showToast } = useToast();
+
+  const donation = getDonation(post.id, {
+    total: post.stars ?? 0,
+    topDonators: post.topDonators ?? [],
+  });
+
+  const { rank, preview } = useMemo(
+    () => computeDonationRank(stars, donation.topDonators, anonymous),
+    [stars, donation.topDonators, anonymous]
+  );
 
   const handleDonate = async () => {
     setDonating(true);
-    try {
-      await donateStars({
-        postId: post.id,
-        recipientId: post.author.id,
-        stars,
-      });
-      setDone(true);
-      setTimeout(() => {
-        setDone(false);
-        onClose();
-      }, 1500);
-    } catch {
-      // mock always succeeds
-    } finally {
-      setDonating(false);
-    }
+    donate(post.id, stars, anonymous, post.author.id);
+    showToast(`⭐ ${formatStars(stars)} ستاره ارسال شد`);
+    setDonating(false);
+    onClose();
   };
 
-  const medals = ["🥇", "🥈", "🥉"];
+  const topThreshold = donation.topDonators[0]?.stars ?? 0;
+  const isTop = stars > topThreshold;
 
   return (
-    <Modal open={open} onClose={onClose} title="Donate">
+    <Modal open={open} onClose={onClose}>
       <div className="px-4 pb-6 pt-2">
-        <div className="flex items-center gap-3 mb-6">
-          <Avatar src={post.author.avatar} alt={post.author.displayName} size="lg" />
-          <div>
-            <div className="flex items-center gap-1">
-              <span className="font-semibold">{post.author.displayName}</span>
-              {post.author.verified && <VerifiedBadge />}
+        <h2 className="text-center font-semibold text-lg mb-4">واکنش ستاره</h2>
+
+        <div className="flex justify-center mb-4">
+          <div className="relative px-5 py-2 rounded-2xl bg-gold/20 border border-gold/30">
+            <div className="flex items-center gap-2">
+              <TelegramStar size="md" />
+              <span className="text-2xl font-bold text-gold">{formatStars(stars)}</span>
             </div>
-            <span className="text-sm text-text-muted">@{post.author.username}</span>
           </div>
         </div>
 
-        <div className="text-center mb-6">
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <TelegramStar size="lg" showParticles />
-            <span className="text-3xl font-bold text-gold">{formatStars(stars)}</span>
-          </div>
-          <span className="text-sm text-text-muted">Stars</span>
-        </div>
-
-        <div className="mb-4">
+        <div className="relative mb-2">
           <input
             type="range"
             min={1}
             max={10000}
             value={stars}
             onChange={(e) => setStars(Number(e.target.value))}
-            className="w-full"
+            className="w-full donate-slider"
             aria-label="Stars amount"
           />
-          <div className="flex justify-between text-xs text-text-muted mt-1">
-            <span>1</span>
-            <span>10,000</span>
+          {isTop && (
+            <span className="absolute -top-5 right-0 text-xs text-gold font-medium">برتر</span>
+          )}
+        </div>
+        <div className="flex justify-between text-xs text-text-muted mb-4">
+          <span>1</span>
+          <span className="text-gold text-xs">
+            {rank <= 3 ? `رتبه ${rank}` : ""} {isTop && `· ${formatStars(stars)} ⭐`}
+          </span>
+          <span>10,000</span>
+        </div>
+
+        <p className="text-sm text-text-muted text-center mb-5 leading-relaxed">
+          انتخاب کنید چند ستاره برای پشتیبانی از{" "}
+          <span className="text-text font-medium">{post.author.displayName}</span> ارسال کنید.
+        </p>
+
+        <div className="mb-5">
+          <div className="text-center text-sm font-medium text-gold border border-gold/30 rounded-full py-1 px-3 inline-block mx-auto w-full mb-3">
+            ارسال‌کنندگان برتر
+          </div>
+          <div className="flex justify-center gap-6">
+            {preview.map((d) => (
+              <div key={d.rank} className="flex flex-col items-center gap-1">
+                <div className="relative">
+                  {d.anonymous ? (
+                    <div className="w-12 h-12 rounded-full bg-surface border border-border flex items-center justify-center text-lg">
+                      ?
+                    </div>
+                  ) : (
+                    <Avatar src={d.user.avatar} alt={d.user.displayName} size="lg" />
+                  )}
+                  <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded-full bg-gold/20 border border-gold/30 text-[10px] text-gold font-bold whitespace-nowrap flex items-center gap-0.5">
+                    <TelegramStar size="xs" />
+                    {formatStars(d.stars)}
+                  </span>
+                </div>
+                <span className="text-xs text-text-muted truncate max-w-[72px]">
+                  {d.anonymous ? "ناشناس" : d.user.displayName}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
 
-        <div className="flex gap-2 mb-6 flex-wrap">
-          {PRESETS.map((p) => (
-            <button
-              key={p}
-              onClick={() => setStars(p)}
-              className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
-                stars === p
-                  ? "border-gold text-gold bg-gold/10"
-                  : "border-border text-text-muted hover:border-text-muted"
-              }`}
-            >
-              {formatStars(p)}
-            </button>
-          ))}
-        </div>
+        <label className="flex items-center gap-2 mb-4 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={anonymous}
+            onChange={(e) => setAnonymous(e.target.checked)}
+            className="w-4 h-4 rounded accent-[#6366f1]"
+          />
+          <span className="text-sm">ناشناس</span>
+        </label>
 
         <button
           onClick={handleDonate}
-          disabled={donating || done}
-          className="w-full py-3 rounded-xl bg-gold text-black font-semibold text-sm transition-opacity disabled:opacity-60"
+          disabled={donating}
+          className={cn(
+            "w-full py-3 rounded-xl font-semibold text-sm text-white transition-opacity",
+            "bg-gradient-to-r from-[#3b82f6] to-[#6366f1]",
+            donating && "opacity-60"
+          )}
         >
-          {done ? "✓ Donated!" : donating ? "Processing..." : "Donate"}
+          ارسال {formatStars(stars)} ⭐
         </button>
 
-        {post.topDonators && post.topDonators.length > 0 && (
-          <div className="mt-6">
-            <h3 className="text-sm font-semibold mb-3 text-text-muted">Top Donators</h3>
-            <div className="space-y-2.5">
-              {post.topDonators.map((d) => (
-                <div key={d.rank} className="flex items-center gap-3">
-                  <span className="text-base w-6">{medals[d.rank - 1]}</span>
-                  <Avatar src={d.user.avatar} alt={d.user.displayName} size="sm" />
-                  <span className="text-sm font-medium flex-1 truncate">{d.user.displayName}</span>
-                  <div className="flex items-center gap-1">
-                    <TelegramStar size="sm" />
-                    <span className="text-sm text-gold font-medium">{formatStars(d.stars)}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        <p className="text-[11px] text-text-muted text-center mt-3 leading-relaxed">
+          با ارسال ستاره، شما با شرایط و ضوابط خدمات موافقت می‌کنید.
+        </p>
       </div>
     </Modal>
   );

@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import { ThemeProvider } from "@/lib/hooks/useTheme";
+import { PrototypeProvider } from "@/lib/hooks/usePrototype";
+import { ToastProvider } from "@/components/ui/ToastProvider";
 import "./globals.css";
 
 const inter = Inter({
@@ -32,7 +34,11 @@ export default function RootLayout({
   return (
     <html lang="en" data-theme="dark" suppressHydrationWarning>
       <body className={`${inter.variable} font-sans antialiased`}>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <PrototypeProvider>
+            <ToastProvider>{children}</ToastProvider>
+          </PrototypeProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

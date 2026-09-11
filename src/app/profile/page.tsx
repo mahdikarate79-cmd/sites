@@ -3,7 +3,7 @@ import { OwnProfile } from "@/components/profile/ProfileContent";
 
 export default function ProfilePage() {
   return (
-    <AppLayout>
+    <AppLayout hideHeader hideNav>
       <OwnProfile />
     </AppLayout>
   );

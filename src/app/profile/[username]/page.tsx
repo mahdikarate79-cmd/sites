@@ -17,7 +17,7 @@ export default async function UserProfilePage({
   if (!user) notFound();
 
   return (
-    <AppLayout>
+    <AppLayout hideHeader hideNav>
       <ProfileContent user={user} />
     </AppLayout>
   );
