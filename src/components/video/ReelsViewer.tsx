@@ -11,7 +11,8 @@ import { ReelItem } from "@/lib/utils/reels";
 import { Avatar } from "@/components/ui/Avatar";
 import { DonateButton } from "@/components/ui/DonateButton";
 import { FollowButton } from "@/components/ui/FollowButton";
-import { VerifiedBadge } from "@/components/ui/VerifiedBadge";
+import { UserName } from "@/components/ui/UserName";
+import { ShareChatPicker } from "@/components/chat/ShareChatPicker";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { DonateModal } from "@/components/donate/DonateModal";
 import { ReportModal } from "@/components/feed/ReportModal";
@@ -37,6 +38,7 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
   const [menuOpen, setMenuOpen] = useState(false);
   const [donateOpen, setDonateOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [showHeart, setShowHeart] = useState(false);
   const [speed2x, setSpeed2x] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -259,7 +261,7 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
                 <MessageCircle className="w-7 h-7 text-white" />
                 <span className="text-white text-xs font-medium">{formatCount(post.comments)}</span>
               </button>
-              <button className="flex flex-col items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+              <button className="flex flex-col items-center gap-0.5" onClick={(e) => { e.stopPropagation(); setShareOpen(true); }}>
                 <Share2 className="w-7 h-7 text-white" />
                 <span className="text-white text-xs font-medium">{formatCount(post.shares)}</span>
               </button>
@@ -270,9 +272,8 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
                 <Link href={`/profile/${post.author.username}/`} onClick={(e) => e.stopPropagation()}>
                   <Avatar src={post.author.avatar} alt={post.author.displayName} size="sm" />
                 </Link>
-                <Link href={`/profile/${post.author.username}/`} onClick={(e) => e.stopPropagation()} className="flex items-center gap-1 min-w-0">
-                  <span className="text-white font-semibold text-sm truncate">{post.author.displayName}</span>
-                  {post.author.verified && <VerifiedBadge className="w-3.5 h-3.5" />}
+                <Link href={`/profile/${post.author.username}/`} onClick={(e) => e.stopPropagation()} className="min-w-0">
+                  <UserName user={post.author} nameClassName="text-white font-semibold text-sm" />
                 </Link>
                 {!following && <FollowButton userId={post.author.id} size="sm" />}
               </div>
@@ -323,6 +324,12 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
 
       <DonateModal open={donateOpen} onClose={() => setDonateOpen(false)} post={post} />
       <ReportModal open={reportOpen} onClose={() => setReportOpen(false)} />
+      <ShareChatPicker
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        title="Share to"
+        onSend={(ids) => showToast(`Shared to ${ids.length} chat${ids.length > 1 ? "s" : ""}`)}
+      />
     </div>
   );
 }

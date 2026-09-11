@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Post } from "@/lib/types";
 import { Avatar } from "@/components/ui/Avatar";
-import { VerifiedBadge } from "@/components/ui/VerifiedBadge";
+import { UserName } from "@/components/ui/UserName";
 import { FollowButton } from "@/components/ui/FollowButton";
 import { LazyImage } from "@/components/ui/LazyImage";
 import { LazyVideo } from "@/components/ui/LazyVideo";
@@ -50,9 +50,8 @@ export function PostCard({ post, onHide, allPosts }: PostCardProps) {
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-1 min-w-0 flex-wrap">
                 <Link href={profileHref} className="font-semibold text-sm truncate hover:underline">
-                  {post.author.displayName}
+                  <UserName user={post.author} nameClassName="font-semibold text-sm" />
                 </Link>
-                {post.author.verified && <VerifiedBadge />}
                 <Link href={profileHref} className="text-text-muted text-sm truncate hover:underline">
                   @{post.author.username}
                 </Link>

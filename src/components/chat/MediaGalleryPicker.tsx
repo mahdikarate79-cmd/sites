@@ -2,21 +2,23 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { DollarSign, Film, Video as VideoIcon, Check } from "lucide-react";
+import { DollarSign, Film, Video as VideoIcon, Check, Clock, Crop } from "lucide-react";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { TelegramStarIcon } from "@/components/ui/TelegramStarIcon";
-import { MediaEditor } from "./MediaEditor";
 import { PaidMediaSheet } from "./PaidMediaSheet";
-import { GalleryItem } from "@/lib/types";
+import { TemporaryMediaSheet } from "./TemporaryMediaSheet";
+import { RotateCropSheet } from "./RotateCropSheet";
+import { GalleryItem, TemporaryMode } from "@/lib/types";
 import { mockGalleryItems } from "@/data/mock/gallery";
 import { cn } from "@/lib/utils/cn";
 
 export interface SelectedMedia {
   item: GalleryItem;
   rotation: number;
-  crop: "original" | "square" | "portrait" | "landscape";
+  mirrored: boolean;
   spoiler: boolean;
   paidStars?: number;
+  temporary?: TemporaryMode;
 }
 
 interface MediaGalleryPickerProps {
@@ -28,14 +30,17 @@ interface MediaGalleryPickerProps {
 export function MediaGalleryPicker({ open, onClose, onSend }: MediaGalleryPickerProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [caption, setCaption] = useState("");
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [previewId, setPreviewId] = useState<string | null>(null);
   const [rotation, setRotation] = useState(0);
-  const [crop, setCrop] = useState<"original" | "square" | "portrait" | "landscape">("original");
+  const [mirrored, setMirrored] = useState(false);
   const [spoiler, setSpoiler] = useState(false);
   const [paidStars, setPaidStars] = useState(0);
+  const [temporary, setTemporary] = useState<TemporaryMode | undefined>();
   const [paidOpen, setPaidOpen] = useState(false);
+  const [tempOpen, setTempOpen] = useState(false);
+  const [cropOpen, setCropOpen] = useState(false);
 
-  const editingItem = mockGalleryItems.find((i) => i.id === editingId);
+  const previewItem = mockGalleryItems.find((i) => i.id === previewId);
   const selectedItems = mockGalleryItems.filter((i) => selected.has(i.id));
 
   const toggleSelect = (id: string) => {
@@ -47,29 +52,33 @@ export function MediaGalleryPicker({ open, onClose, onSend }: MediaGalleryPicker
     });
   };
 
-  const openEditor = (id: string) => {
-    setEditingId(id);
+  const openPreview = (id: string) => {
+    if (!selected.has(id)) return;
+    setPreviewId(id);
     setRotation(0);
-    setCrop("original");
+    setMirrored(false);
   };
 
   const reset = () => {
     setSelected(new Set());
     setCaption("");
-    setEditingId(null);
+    setPreviewId(null);
     setPaidStars(0);
     setSpoiler(false);
+    setTemporary(undefined);
+    setRotation(0);
+    setMirrored(false);
   };
 
   const handleSend = () => {
     const items: SelectedMedia[] = selectedItems.map((item) => ({
       item,
-      rotation: editingId === item.id ? rotation : 0,
-      crop: editingId === item.id ? crop : "original",
+      rotation: previewId === item.id ? rotation : 0,
+      mirrored: previewId === item.id ? mirrored : false,
       spoiler,
       paidStars: paidStars > 0 ? paidStars : undefined,
+      temporary,
     }));
-
     if (items.length === 0) return;
     onSend(items, caption);
     reset();
@@ -83,7 +92,7 @@ export function MediaGalleryPicker({ open, onClose, onSend }: MediaGalleryPicker
 
   return (
     <>
-      <BottomSheet open={open} onClose={handleClose} className="max-h-[90dvh]">
+      <BottomSheet open={open && !previewId} onClose={handleClose} className="max-h-[90dvh]">
         <div className="px-4 pb-4">
           <div className="flex items-center justify-between py-2 mb-2">
             <h2 className="text-base font-semibold">Gallery</h2>
@@ -101,40 +110,15 @@ export function MediaGalleryPicker({ open, onClose, onSend }: MediaGalleryPicker
           {selectedItems.length > 0 && (
             <div className="flex gap-1.5 mb-3 overflow-x-auto scrollbar-hide pb-1">
               {selectedItems.map((item) => (
-                <div key={item.id} className="relative w-14 h-14 rounded-lg overflow-hidden shrink-0 bg-surface">
-                  <Image
-                    src={item.thumbnail ?? item.url}
-                    alt=""
-                    fill
-                    className="object-cover"
-                    unoptimized
-                  />
-                </div>
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => openPreview(item.id)}
+                  className="relative w-14 h-14 rounded-lg overflow-hidden shrink-0 bg-surface ring-2 ring-transparent hover:ring-[#8b5cf6]/40"
+                >
+                  <Image src={item.thumbnail ?? item.url} alt="" fill className="object-cover" unoptimized />
+                </button>
               ))}
-            </div>
-          )}
-
-          {editingItem && (
-            <div className="mb-3 p-3 rounded-xl bg-surface border border-border">
-              <MediaEditor
-                item={editingItem}
-                rotation={rotation}
-                crop={crop}
-                onRotationChange={setRotation}
-                onCropChange={setCrop}
-              />
-              <div className="flex gap-3 text-xs mt-2">
-                <label className="flex items-center gap-1 cursor-pointer">
-                  <input type="checkbox" checked={spoiler} onChange={(e) => setSpoiler(e.target.checked)} />
-                  Spoiler
-                </label>
-                {paidStars > 0 && (
-                  <span className="flex items-center gap-1 text-gold">
-                    <TelegramStarIcon variant="post" size={14} />
-                    {paidStars}
-                  </span>
-                )}
-              </div>
             </div>
           )}
 
@@ -146,7 +130,6 @@ export function MediaGalleryPicker({ open, onClose, onSend }: MediaGalleryPicker
                   key={item.id}
                   type="button"
                   onClick={() => toggleSelect(item.id)}
-                  onDoubleClick={() => openEditor(item.id)}
                   className={cn(
                     "relative aspect-square rounded-lg overflow-hidden bg-surface",
                     isSelected && "ring-2 ring-[#8b5cf6]"
@@ -193,13 +176,80 @@ export function MediaGalleryPicker({ open, onClose, onSend }: MediaGalleryPicker
         </div>
       </BottomSheet>
 
-      <PaidMediaSheet
-        open={paidOpen}
-        onClose={() => setPaidOpen(false)}
-        onConfirm={(stars) => {
-          setPaidStars(stars);
-          setPaidOpen(false);
-        }}
+      {previewItem && (
+        <BottomSheet open={!!previewId} onClose={() => setPreviewId(null)} className="max-h-[92dvh]">
+          <div className="px-4 pb-4">
+            <div className="relative w-full aspect-[4/5] max-h-[50dvh] rounded-xl overflow-hidden bg-surface mb-3">
+              {previewItem.type === "video" ? (
+                <video
+                  src={previewItem.url}
+                  className="w-full h-full object-cover"
+                  style={{ transform: `rotate(${rotation}deg) scaleX(${mirrored ? -1 : 1})` }}
+                  muted
+                  playsInline
+                />
+              ) : (
+                <Image
+                  src={previewItem.url}
+                  alt=""
+                  fill
+                  className="object-cover"
+                  style={{ transform: `rotate(${rotation}deg) scaleX(${mirrored ? -1 : 1})` }}
+                  unoptimized
+                />
+              )}
+            </div>
+
+            <div className="flex gap-2 mb-3">
+              <button
+                type="button"
+                onClick={() => setTempOpen(true)}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium",
+                  temporary ? "bg-[#8b5cf6]/15 text-[#8b5cf6]" : "bg-surface"
+                )}
+              >
+                <Clock className="w-4 h-4" />
+                Temporary
+              </button>
+              <button
+                type="button"
+                onClick={() => setCropOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-surface"
+              >
+                <Crop className="w-4 h-4" />
+                Rotate/Crop
+              </button>
+            </div>
+
+            {paidStars > 0 && (
+              <p className="flex items-center gap-1 text-xs text-gold mb-2">
+                <TelegramStarIcon variant="post" size={14} />
+                {paidStars} paid media
+              </p>
+            )}
+
+            <button
+              onClick={() => setPreviewId(null)}
+              className="w-full py-2.5 rounded-xl bg-[#3b82f6] text-white text-sm font-medium"
+            >
+              Done
+            </button>
+          </div>
+        </BottomSheet>
+      )}
+
+      <PaidMediaSheet open={paidOpen} onClose={() => setPaidOpen(false)} onConfirm={(s) => { setPaidStars(s); setPaidOpen(false); }} />
+      <TemporaryMediaSheet open={tempOpen} onClose={() => setTempOpen(false)} value={temporary} onSelect={setTemporary} />
+      <RotateCropSheet
+        open={cropOpen}
+        onClose={() => setCropOpen(false)}
+        item={previewItem ?? null}
+        rotation={rotation}
+        mirrored={mirrored}
+        onRotationChange={setRotation}
+        onMirroredChange={setMirrored}
+        onReset={() => { setRotation(0); setMirrored(false); }}
       />
     </>
   );
