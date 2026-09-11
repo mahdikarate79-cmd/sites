@@ -15,9 +15,8 @@ import { formatCount } from "@/lib/utils/format";
 import { getPostsByUser } from "@/lib/api/posts";
 import { currentUser } from "@/data/mock/users";
 import { usePrototype } from "@/lib/hooks/usePrototype";
-import { useTheme } from "@/lib/hooks/useTheme";
 import { useToast } from "@/components/ui/ToastProvider";
-import { Sun, Moon } from "lucide-react";
+import { Settings } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 
 type ProfileTab = "videos" | "photos" | "posts";
@@ -34,7 +33,6 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
   const [aboutOpen, setAboutOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const { isBlocked, blockUser } = usePrototype();
-  const { theme, toggleTheme } = useTheme();
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -99,10 +97,12 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
           <div className="flex gap-2">
             {isOwnProfile ? (
               <div className="flex gap-2">
-                <button onClick={toggleTheme} className="p-2 rounded-full glass-nav" aria-label="Toggle theme">
-                  {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-                </button>
-                <button className="px-4 py-1.5 rounded-full border border-border text-sm font-medium glass-nav">Edit Profile</button>
+                <Link href="/settings/" className="p-2 rounded-full glass-nav" aria-label="Settings">
+                  <Settings className="w-4 h-4" />
+                </Link>
+                <Link href="/settings/edit-profile/" className="px-4 py-1.5 rounded-full border border-border text-sm font-medium glass-nav">
+                  Edit Profile
+                </Link>
               </div>
             ) : (
               <>
