@@ -26,6 +26,7 @@ interface PrototypeContextValue {
   deleteChat: (chatId: string) => void;
   isChatDeleted: (chatId: string) => boolean;
   unlockPaidMedia: (stars: number) => void;
+  withdrawEarnings: (amount: number) => boolean;
   filterPosts: (posts: Post[]) => Post[];
   sortPosts: (posts: Post[]) => Post[];
 }
@@ -171,6 +172,12 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
     update((s) => ({ ...s, earnings: s.earnings + stars }));
   }, [update]);
 
+  const withdrawEarnings = useCallback((amount: number): boolean => {
+    if (amount <= 0 || amount > state.earnings) return false;
+    update((s) => ({ ...s, earnings: s.earnings - amount }));
+    return true;
+  }, [update, state.earnings]);
+
   const filterPosts = useCallback(
     (posts: Post[]) =>
       posts.filter(
@@ -220,6 +227,7 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
         deleteChat,
         isChatDeleted,
         unlockPaidMedia,
+        withdrawEarnings,
         filterPosts,
         sortPosts,
       }}
@@ -244,7 +252,7 @@ const DEFAULT_LOAD: PrototypeState = {
   chatUnread: 3,
   notificationUnread: 10,
   deletedChats: [],
-  earnings: 0,
+  earnings: 2500,
 };
 
 export function usePrototype() {

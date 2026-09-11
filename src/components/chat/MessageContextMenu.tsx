@@ -9,6 +9,7 @@ interface MessageContextMenuProps {
   open: boolean;
   message: ChatMessage | null;
   isMedia: boolean;
+  isViewOnce?: boolean;
   onClose: () => void;
   onReply: () => void;
   onForward: () => void;
@@ -22,6 +23,7 @@ export function MessageContextMenu({
   open,
   message,
   isMedia,
+  isViewOnce,
   onClose,
   onReply,
   onForward,
@@ -42,7 +44,8 @@ export function MessageContextMenu({
   ];
 
   const mediaActions = [
-    { icon: Download, label: "Save", action: onSave },
+    ...(isViewOnce ? [] : [{ icon: Download, label: "Save", action: onSave }]),
+    ...(isViewOnce ? [] : [{ icon: Forward, label: "Forward", action: onForward }]),
     { icon: Copy, label: "Copy", action: onCopy },
     { icon: Pin, label: "Pin for me", action: () => onPin("me") },
     { icon: Pin, label: "Pin for both", action: () => onPin("both") },

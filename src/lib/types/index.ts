@@ -66,6 +66,15 @@ export interface ChatMediaItem {
   rotation?: number;
 }
 
+export type TemporaryMode = "view_once" | "3s" | "10s" | "30s";
+
+export interface ForwardInfo {
+  userId: string;
+  displayName: string;
+  username: string;
+  preview: string;
+}
+
 export interface ChatMessage {
   id: string;
   chatId: string;
@@ -84,8 +93,13 @@ export interface ChatMessage {
   paidUnlocked?: boolean;
   caption?: string;
   rotation?: number;
+  mirrored?: boolean;
   album?: ChatMediaItem[];
   groupId?: string;
+  temporary?: TemporaryMode;
+  viewed?: boolean;
+  expiresAt?: number;
+  forwardedFrom?: ForwardInfo;
 }
 
 export interface PinnedMessageInfo {

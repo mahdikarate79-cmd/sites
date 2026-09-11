@@ -18,7 +18,7 @@ const DEFAULT_STATE: PrototypeState = {
   chatUnread: 3,
   notificationUnread: 10,
   deletedChats: [],
-  earnings: 0,
+  earnings: 2500,
 };
 
 export function loadState(): PrototypeState {

@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, MoreVertical, Check, CheckCheck, Search, Trash2, Lock } from "lucide-react";
+import { ArrowLeft, MoreVertical, Check, CheckCheck, Search, Trash2, CornerUpRight } from "lucide-react";
 import { ChatMessage, PinnedMessageInfo } from "@/lib/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { BlockButton } from "@/components/ui/BlockButton";
-import { getChatMessages, sendMessage, sendAlbumMessage } from "@/lib/api/chat";
+import { UserName } from "@/components/ui/UserName";
+import { getChatMessages, sendMessage, sendAlbumMessage, forwardMessage } from "@/lib/api/chat";
 import { SelectedMedia } from "./MediaGalleryPicker";
 import { currentUser } from "@/data/mock/users";
 import { mockChats } from "@/data/mock/chats";
@@ -15,7 +16,8 @@ import { ChatInput } from "./ChatInput";
 import { PaidMediaModal } from "./PaidMediaModal";
 import { PinnedMessageBar } from "./PinnedMessageBar";
 import { MessageContextMenu } from "./MessageContextMenu";
-import { TelegramStarIcon } from "@/components/ui/TelegramStarIcon";
+import { LockedMediaOverlay } from "./LockedMediaOverlay";
+import { ShareChatPicker } from "./ShareChatPicker";
 import { usePrototype } from "@/lib/hooks/usePrototype";
 import { useToast } from "@/components/ui/ToastProvider";
 import Image from "next/image";
@@ -30,6 +32,15 @@ const INITIAL_PINNED: Record<string, PinnedMessageInfo> = {
   c2: { messageId: "c2m1", scope: "me" },
 };
 
+const TEMP_SECONDS: Record<string, number> = { "3s": 3, "10s": 10, "30s": 30 };
+
+function mediaTransform(rotation?: number, mirrored?: boolean) {
+  const parts: string[] = [];
+  if (rotation) parts.push(`rotate(${rotation}deg)`);
+  if (mirrored) parts.push("scaleX(-1)");
+  return parts.length ? parts.join(" ") : undefined;
+}
+
 export function ChatConversation({ chatId }: ChatConversationProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,13 +48,16 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [paidModal, setPaidModal] = useState<ChatMessage | null>(null);
   const [unlocked, setUnlocked] = useState<Set<string>>(new Set());
+  const [openedTemp, setOpenedTemp] = useState<Set<string>>(new Set());
   const [pinned, setPinned] = useState<PinnedMessageInfo | null>(INITIAL_PINNED[chatId] ?? null);
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [contextMsg, setContextMsg] = useState<ChatMessage | null>(null);
+  const [forwardMsg, setForwardMsg] = useState<ChatMessage | null>(null);
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const sendingRef = useRef(false);
+  const tempTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const chat = mockChats.find((c) => c.id === chatId);
   const { deleteChat, isBlocked } = usePrototype();
   const { showToast } = useToast();
@@ -60,7 +74,35 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  useEffect(() => {
+    return () => {
+      Object.values(tempTimers.current).forEach(clearTimeout);
+    };
+  }, []);
+
   const pinnedMessage = pinned ? messages.find((m) => m.id === pinned.messageId) : null;
+
+  const removeMessage = useCallback((msgId: string) => {
+    setMessages((prev) => prev.filter((m) => m.id !== msgId));
+    if (pinned?.messageId === msgId) setPinned(null);
+  }, [pinned]);
+
+  const scheduleTempDelete = useCallback((msgId: string, seconds: number) => {
+    if (tempTimers.current[msgId]) clearTimeout(tempTimers.current[msgId]);
+    tempTimers.current[msgId] = setTimeout(() => {
+      removeMessage(msgId);
+      delete tempTimers.current[msgId];
+    }, seconds * 1000);
+  }, [removeMessage]);
+
+  const openTemporaryMedia = useCallback((msg: ChatMessage) => {
+    setOpenedTemp((prev) => new Set([...prev, msg.id]));
+    if (msg.temporary === "view_once") {
+      scheduleTempDelete(msg.id, 1);
+    } else if (msg.temporary && TEMP_SECONDS[msg.temporary]) {
+      scheduleTempDelete(msg.id, TEMP_SECONDS[msg.temporary]);
+    }
+  }, [scheduleTempDelete]);
 
   const appendMessage = (msg: ChatMessage) => {
     setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
@@ -92,6 +134,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
     if (blocked || sendingRef.current || items.length === 0) return;
     sendingRef.current = true;
     try {
+      const first = items[0];
       const msg = await sendAlbumMessage(chatId, {
         senderId: currentUser.id,
         album: items.map((m) => ({
@@ -101,14 +144,40 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
         })),
         caption: caption || undefined,
         spoiler: items.some((m) => m.spoiler),
-        paidStars: items[0]?.paidStars,
+        paidStars: first?.paidStars,
         replyTo: replyTo?.id,
+        temporary: first?.temporary,
+        rotation: first?.rotation,
+        mirrored: first?.mirrored,
       });
       appendMessage(msg);
       setReplyTo(null);
     } finally {
       sendingRef.current = false;
     }
+  };
+
+  const handleForward = async (targetChatIds: string[]) => {
+    if (!forwardMsg || targetChatIds.length === 0) return;
+    const sourceUser = forwardMsg.senderId === currentUser.id
+      ? currentUser
+      : chat?.participant;
+    const forwardedFrom = {
+      userId: sourceUser?.id ?? forwardMsg.senderId,
+      displayName: sourceUser?.displayName ?? "User",
+      username: sourceUser?.username ?? "user",
+      preview: forwardMsg.type === "text" ? forwardMsg.content : forwardMsg.caption ?? forwardMsg.type,
+    };
+    for (const targetId of targetChatIds) {
+      const msg = await forwardMessage(targetId, {
+        senderId: currentUser.id,
+        source: forwardMsg,
+        forwardedFrom,
+      });
+      if (targetId === chatId) appendMessage(msg);
+    }
+    showToast("Forwarded");
+    setForwardMsg(null);
   };
 
   const handleDelete = () => {
@@ -118,8 +187,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
   };
 
   const handleDeleteMessage = (msgId: string) => {
-    setMessages((prev) => prev.filter((m) => m.id !== msgId));
-    if (pinned?.messageId === msgId) setPinned(null);
+    removeMessage(msgId);
   };
 
   const handlePin = (msg: ChatMessage, scope: "me" | "both") => {
@@ -144,11 +212,134 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
     if (longPressTimer.current) clearTimeout(longPressTimer.current);
   };
 
+  const isPaidLocked = (msg: ChatMessage, isMe: boolean) =>
+    !!msg.paidStars && !isMe && !unlocked.has(msg.id) && !msg.paidUnlocked;
+
+  const isTempLocked = (msg: ChatMessage, isMe: boolean) =>
+    !!msg.temporary && !isMe && !openedTemp.has(msg.id);
+
   if (loading) return <div className="flex-1 flex items-center justify-center text-text-muted">Loading...</div>;
 
+  const renderForwarded = (msg: ChatMessage) => {
+    if (!msg.forwardedFrom) return null;
+    return (
+      <div className="mb-1 px-1 text-[10px] text-[#8b5cf6] border-l-2 border-[#8b5cf6] pl-1.5">
+        <span className="flex items-center gap-0.5 font-medium">
+          <CornerUpRight className="w-3 h-3" />
+          Forwarded message
+        </span>
+        <span className="text-text-muted block truncate">{msg.forwardedFrom.displayName}</span>
+      </div>
+    );
+  };
+
+  const renderMedia = (msg: ChatMessage, isMe: boolean) => {
+    const paid = isPaidLocked(msg, isMe);
+    const tempLocked = isTempLocked(msg, isMe);
+    const locked = paid || tempLocked;
+    const transform = mediaTransform(msg.rotation, msg.mirrored);
+
+    const handleMediaClick = () => {
+      if (paid) setPaidModal(msg);
+      else if (tempLocked) openTemporaryMedia(msg);
+    };
+
+    if (msg.type === "image" || msg.type === "gif") {
+      return (
+        <div
+          className={cn("relative w-48 h-36 rounded-xl overflow-hidden", locked && "cursor-pointer")}
+          onClick={handleMediaClick}
+        >
+          {!locked && (
+            <Image
+              src={msg.content}
+              alt=""
+              fill
+              className={cn("object-cover", msg.spoiler && "blur-lg")}
+              style={{ transform }}
+              loading="lazy"
+              sizes="192px"
+            />
+          )}
+          {locked && (
+            <>
+              <Image src={msg.content} alt="" fill className="object-cover blur-xl scale-110" sizes="192px" />
+              {paid ? (
+                <LockedMediaOverlay stars={msg.paidStars} onClick={handleMediaClick} />
+              ) : (
+                <LockedMediaOverlay label="Tap to view" onClick={handleMediaClick} />
+              )}
+            </>
+          )}
+        </div>
+      );
+    }
+
+    if (msg.type === "album" && msg.album) {
+      return (
+        <div
+          className={cn(
+            "grid gap-0.5 rounded-xl overflow-hidden",
+            msg.album.length === 1 ? "grid-cols-1" : "grid-cols-2",
+            locked && "cursor-pointer"
+          )}
+          onClick={handleMediaClick}
+        >
+          {locked ? (
+            <div className="relative col-span-2 w-48 h-36 rounded-xl overflow-hidden">
+              <Image src={msg.album[0].url} alt="" fill className="object-cover blur-xl scale-110" unoptimized />
+              {paid ? (
+                <LockedMediaOverlay stars={msg.paidStars} onClick={handleMediaClick} />
+              ) : (
+                <LockedMediaOverlay label="Tap to view" onClick={handleMediaClick} />
+              )}
+            </div>
+          ) : (
+            msg.album.map((item, i) => (
+              <div key={i} className="relative w-24 h-24 bg-surface">
+                {item.type === "video" ? (
+                  <video src={item.url} className="w-full h-full object-cover" muted playsInline />
+                ) : (
+                  <Image src={item.url} alt="" fill className={cn("object-cover", msg.spoiler && "blur-lg")} unoptimized />
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      );
+    }
+
+    if (msg.type === "video") {
+      if (locked) {
+        return (
+          <div className="relative w-48 h-36 rounded-xl overflow-hidden cursor-pointer" onClick={handleMediaClick}>
+            <div className="w-full h-full bg-surface" />
+            {paid ? (
+              <LockedMediaOverlay stars={msg.paidStars} onClick={handleMediaClick} />
+            ) : (
+              <LockedMediaOverlay label="Tap to view" onClick={handleMediaClick} />
+            )}
+          </div>
+        );
+      }
+      return (
+        <video
+          src={msg.content}
+          className="w-48 rounded-xl"
+          style={{ transform }}
+          controls
+          playsInline
+          preload="none"
+        />
+      );
+    }
+
+    return null;
+  };
+
   return (
-    <div className="flex flex-col h-dvh max-w-2xl mx-auto w-full">
-      <div className="sticky top-0 z-30 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-1">
+    <div className="flex flex-col h-dvh max-w-2xl mx-auto w-full overflow-hidden">
+      <header className="shrink-0 z-30 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-1">
         <div className="glass-nav rounded-2xl px-2 py-2 flex items-center gap-2">
           <Link href="/chat/" className="p-2 rounded-full hover:bg-surface/60 transition-colors shrink-0" aria-label="Back">
             <ArrowLeft className="w-5 h-5" />
@@ -161,7 +352,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
             >
               <Avatar src={chat.participant.avatar} alt="" size="sm" />
               <div className="min-w-0 text-left">
-                <p className="font-semibold text-sm truncate">{chat.participant.displayName}</p>
+                <UserName user={chat.participant} nameClassName="font-semibold text-sm" />
                 <p className="text-[11px] text-text-muted truncate">{chat.participant.lastSeen ?? "last seen recently"}</p>
               </div>
             </Link>
@@ -190,30 +381,31 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
             )}
           </div>
         </div>
-      </div>
+      </header>
 
       {pinnedMessage && pinned && (
-        <PinnedMessageBar
-          message={pinnedMessage}
-          scope={pinned.scope}
-          onClick={() => scrollToMessage(pinned.messageId)}
-          onUnpin={() => {
-            setPinned(null);
-            setMessages((prev) => prev.map((m) => ({ ...m, pinned: false, pinnedScope: undefined })));
-          }}
-        />
+        <div className="shrink-0">
+          <PinnedMessageBar
+            message={pinnedMessage}
+            scope={pinned.scope}
+            onClick={() => scrollToMessage(pinned.messageId)}
+            onUnpin={() => {
+              setPinned(null);
+              setMessages((prev) => prev.map((m) => ({ ...m, pinned: false, pinnedScope: undefined })));
+            }}
+          />
+        </div>
       )}
 
       {blocked && (
-        <div className="mx-4 mt-2 px-3 py-2 rounded-xl bg-surface/60 border border-border text-xs text-text-muted text-center">
+        <div className="shrink-0 mx-4 mt-2 px-3 py-2 rounded-xl bg-surface/60 border border-border text-xs text-text-muted text-center">
           You blocked this user. They cannot send you messages.
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-3">
         {messages.map((msg) => {
           const isMe = msg.senderId === currentUser.id;
-          const isPaid = !!msg.paidStars && !isMe && !unlocked.has(msg.id) && !msg.paidUnlocked;
           const replySource = msg.replyTo ? messages.find((m) => m.id === msg.replyTo) : null;
 
           return (
@@ -231,6 +423,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
             >
               {!isMe && chat && <Avatar src={chat.participant.avatar} alt="" size="xs" className="mt-1" />}
               <div className={cn("max-w-[75%]", isMe && "items-end")}>
+                {renderForwarded(msg)}
                 {replySource && (
                   <div className="text-[10px] text-text-muted mb-0.5 px-1 border-l-2 border-[#8b5cf6] pl-1.5 truncate">
                     {replySource.type === "text" ? replySource.content : replySource.type}
@@ -251,93 +444,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
                     )}
                   </div>
                 )}
-                {(msg.type === "image" || msg.type === "gif") && (
-                  <div
-                    className="relative w-48 h-36 rounded-xl overflow-hidden cursor-pointer"
-                    onClick={() => (isPaid ? setPaidModal(msg) : undefined)}
-                  >
-                    {isPaid ? (
-                      <div className="w-full h-full bg-surface flex flex-col items-center justify-center gap-1 text-sm">
-                        <Lock className="w-4 h-4 text-text-muted" />
-                        <span className="flex items-center gap-1">
-                          <TelegramStarIcon variant="post" size={16} />
-                          {msg.paidStars}
-                        </span>
-                        <span className="text-[11px] text-text-muted">Tap to unlock</span>
-                      </div>
-                    ) : (
-                      <Image
-                        src={msg.content}
-                        alt=""
-                        fill
-                        className={cn("object-cover", msg.spoiler && "blur-lg")}
-                        style={msg.rotation ? { transform: `rotate(${msg.rotation}deg)` } : undefined}
-                        loading="lazy"
-                        sizes="192px"
-                      />
-                    )}
-                  </div>
-                )}
-                {msg.type === "album" && msg.album && (
-                  <div
-                    className={cn(
-                      "grid gap-0.5 rounded-xl overflow-hidden",
-                      msg.album.length === 1 ? "grid-cols-1" : "grid-cols-2",
-                      isPaid && "cursor-pointer"
-                    )}
-                    onClick={() => (isPaid ? setPaidModal(msg) : undefined)}
-                  >
-                    {isPaid ? (
-                      <div className="col-span-2 w-48 h-36 bg-surface flex flex-col items-center justify-center gap-1 text-sm rounded-xl">
-                        <Lock className="w-4 h-4 text-text-muted" />
-                        <span className="flex items-center gap-1">
-                          <TelegramStarIcon variant="post" size={16} />
-                          {msg.paidStars}
-                        </span>
-                        <span className="text-[11px] text-text-muted">Tap to unlock</span>
-                      </div>
-                    ) : (
-                      msg.album.map((item, i) => (
-                        <div key={i} className="relative w-24 h-24 bg-surface">
-                          {item.type === "video" ? (
-                            <video src={item.url} className="w-full h-full object-cover" muted playsInline />
-                          ) : (
-                            <Image
-                              src={item.url}
-                              alt=""
-                              fill
-                              className={cn("object-cover", msg.spoiler && "blur-lg")}
-                              unoptimized
-                            />
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
-                {msg.type === "video" &&
-                  (isPaid ? (
-                    <button
-                      onClick={() => setPaidModal(msg)}
-                      className="w-48 h-36 rounded-xl bg-surface flex flex-col items-center justify-center gap-1 text-sm"
-                    >
-                      <Lock className="w-4 h-4 text-text-muted" />
-                      <span className="flex items-center gap-1">
-                        <TelegramStarIcon variant="post" size={16} />
-                        {msg.paidStars}
-                      </span>
-                      <span className="text-[11px] text-text-muted">Tap to unlock</span>
-                    </button>
-                  ) : (
-                    <video
-                      src={msg.content}
-                      className="w-48 rounded-xl"
-                      style={msg.rotation ? { transform: `rotate(${msg.rotation}deg)` } : undefined}
-                      controls
-                      playsInline
-                      preload="none"
-                    />
-                  ))}
+                {msg.type !== "text" && renderMedia(msg, isMe)}
                 {msg.caption && <p className="text-xs text-text-muted mt-1 px-1">{msg.caption}</p>}
                 <div className="flex items-center gap-1 mt-0.5 px-1">
                   <span className={cn("text-[10px]", !isMe && !msg.read ? "text-[#8b5cf6]" : "text-text-muted")}>
@@ -352,22 +459,25 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
         <div ref={bottomRef} />
       </div>
 
-      <ChatInput
-        onSend={handleSend}
-        onSendAlbum={handleSendAlbum}
-        disabled={blocked}
-        disabledMessage="You cannot message this user"
-        replyTo={replyTo}
-        onCancelReply={() => setReplyTo(null)}
-      />
+      <div className="shrink-0">
+        <ChatInput
+          onSend={handleSend}
+          onSendAlbum={handleSendAlbum}
+          disabled={blocked}
+          disabledMessage="You cannot message this user"
+          replyTo={replyTo}
+          onCancelReply={() => setReplyTo(null)}
+        />
+      </div>
 
       <MessageContextMenu
         open={!!contextMsg}
         message={contextMsg}
         isMedia={contextMsg ? contextMsg.type !== "text" : false}
+        isViewOnce={contextMsg?.temporary === "view_once"}
         onClose={() => setContextMsg(null)}
         onReply={() => contextMsg && setReplyTo(contextMsg)}
-        onForward={() => showToast("Forwarded")}
+        onForward={() => contextMsg && setForwardMsg(contextMsg)}
         onCopy={async () => {
           if (contextMsg) {
             await navigator.clipboard.writeText(contextMsg.content);
@@ -377,6 +487,13 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
         onPin={(scope) => contextMsg && handlePin(contextMsg, scope)}
         onDelete={() => contextMsg && handleDeleteMessage(contextMsg.id)}
         onSave={() => showToast("Saved to gallery")}
+      />
+
+      <ShareChatPicker
+        open={!!forwardMsg}
+        onClose={() => setForwardMsg(null)}
+        title="Forward to"
+        onSend={handleForward}
       />
 
       {deleteConfirm && (

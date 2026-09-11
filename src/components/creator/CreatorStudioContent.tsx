@@ -11,11 +11,14 @@ import {
   Wallet,
   ArrowDownLeft,
   ArrowUpRight,
+  AlertTriangle,
 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { TelegramStarIcon } from "@/components/ui/TelegramStarIcon";
 import { formatCount, formatStars } from "@/lib/utils/format";
+import { starsToUsd, formatUsd } from "@/lib/constants/stars";
 import { useToast } from "@/components/ui/ToastProvider";
+import { usePrototype } from "@/lib/hooks/usePrototype";
 import { cn } from "@/lib/utils/cn";
 
 const STATS = {
@@ -26,7 +29,6 @@ const STATS = {
 };
 
 const STARS_LAST_21_DAYS = 1_250;
-const STARS_EARNED_TOTAL = 8_420;
 
 interface Transaction {
   id: string;
@@ -35,7 +37,7 @@ interface Transaction {
   date: string;
 }
 
-const TRANSACTIONS: Transaction[] = [
+const INITIAL_TRANSACTIONS: Transaction[] = [
   { id: "t1", label: "Donation from @alex", amount: 150, date: "2026-09-10T14:30:00Z" },
   { id: "t2", label: "Donation from @sara", amount: 75, date: "2026-09-09T09:15:00Z" },
   { id: "t3", label: "Withdrawal to TON wallet", amount: -500, date: "2026-09-05T18:00:00Z" },
@@ -46,21 +48,66 @@ const TRANSACTIONS: Transaction[] = [
 
 const WITHDRAWAL_MIN_STARS = 1000;
 
+function isValidTonWallet(address: string): boolean {
+  const trimmed = address.trim();
+  return /^(UQ|EQ)[A-Za-z0-9_-]{46,48}$/.test(trimmed);
+}
+
 export function CreatorStudioContent() {
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [walletAddress, setWalletAddress] = useState("");
+  const [amountInput, setAmountInput] = useState("1000");
+  const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
   const { showToast } = useToast();
+  const { state, withdrawEarnings } = usePrototype();
 
+  const available = state.earnings;
+  const amount = Math.max(0, parseInt(amountInput, 10) || 0);
+  const usd = starsToUsd(amount);
   const canWithdraw = STARS_LAST_21_DAYS >= WITHDRAWAL_MIN_STARS;
+  const walletValid = walletAddress.trim() ? isValidTonWallet(walletAddress) : false;
+  const amountValid = amount >= 1 && amount <= available;
+
+  const handleAmountChange = (value: string) => {
+    if (value === "") {
+      setAmountInput("");
+      return;
+    }
+    const num = parseInt(value.replace(/\D/g, ""), 10);
+    if (Number.isNaN(num)) return;
+    setAmountInput(String(Math.min(available, Math.max(0, num))));
+  };
 
   const handleWithdraw = () => {
     if (!walletAddress.trim()) {
       showToast("Enter your TON wallet address");
       return;
     }
+    if (!walletValid) {
+      showToast("Enter a valid TON wallet address");
+      return;
+    }
+    if (!amountValid) {
+      showToast(amount > available ? `Maximum available is ${formatStars(available)}` : "Enter a valid amount");
+      return;
+    }
+    if (!withdrawEarnings(amount)) {
+      showToast("Insufficient balance");
+      return;
+    }
+    setTransactions((prev) => [
+      {
+        id: `t_${Date.now()}`,
+        label: `Withdrawal to ${walletAddress.trim().slice(0, 8)}...`,
+        amount: -amount,
+        date: new Date().toISOString(),
+      },
+      ...prev,
+    ]);
     showToast("Withdrawal request submitted");
     setWithdrawOpen(false);
     setWalletAddress("");
+    setAmountInput("1000");
   };
 
   const statCards = [
@@ -99,7 +146,7 @@ export function CreatorStudioContent() {
             <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Stars earned</p>
             <TelegramStarIcon size={18} />
           </div>
-          <p className="text-2xl font-bold mb-1">{formatStars(STARS_EARNED_TOTAL)}</p>
+          <p className="text-2xl font-bold mb-1 tabular-nums">{formatStars(available)}</p>
           <p className="text-xs text-text-muted">
             {formatStars(STARS_LAST_21_DAYS)} stars in the last 21 days
           </p>
@@ -129,8 +176,8 @@ export function CreatorStudioContent() {
             <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Transactions</h2>
           </div>
           <div className="divide-y divide-border">
-            {TRANSACTIONS.map(({ id, label, amount, date }) => {
-              const isCredit = amount > 0;
+            {transactions.map(({ id, label, amount: txAmount, date }) => {
+              const isCredit = txAmount > 0;
               return (
                 <div key={id} className="flex items-center gap-3 px-4 py-3.5">
                   <div
@@ -157,7 +204,7 @@ export function CreatorStudioContent() {
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <span className={cn("text-sm font-semibold tabular-nums", isCredit ? "text-green-500" : "text-like")}>
-                      {isCredit ? "+" : ""}{formatStars(amount)}
+                      {isCredit ? "+" : ""}{formatStars(txAmount)}
                     </span>
                     <TelegramStarIcon size={14} />
                   </div>
@@ -168,29 +215,74 @@ export function CreatorStudioContent() {
         </section>
       </div>
 
-      <Modal open={withdrawOpen} onClose={() => setWithdrawOpen(false)} title="Withdraw to TON">
+      <Modal open={withdrawOpen} onClose={() => setWithdrawOpen(false)} title="Withdraw Earnings">
         <div className="px-4 py-4 space-y-4">
-          <p className="text-sm text-text-muted">
-            Withdraw {formatStars(STARS_LAST_21_DAYS)} stars to your TON wallet. Funds typically arrive within 24 hours.
-          </p>
-          <div>
-            <label htmlFor="tonWallet" className="block text-xs font-medium text-text-muted mb-1.5">
-              TON wallet address
-            </label>
-            <input
-              id="tonWallet"
-              value={walletAddress}
-              onChange={(e) => setWalletAddress(e.target.value)}
-              placeholder="UQ... or EQ..."
-              className="w-full px-3 py-2.5 rounded-xl bg-surface border border-border text-sm outline-none focus:border-text-muted transition-colors font-mono"
-            />
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-text-muted">Available</span>
+            <span className="flex items-center gap-1 font-semibold tabular-nums">
+              <TelegramStarIcon variant="donate" size={16} />
+              {formatStars(available)}
+            </span>
           </div>
+
+          <div>
+            <label className="block text-xs font-medium text-text-muted mb-1.5">Amount</label>
+            <div className="flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-[#8b5cf6]/40 bg-surface/50">
+              <TelegramStarIcon variant="post" size={24} />
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={amountInput}
+                onChange={(e) => handleAmountChange(e.target.value)}
+                className="flex-1 text-xl font-medium outline-none bg-transparent min-w-0 tabular-nums font-sans"
+                style={{ fontVariantNumeric: "lining-nums" }}
+                aria-label="Withdrawal amount"
+              />
+              <span className="text-sm text-text-muted shrink-0 tabular-nums">≈ {formatUsd(usd)}</span>
+            </div>
+            {amount > available && (
+              <p className="text-xs text-like mt-1">Maximum available is {formatStars(available)}</p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-text-muted mb-1.5">Wallet</label>
+            <div className="relative flex items-center gap-2 px-3 py-2.5 rounded-xl bg-surface border border-border">
+              <div className="w-5 h-5 rounded-full bg-[#0098EA] flex items-center justify-center text-white text-[7px] font-bold shrink-0" aria-hidden>
+                TON
+              </div>
+              <input
+                value={walletAddress}
+                onChange={(e) => setWalletAddress(e.target.value)}
+                placeholder="TON Wallet Address"
+                className="flex-1 text-sm outline-none bg-transparent font-mono min-w-0"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2 text-xs text-text-muted">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>Do not use an exchange wallet address.</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>Do not include a memo or comment with your wallet.</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>Enter a valid TON wallet address (UQ... or EQ...).</span>
+            </div>
+          </div>
+
           <button
             type="button"
             onClick={handleWithdraw}
-            className="w-full py-2.5 rounded-xl bg-text text-bg text-sm font-semibold"
+            disabled={!amountValid || !walletValid}
+            className="w-full py-2.5 rounded-xl bg-text text-bg text-sm font-semibold disabled:opacity-40"
           >
-            Confirm withdrawal
+            Withdraw
           </button>
         </div>
       </Modal>

@@ -15,6 +15,7 @@ import {
   Shield,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
+import { UserName } from "@/components/ui/UserName";
 import { currentUser } from "@/data/mock/users";
 import { formatCount } from "@/lib/utils/format";
 import { useTheme, type Theme } from "@/lib/hooks/useTheme";
@@ -56,7 +57,7 @@ export function SettingsContent() {
           <Link href="/profile/" className="flex items-center gap-3 px-4 py-4 hover:bg-surface/50 transition-colors">
             <Avatar src={currentUser.avatar} alt={currentUser.displayName} size="lg" />
             <div className="flex-1 min-w-0">
-              <p className="font-semibold truncate">{currentUser.displayName}</p>
+              <UserName user={currentUser} nameClassName="font-semibold" />
               <p className="text-sm text-text-muted truncate">@{currentUser.username}</p>
             </div>
             <ChevronRight className="w-5 h-5 text-text-muted shrink-0" />

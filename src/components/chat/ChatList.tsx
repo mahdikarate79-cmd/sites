@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Chat } from "@/lib/types";
 import { Avatar } from "@/components/ui/Avatar";
-import { VerifiedBadge } from "@/components/ui/VerifiedBadge";
+import { UserName } from "@/components/ui/UserName";
 import { NotificationBadge } from "@/components/ui/NotificationBadge";
 import { formatChatTime } from "@/lib/utils/format";
 import { getChats } from "@/lib/api/chat";
@@ -52,10 +52,7 @@ export function ChatList() {
           </Link>
           <Link href={`/chat/${chat.id}/`} className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1 min-w-0">
-                <span className="font-semibold text-sm truncate">{chat.participant.displayName}</span>
-                {chat.participant.verified && <VerifiedBadge className="w-3.5 h-3.5" />}
-              </div>
+              <UserName user={chat.participant} nameClassName="font-semibold text-sm" className="min-w-0" />
               <span className="text-xs text-text-muted shrink-0">{formatChatTime(chat.lastMessage.createdAt)}</span>
             </div>
             <div className="flex items-center justify-between gap-2 mt-0.5">

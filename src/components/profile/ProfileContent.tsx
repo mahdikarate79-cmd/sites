@@ -7,7 +7,8 @@ import { ArrowLeft, MoreVertical, FileText, ImageIcon, Video, Flag, Link2, Info 
 import { BlockButton } from "@/components/ui/BlockButton";
 import { User, Post } from "@/lib/types";
 import { Avatar } from "@/components/ui/Avatar";
-import { VerifiedBadge } from "@/components/ui/VerifiedBadge";
+import { UserName } from "@/components/ui/UserName";
+import { OfficialVerificationBadge, PremiumVerificationBadge } from "@/components/ui/VerifiedBadge";
 import { OrientationBadge } from "@/components/ui/OrientationBadge";
 import { FollowButton } from "@/components/ui/FollowButton";
 import { PostCard } from "@/components/feed/PostCard";
@@ -102,7 +103,6 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
             ) : (
               <>
                 <FollowButton userId={user.id} />
-                <BlockButton userId={user.id} />
                 <Link
                   href={`/chat/c1/`}
                   className={cn(
@@ -118,11 +118,9 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
           </div>
         </div>
 
-        <div className="flex items-center gap-1 mb-0.5">
-          <h1 className="text-xl font-bold">{user.displayName}</h1>
-          {user.verified && <VerifiedBadge className="w-5 h-5" />}
-          {user.premium && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gradient-to-r from-[#6366f1]/30 to-[#8b5cf6]/30 text-[#8b5cf6] font-medium">PRO</span>}
-        </div>
+        <h1 className="text-xl font-bold mb-0.5">
+          <UserName user={user} nameClassName="text-xl font-bold" />
+        </h1>
         <p className="text-text-muted text-sm mb-1">@{user.username}</p>
 
         {(user.age || user.orientation) && (
@@ -173,6 +171,22 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
             <div className="space-y-3 text-sm">
               <div className="flex justify-between"><span className="text-text-muted">Joined</span><span>{user.createdAt ? new Date(user.createdAt).toLocaleDateString("en-US", { month: "long", year: "numeric" }) : "—"}</span></div>
               <div className="flex justify-between"><span className="text-text-muted">Username changes</span><span>{user.usernameChanges ?? 0}</span></div>
+              {(user.verified || user.premium) && (
+                <div className="pt-2 border-t border-border space-y-2">
+                  {user.verified && (
+                    <div className="flex items-center gap-2">
+                      <OfficialVerificationBadge className="w-4 h-4" />
+                      <span>This account is verified by Sheytoni.</span>
+                    </div>
+                  )}
+                  {user.premium && (
+                    <div className="flex items-center gap-2">
+                      <PremiumVerificationBadge className="w-4 h-4" />
+                      <span>Premium active</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <button onClick={() => setAboutOpen(false)} className="w-full mt-5 py-2.5 rounded-xl bg-surface text-sm font-medium">Close</button>
           </div>

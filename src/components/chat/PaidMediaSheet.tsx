@@ -3,8 +3,7 @@
 import { useState } from "react";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { TelegramStarIcon } from "@/components/ui/TelegramStarIcon";
-import { starsToUsd, formatUsd } from "@/lib/constants/stars";
-import { formatStars } from "@/lib/utils/format";
+import { starsToUsd, formatUsd, MAX_PAID_MEDIA_STARS } from "@/lib/constants/stars";
 
 interface PaidMediaSheetProps {
   open: boolean;
@@ -16,7 +15,7 @@ export function PaidMediaSheet({ open, onClose, onConfirm }: PaidMediaSheetProps
   const [input, setInput] = useState("100");
 
   const stars = Math.max(0, parseInt(input, 10) || 0);
-  const valid = stars >= 1 && stars <= 10000;
+  const valid = stars >= 1 && stars <= MAX_PAID_MEDIA_STARS;
   const usd = starsToUsd(stars);
 
   const handleChange = (value: string) => {
@@ -24,9 +23,9 @@ export function PaidMediaSheet({ open, onClose, onConfirm }: PaidMediaSheetProps
       setInput("");
       return;
     }
-    const num = parseInt(value, 10);
+    const num = parseInt(value.replace(/\D/g, ""), 10);
     if (Number.isNaN(num)) return;
-    setInput(String(Math.min(10000, Math.max(0, num))));
+    setInput(String(Math.min(MAX_PAID_MEDIA_STARS, Math.max(0, num))));
   };
 
   const handleConfirm = () => {
@@ -47,18 +46,22 @@ export function PaidMediaSheet({ open, onClose, onConfirm }: PaidMediaSheetProps
           <div className="flex items-center gap-3 px-4 py-4 rounded-xl border-2 border-[#8b5cf6]/40 bg-surface/50">
             <TelegramStarIcon variant="post" size={28} />
             <input
-              type="number"
+              type="text"
               inputMode="numeric"
+              pattern="[0-9]*"
               value={input}
               onChange={(e) => handleChange(e.target.value)}
-              min={1}
-              max={10000}
-              className="flex-1 text-2xl font-medium outline-none bg-transparent min-w-0"
+              className="flex-1 text-2xl font-medium outline-none bg-transparent min-w-0 tabular-nums font-sans"
+              style={{ fontVariantNumeric: "lining-nums" }}
               aria-label="Stars amount"
             />
-            <span className="text-sm text-text-muted shrink-0">≈ {formatUsd(usd)}</span>
+            <span className="text-sm text-text-muted shrink-0 tabular-nums font-sans">≈ {formatUsd(usd)}</span>
           </div>
         </div>
+
+        {stars > MAX_PAID_MEDIA_STARS && (
+          <p className="text-xs text-like mb-2">Maximum is {MAX_PAID_MEDIA_STARS.toLocaleString("en-US")} Stars</p>
+        )}
 
         <p className="text-xs text-text-muted leading-relaxed mb-6 px-1">
           Users will have to transfer this amount of Stars to view this media.{" "}
