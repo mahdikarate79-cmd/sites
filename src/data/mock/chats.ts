@@ -61,6 +61,34 @@ export const mockChats: Chat[] = [
     },
     unreadCount: 0,
   },
+  {
+    id: "c5",
+    participant: mockUsers[5],
+    lastMessage: {
+      id: "m5",
+      chatId: "c5",
+      senderId: mockUsers[5].id,
+      type: "text",
+      content: "Sent you 100 Stars for the last post!",
+      createdAt: new Date(now - 120000).toISOString(),
+      read: false,
+    },
+    unreadCount: 1,
+  },
+  {
+    id: "c6",
+    participant: mockUsers[9],
+    lastMessage: {
+      id: "m6",
+      chatId: "c6",
+      senderId: mockUsers[9].id,
+      type: "gif",
+      content: "https://images.unsplash.com/photo-1611162616305-c69b3fa7fbe0?w=400&h=300&fit=crop",
+      createdAt: new Date(now - 5400000).toISOString(),
+      read: true,
+    },
+    unreadCount: 0,
+  },
 ];
 
 export const mockMessages: Record<string, ChatMessage[]> = {
@@ -85,5 +113,15 @@ export const mockMessages: Record<string, ChatMessage[]> = {
     { id: "c4m1", chatId: "c4", senderId: mockUsers[4].id, type: "text", content: "I have some ideas for the explore page", createdAt: new Date(now - 172800000).toISOString(), read: true },
     { id: "c4m2", chatId: "c4", senderId: "u1", type: "text", content: "Would love to hear them!", createdAt: new Date(now - 169200000).toISOString(), read: true },
     { id: "c4m3", chatId: "c4", senderId: mockUsers[4].id, type: "text", content: "Let's collaborate on the next project", createdAt: new Date(now - 86400000).toISOString(), read: true },
+  ],
+  c5: [
+    { id: "c5m1", chatId: "c5", senderId: mockUsers[5].id, type: "text", content: "Love your latest reel!", createdAt: new Date(now - 3600000).toISOString(), read: true },
+    { id: "c5m2", chatId: "c5", senderId: "u1", type: "text", content: "Thanks Amir! Glad you enjoyed it.", createdAt: new Date(now - 1800000).toISOString(), read: true },
+    { id: "c5m3", chatId: "c5", senderId: mockUsers[5].id, type: "text", content: "Sent you 100 Stars for the last post!", createdAt: new Date(now - 120000).toISOString(), read: false },
+  ],
+  c6: [
+    { id: "c6m1", chatId: "c6", senderId: mockUsers[9].id, type: "text", content: "meow", createdAt: new Date(now - 7200000).toISOString(), read: true },
+    { id: "c6m2", chatId: "c6", senderId: "u1", type: "text", content: "Hey Meow! What's up?", createdAt: new Date(now - 6000000).toISOString(), read: true },
+    { id: "c6m3", chatId: "c6", senderId: mockUsers[9].id, type: "gif", content: "https://images.unsplash.com/photo-1611162616305-c69b3fa7fbe0?w=400&h=300&fit=crop", createdAt: new Date(now - 5400000).toISOString(), read: true },
   ],
 };

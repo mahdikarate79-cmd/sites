@@ -19,7 +19,6 @@ export function FeedList() {
     });
   }, []);
 
-  const videoPosts = posts.filter((p) => p.media?.some((m) => m.type === "video"));
   const visible = sortPosts(filterPosts(posts)).filter((p) => !hidden.has(p.id));
 
   const handleHide = (postId: string) => {
@@ -51,7 +50,7 @@ export function FeedList() {
           key={post.id}
           post={post}
           onHide={() => handleHide(post.id)}
-          videoPosts={videoPosts}
+          allPosts={posts}
         />
       ))}
     </div>

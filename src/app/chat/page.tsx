@@ -3,7 +3,7 @@ import { ChatList } from "@/components/chat/ChatList";
 
 export default function ChatPage() {
   return (
-    <AppLayout title="Messages" hideNav>
+    <AppLayout title="Messages" hideNav hideHeaderActions>
       <ChatList />
     </AppLayout>
   );

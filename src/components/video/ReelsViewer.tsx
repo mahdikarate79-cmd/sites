@@ -1,16 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   ArrowLeft, Heart, MessageCircle, Share2, MoreVertical,
-  Volume2, VolumeX, Play, Minimize2,
+  Volume2, VolumeX, Play, Minimize2, Bookmark, Flag, ThumbsDown, Maximize, Link2,
 } from "lucide-react";
-import { Post } from "@/lib/types";
+import { ReelItem } from "@/lib/utils/reels";
 import { Avatar } from "@/components/ui/Avatar";
 import { DonateButton } from "@/components/ui/DonateButton";
 import { FollowButton } from "@/components/ui/FollowButton";
 import { VerifiedBadge } from "@/components/ui/VerifiedBadge";
+import { BottomSheet } from "@/components/ui/BottomSheet";
 import { DonateModal } from "@/components/donate/DonateModal";
 import { ReportModal } from "@/components/feed/ReportModal";
 import { usePrototype } from "@/lib/hooks/usePrototype";
@@ -21,12 +23,12 @@ import { cn } from "@/lib/utils/cn";
 interface ReelsViewerProps {
   open: boolean;
   onClose: () => void;
-  posts: Post[];
+  items: ReelItem[];
   initialIndex: number;
 }
 
-export function ReelsViewer({ open, onClose, posts, initialIndex }: ReelsViewerProps) {
-  const [index] = useState(initialIndex);
+export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerProps) {
+  const [index, setIndex] = useState(initialIndex);
   const [paused, setPaused] = useState(false);
   const [muted, setMuted] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
@@ -36,27 +38,78 @@ export function ReelsViewer({ open, onClose, posts, initialIndex }: ReelsViewerP
   const [reportOpen, setReportOpen] = useState(false);
   const [showHeart, setShowHeart] = useState(false);
   const [speed2x, setSpeed2x] = useState(false);
+  const [progress, setProgress] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const imageTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const lastTap = useRef(0);
+  const tapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const holdSide = useRef<"left" | "right" | null>(null);
-  const { isLiked, toggleLike, getDonation, isFollowing } = usePrototype();
+  const touchStartY = useRef(0);
+  const { isLiked, toggleLike, getDonation, isFollowing, markInterested, markNotInterested, hidePost, toggleBookmark, isBookmarked } = usePrototype();
   const { showToast } = useToast();
 
-  const post = posts[index];
-  const video = post?.media?.find((m) => m.type === "video");
+  const item = items[index];
+  const post = item?.post;
+  const media = item?.media;
+  const isVideo = media?.type === "video";
 
   useEffect(() => {
+    if (!open) return;
+    setIndex(initialIndex);
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = ""; };
-  }, []);
+  }, [open, initialIndex]);
 
   useEffect(() => {
-    if (!videoRef.current) return;
+    if (!videoRef.current || !isVideo) return;
     videoRef.current.playbackRate = speed2x ? 2 : 1;
     if (paused) videoRef.current.pause();
     else videoRef.current.play().catch(() => {});
-  }, [paused, speed2x, index]);
+  }, [paused, speed2x, index, isVideo]);
+
+  useEffect(() => {
+    setProgress(0);
+    if (imageTimerRef.current) clearInterval(imageTimerRef.current);
+
+    if (!open || isVideo) return;
+
+    const start = Date.now();
+    const duration = 5000;
+    imageTimerRef.current = setInterval(() => {
+      const elapsed = Date.now() - start;
+      setProgress(Math.min(100, (elapsed / duration) * 100));
+    }, 50);
+
+    return () => {
+      if (imageTimerRef.current) clearInterval(imageTimerRef.current);
+    };
+  }, [index, isVideo, open]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !isVideo) return;
+
+    const onTimeUpdate = () => {
+      if (video.duration) setProgress((video.currentTime / video.duration) * 100);
+    };
+    const onEnded = () => setProgress(100);
+
+    video.addEventListener("timeupdate", onTimeUpdate);
+    video.addEventListener("ended", onEnded);
+    return () => {
+      video.removeEventListener("timeupdate", onTimeUpdate);
+      video.removeEventListener("ended", onEnded);
+    };
+  }, [index, isVideo]);
+
+  const goNext = useCallback(() => {
+    if (index < items.length - 1) setIndex((i) => i + 1);
+  }, [index, items.length]);
+
+  const goPrev = useCallback(() => {
+    if (index > 0) setIndex((i) => i - 1);
+  }, [index]);
 
   const handleTap = (e: React.MouseEvent) => {
     if (!post) return;
@@ -64,39 +117,54 @@ export function ReelsViewer({ open, onClose, posts, initialIndex }: ReelsViewerP
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const relX = (e.clientX - rect.left) / rect.width;
 
-    if (now - lastTap.current < 300 && relX > 0.3 && relX < 0.7) {
+    if (now - lastTap.current < 300 && relX > 0.25 && relX < 0.75) {
+      if (tapTimer.current) clearTimeout(tapTimer.current);
       toggleLike(post.id);
       setShowHeart(true);
       setTimeout(() => setShowHeart(false), 600);
       lastTap.current = 0;
       return;
     }
-    lastTap.current = now;
 
-    if (relX > 0.3 && relX < 0.7) {
-      setPaused((p) => !p);
-    }
+    lastTap.current = now;
+    if (tapTimer.current) clearTimeout(tapTimer.current);
+    tapTimer.current = setTimeout(() => {
+      if (isVideo && relX > 0.25 && relX < 0.75) setPaused((p) => !p);
+    }, 300);
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    if (e.deltaY > 30) goNext();
+    else if (e.deltaY < -30) goPrev();
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartY.current = e.touches[0].clientY;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const diff = touchStartY.current - e.changedTouches[0].clientY;
+    if (diff > 60) goNext();
+    else if (diff < -60) goPrev();
   };
 
   const handlePointerDown = (e: React.PointerEvent) => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const relX = (e.clientX - rect.left) / rect.width;
-    if (relX <= 0.3) holdSide.current = "left";
-    else if (relX >= 0.7) holdSide.current = "right";
-    else return;
-
-    holdTimer.current = setTimeout(() => setSpeed2x(true), 300);
+    if (relX <= 0.2 || relX >= 0.8) {
+      holdTimer.current = setTimeout(() => setSpeed2x(true), 300);
+    }
   };
 
   const handlePointerUp = () => {
     if (holdTimer.current) clearTimeout(holdTimer.current);
-    holdSide.current = null;
     setSpeed2x(false);
   };
 
-  if (!open || !post || !video) return null;
+  if (!open || !post || !media) return null;
 
   const liked = isLiked(post.id);
+  const bookmarked = isBookmarked(post.id);
   const donation = getDonation(post.id, { total: post.stars ?? 0, topDonators: post.topDonators ?? [] });
   const following = isFollowing(post.author.id);
 
@@ -106,15 +174,36 @@ export function ReelsViewer({ open, onClose, posts, initialIndex }: ReelsViewerP
     setMenuOpen(false);
   };
 
+  const menuItems = [
+    { icon: Bookmark, label: bookmarked ? "Unsave" : "Save", action: () => { toggleBookmark(post.id); setMenuOpen(false); } },
+    { icon: Link2, label: "Copy link", action: copyLink },
+    { icon: Flag, label: "Report", action: () => { setReportOpen(true); setMenuOpen(false); }, danger: true },
+    { icon: Heart, label: "I like this", action: () => { markInterested(post); showToast("Added to interests"); setMenuOpen(false); } },
+    { icon: ThumbsDown, label: "I don't like this", action: () => { markNotInterested(post); hidePost(post.id); onClose(); setMenuOpen(false); } },
+    { icon: Maximize, label: "Fullscreen", action: () => { setFullscreen(true); setMenuOpen(false); } },
+  ];
+
   return (
-    <div className="fixed inset-0 z-50 bg-black">
+    <div className="fixed inset-0 z-50 bg-black" ref={containerRef}>
       {!fullscreen && (
         <>
-          <button onClick={onClose} className="absolute top-4 left-4 z-20 p-2 safe-top" aria-label="Back">
-            <ArrowLeft className="w-6 h-6 text-white" />
+          <div className="absolute top-0 left-0 right-0 z-20 flex gap-1 px-3 pt-3 safe-top pointer-events-none">
+            {items.map((_, i) => (
+              <div key={i} className="flex-1 h-[2px] bg-white/25 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-white rounded-full transition-[width] duration-75 ease-linear"
+                  style={{
+                    width: i < index ? "100%" : i === index ? `${progress}%` : "0%",
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+          <button onClick={onClose} className="absolute top-8 left-4 z-20 p-2" aria-label="Back">
+            <ArrowLeft className="w-6 h-6 text-white drop-shadow" />
           </button>
-          <button onClick={() => setMenuOpen(!menuOpen)} className="absolute top-4 right-4 z-20 p-2 safe-top" aria-label="More">
-            <MoreVertical className="w-6 h-6 text-white" />
+          <button onClick={() => setMenuOpen(true)} className="absolute top-8 right-4 z-20 p-2" aria-label="More">
+            <MoreVertical className="w-6 h-6 text-white drop-shadow" />
           </button>
         </>
       )}
@@ -122,22 +211,30 @@ export function ReelsViewer({ open, onClose, posts, initialIndex }: ReelsViewerP
       <div
         className="relative w-full h-dvh"
         onClick={handleTap}
+        onWheel={handleWheel}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
         onPointerDown={handlePointerDown}
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
       >
-        <video
-          ref={videoRef}
-          src={video.url}
-          poster={video.thumbnail}
-          className="w-full h-full object-cover"
-          loop
-          playsInline
-          muted={muted}
-          autoPlay
-        />
+        {isVideo ? (
+          <video
+            ref={videoRef}
+            key={media.url}
+            src={media.url}
+            poster={media.thumbnail}
+            className="w-full h-full object-cover"
+            loop
+            playsInline
+            muted={muted}
+            autoPlay
+          />
+        ) : (
+          <Image src={media.url} alt="" fill className="object-cover" priority unoptimized />
+        )}
 
-        {paused && !fullscreen && (
+        {isVideo && paused && !fullscreen && (
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
             <button
               onClick={(e) => { e.stopPropagation(); setMuted(!muted); }}
@@ -150,13 +247,13 @@ export function ReelsViewer({ open, onClose, posts, initialIndex }: ReelsViewerP
         )}
 
         {showHeart && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30">
             <Heart className="w-24 h-24 text-like fill-like animate-[heart-burst_0.6s_ease-out]" />
           </div>
         )}
 
         {speed2x && (
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 px-3 py-1 rounded-full bg-black/60 text-white text-sm font-medium">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 px-3 py-1 rounded-full bg-black/60 text-white text-sm font-medium z-30">
             2x
           </div>
         )}
@@ -192,9 +289,7 @@ export function ReelsViewer({ open, onClose, posts, initialIndex }: ReelsViewerP
                 </Link>
                 {!following && <FollowButton userId={post.author.id} size="sm" />}
               </div>
-              <Link href={`/profile/${post.author.username}/`} onClick={(e) => e.stopPropagation()} className="text-white text-xs mb-0.5 block">
-                @{post.author.username}
-              </Link>
+              <p className="text-white text-xs mb-0.5">@{post.author.username}</p>
               {post.content && (
                 <button
                   onClick={(e) => { e.stopPropagation(); setCaptionOpen(!captionOpen); }}
@@ -217,27 +312,18 @@ export function ReelsViewer({ open, onClose, posts, initialIndex }: ReelsViewerP
           </button>
         )}
 
-        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white/20 z-10">
-          <div className="h-full bg-white/80 w-1/3" />
-        </div>
       </div>
 
-      {menuOpen && (
-        <div className="absolute top-14 right-4 z-30 w-48 bg-surface border border-border rounded-xl py-1 shadow-lg">
-          {[
-            { emoji: "🔖", label: "Save", action: () => setMenuOpen(false) },
-            { emoji: "🔗", label: "Copy Link", action: copyLink },
-            { emoji: "🚨", label: "Report", action: () => { setReportOpen(true); setMenuOpen(false); }, danger: true },
-            { emoji: "❤️", label: "Interested", action: () => setMenuOpen(false) },
-            { emoji: "👎", label: "Not Interested", action: () => { onClose(); setMenuOpen(false); } },
-            { emoji: "⛶", label: "Fullscreen", action: () => { setFullscreen(true); setMenuOpen(false); } },
-          ].map(({ emoji, label, action, danger }) => (
-            <button key={label} onClick={action} className={`flex items-center gap-2 w-full px-4 py-2.5 text-sm hover:bg-bg ${danger ? "text-like" : ""}`}>
-              <span>{emoji}</span>{label}
+      <BottomSheet open={menuOpen} onClose={() => setMenuOpen(false)} title="More">
+        <div className="pb-4">
+          {menuItems.map(({ icon: Icon, label, action, danger }) => (
+            <button key={label} onClick={action} className={cn("flex items-center gap-3 w-full px-4 py-3.5 text-sm hover:bg-surface/50", danger && "text-like")}>
+              <Icon className={cn("w-5 h-5", danger ? "text-like" : "text-text-muted")} />
+              {label}
             </button>
           ))}
         </div>
-      )}
+      </BottomSheet>
 
       <DonateModal open={donateOpen} onClose={() => setDonateOpen(false)} post={post} />
       <ReportModal open={reportOpen} onClose={() => setReportOpen(false)} />
