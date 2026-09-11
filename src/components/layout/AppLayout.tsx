@@ -8,12 +8,13 @@ interface AppLayoutProps {
   title?: string;
   hideNav?: boolean;
   hideHeader?: boolean;
+  hideHeaderActions?: boolean;
 }
 
-export function AppLayout({ children, title, hideNav, hideHeader }: AppLayoutProps) {
+export function AppLayout({ children, title, hideNav, hideHeader, hideHeaderActions }: AppLayoutProps) {
   return (
     <div className="min-h-dvh flex flex-col">
-      {!hideHeader && <Header title={title} />}
+      {!hideHeader && <Header title={title} hideActions={hideHeaderActions} />}
       <main className="flex-1 pb-24 max-w-2xl mx-auto w-full">{children}</main>
       {!hideNav && <BottomNav />}
     </div>

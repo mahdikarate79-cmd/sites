@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowLeft, MoreVertical } from "lucide-react";
+import { ArrowLeft, MoreVertical, FileText, ImageIcon, Video, Flag, Ban, Link2, Info } from "lucide-react";
 import { User, Post } from "@/lib/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { VerifiedBadge } from "@/components/ui/VerifiedBadge";
@@ -39,13 +39,7 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
     getPostsByUser(user.id).then(setPosts);
   }, [user.id]);
 
-  if (!isOwnProfile && isBlocked(user.id)) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-text-muted">
-        <p className="text-sm">This profile is unavailable</p>
-      </div>
-    );
-  }
+  const blocked = !isOwnProfile && isBlocked(user.id);
 
   const filtered = posts.filter((p) => {
     if (tab === "videos") return p.media?.some((m) => m.type === "video" || m.type === "gif");
@@ -53,10 +47,10 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
     return !p.media?.length || p.content;
   });
 
-  const tabs: { id: ProfileTab; label: string; emoji: string }[] = [
-    { id: "videos", label: "Videos", emoji: "🎥" },
-    { id: "photos", label: "Photos", emoji: "🖼" },
-    { id: "posts", label: "Posts", emoji: "📝" },
+  const tabs: { id: ProfileTab; label: string; icon: typeof FileText }[] = [
+    { id: "posts", label: "Posts", icon: FileText },
+    { id: "videos", label: "Videos", icon: Video },
+    { id: "photos", label: "Photos", icon: ImageIcon },
   ];
 
   const copyProfileLink = async () => {
@@ -81,18 +75,18 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
           <div className="absolute top-12 right-3 z-20 w-48 bg-surface border border-border rounded-xl py-1 shadow-lg">
             {!isOwnProfile && (
               <>
-                <button onClick={() => { setReportOpen(true); setMenuOpen(false); }} className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-like">🚨 Report</button>
-                <button onClick={() => { blockUser(user.id); setMenuOpen(false); }} className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-like">🚫 Block</button>
+                <button onClick={() => { setReportOpen(true); setMenuOpen(false); }} className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-like"><Flag className="w-4 h-4" /> Report</button>
+                <button onClick={() => { blockUser(user.id); setMenuOpen(false); }} className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-like"><Ban className="w-4 h-4" /> Block</button>
               </>
             )}
-            <button onClick={copyProfileLink} className="flex items-center gap-2 w-full px-4 py-2.5 text-sm">🔗 Copy Profile Link</button>
-            <button onClick={() => { setAboutOpen(true); setMenuOpen(false); }} className="flex items-center gap-2 w-full px-4 py-2.5 text-sm">ℹ️ About this account</button>
+            <button onClick={copyProfileLink} className="flex items-center gap-2 w-full px-4 py-2.5 text-sm"><Link2 className="w-4 h-4" /> Copy profile link</button>
+            <button onClick={() => { setAboutOpen(true); setMenuOpen(false); }} className="flex items-center gap-2 w-full px-4 py-2.5 text-sm"><Info className="w-4 h-4" /> About account</button>
           </div>
         )}
       </div>
 
-      <div className="px-4 pb-4">
-        <div className="flex items-end justify-between -mt-12 mb-3">
+      <div className="px-4 pb-4 pt-2">
+        <div className="flex items-end justify-between -mt-12 mb-4">
           <Avatar src={user.avatar} alt={user.displayName} size="xl" className="border-4 border-bg" />
           <div className="flex gap-2">
             {isOwnProfile ? (
@@ -107,7 +101,14 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
             ) : (
               <>
                 <FollowButton userId={user.id} />
-                <Link href="/chat/c1/" className="px-4 py-1.5 rounded-full border border-border text-sm font-medium glass-nav">
+                <Link
+                  href={`/chat/c1/`}
+                  className={cn(
+                    "px-4 py-1.5 rounded-full border border-border text-sm font-medium glass-nav",
+                    blocked && "pointer-events-none opacity-40"
+                  )}
+                  aria-disabled={blocked}
+                >
                   Message
                 </Link>
               </>
@@ -139,17 +140,17 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
       </div>
 
       <div className="flex border-b border-border">
-        {tabs.map(({ id, label, emoji }) => (
+        {tabs.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             onClick={() => setTab(id)}
             className={cn(
-              "flex-1 py-3 text-sm font-medium transition-colors border-b-2 flex items-center justify-center gap-1",
+              "flex-1 py-3 text-sm font-medium transition-colors border-b-2 flex items-center justify-center gap-1.5",
               tab === id ? "border-text text-text" : "border-transparent text-text-muted"
             )}
           >
-            <span>{emoji}</span>
-            <span className="hidden sm:inline">{label}</span>
+            <Icon className="w-4 h-4" />
+            <span>{label}</span>
           </button>
         ))}
       </div>

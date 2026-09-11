@@ -3,12 +3,15 @@
 import { useState } from "react";
 import { Send, Paperclip, Image as ImageIcon, Video, Film } from "lucide-react";
 import { ChatMessage } from "@/lib/types";
+import { TelegramStarIcon } from "@/components/ui/TelegramStarIcon";
 
 interface ChatInputProps {
   onSend: (content: string, type?: "text" | "image" | "video" | "gif", extras?: Partial<ChatMessage>) => void;
+  disabled?: boolean;
+  disabledMessage?: string;
 }
 
-export function ChatInput({ onSend }: ChatInputProps) {
+export function ChatInput({ onSend, disabled, disabledMessage }: ChatInputProps) {
   const [text, setText] = useState("");
   const [showAttach, setShowAttach] = useState(false);
   const [preview, setPreview] = useState<{ type: string; url: string } | null>(null);
@@ -17,6 +20,7 @@ export function ChatInput({ onSend }: ChatInputProps) {
   const [paidStars, setPaidStars] = useState(0);
 
   const handleSend = () => {
+    if (disabled) return;
     if (preview) {
       onSend(preview.url, preview.type as "image" | "video" | "gif", {
         caption,
@@ -69,10 +73,14 @@ export function ChatInput({ onSend }: ChatInputProps) {
                 className="w-16 px-1 py-0.5 rounded bg-bg border border-border"
                 min={0}
               />
-              ⭐
+              <TelegramStarIcon variant="post" size={14} />
             </label>
           </div>
         </div>
+      )}
+
+      {disabled && disabledMessage && (
+        <p className="text-xs text-text-muted text-center mb-2">{disabledMessage}</p>
       )}
 
       {showAttach && (
@@ -90,7 +98,12 @@ export function ChatInput({ onSend }: ChatInputProps) {
       )}
 
       <div className="flex items-center gap-2">
-        <button onClick={() => setShowAttach(!showAttach)} className="p-2 rounded-full hover:bg-surface/50 transition-colors shrink-0" aria-label="Attach">
+        <button
+          onClick={() => setShowAttach(!showAttach)}
+          disabled={disabled}
+          className="p-2 rounded-full hover:bg-surface/50 transition-colors shrink-0 disabled:opacity-40"
+          aria-label="Attach"
+        >
           <Paperclip className="w-5 h-5 text-text-muted" />
         </button>
         <input
@@ -98,12 +111,13 @@ export function ChatInput({ onSend }: ChatInputProps) {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-          placeholder="Message..."
-          className="flex-1 px-4 py-2.5 rounded-full bg-surface/50 border border-border text-sm outline-none focus:border-text-muted/30 transition-colors"
+          placeholder={disabled ? "Messaging disabled" : "Message..."}
+          disabled={disabled}
+          className="flex-1 px-4 py-2.5 rounded-full bg-surface/50 border border-border text-sm outline-none focus:border-text-muted/30 transition-colors disabled:opacity-40"
         />
         <button
           onClick={handleSend}
-          disabled={!text.trim() && !preview}
+          disabled={disabled || (!text.trim() && !preview)}
           className="p-2 rounded-full bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] text-white disabled:opacity-30 transition-opacity shrink-0"
           aria-label="Send"
         >

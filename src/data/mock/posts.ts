@@ -5,7 +5,7 @@ export const mockPosts: Post[] = [
   {
     id: "p1",
     author: mockUsers[1],
-    content: "Just shipped a new feature on Sheytoni! The Telegram Stars integration is going to change how creators get supported. 🌟",
+    content: "Just shipped a new feature on Sheytoni! The Telegram Stars integration is going to change how creators get supported.",
     category: "Technology",
     createdAt: new Date(Date.now() - 1800000).toISOString(),
     likes: 1243,

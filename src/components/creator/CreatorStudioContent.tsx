@@ -36,12 +36,12 @@ interface Transaction {
 }
 
 const TRANSACTIONS: Transaction[] = [
-  { id: "t1", label: "Donation from @alex_dev", amount: 150, date: "2026-09-10T14:30:00Z" },
-  { id: "t2", label: "Donation from @sara_design", amount: 75, date: "2026-09-09T09:15:00Z" },
+  { id: "t1", label: "Donation from @alex", amount: 150, date: "2026-09-10T14:30:00Z" },
+  { id: "t2", label: "Donation from @sara", amount: 75, date: "2026-09-09T09:15:00Z" },
   { id: "t3", label: "Withdrawal to TON wallet", amount: -500, date: "2026-09-05T18:00:00Z" },
-  { id: "t4", label: "Donation from @mike_photo", amount: 200, date: "2026-09-03T11:45:00Z" },
-  { id: "t5", label: "Platform fee", amount: -25, date: "2026-09-01T08:00:00Z" },
-  { id: "t6", label: "Donation from @luna_crypto", amount: 320, date: "2026-08-28T16:20:00Z" },
+  { id: "t4", label: "Donation from @mmd", amount: 200, date: "2026-09-03T11:45:00Z" },
+  { id: "t5", label: "Premium subscription", amount: -25, date: "2026-09-01T08:00:00Z" },
+  { id: "t6", label: "Donation from @nika", amount: 320, date: "2026-08-28T16:20:00Z" },
 ];
 
 const WITHDRAWAL_MIN_STARS = 1000;

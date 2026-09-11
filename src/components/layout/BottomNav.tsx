@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Search, Plus, User } from "lucide-react";
+import { Home, Search, SquarePlus, User } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { PremiumParticles } from "@/components/ui/PremiumParticles";
 
 const navItems = [
   { href: "/", icon: Home, label: "Home" },
-  { href: "/explore/", icon: Search, label: "Explore" },
-  { href: "/new-post/", icon: Plus, label: "New Post" },
+  { href: "/explore/", icon: Search, label: "Search" },
+  { href: "/new-post/", icon: SquarePlus, label: "Create Post" },
   { href: "/profile/", icon: User, label: "Profile" },
 ];
 

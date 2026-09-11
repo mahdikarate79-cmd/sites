@@ -9,9 +9,10 @@ import { usePrototype } from "@/lib/hooks/usePrototype";
 
 interface HeaderProps {
   title?: string;
+  hideActions?: boolean;
 }
 
-export function Header({ title }: HeaderProps) {
+export function Header({ title, hideActions }: HeaderProps) {
   const { state, clearChatUnread, clearNotificationUnread } = usePrototype();
 
   return (
@@ -23,25 +24,27 @@ export function Header({ title }: HeaderProps) {
         ) : (
           <Logo />
         )}
-        <div className="flex items-center gap-1">
-          <Link
-            href="/chat/"
-            onClick={clearChatUnread}
-            className="relative p-2.5 rounded-full hover:bg-surface transition-colors"
-            aria-label="Chat"
-          >
-            <MessageCircle className="w-5 h-5 text-text" />
-            <NotificationBadge count={state.chatUnread} />
-          </Link>
-          <button
-            onClick={clearNotificationUnread}
-            className="relative p-2.5 rounded-full hover:bg-surface transition-colors"
-            aria-label="Notifications"
-          >
-            <Bell className="w-5 h-5 text-text" />
-            <NotificationBadge count={state.notificationUnread} />
-          </button>
-        </div>
+        {!hideActions && (
+          <div className="flex items-center gap-1">
+            <Link
+              href="/chat/"
+              onClick={clearChatUnread}
+              className="relative p-2.5 rounded-full hover:bg-surface transition-colors"
+              aria-label="Chat"
+            >
+              <MessageCircle className="w-5 h-5 text-text" />
+              <NotificationBadge count={state.chatUnread} />
+            </Link>
+            <button
+              onClick={clearNotificationUnread}
+              className="relative p-2.5 rounded-full hover:bg-surface transition-colors"
+              aria-label="Notifications"
+            >
+              <Bell className="w-5 h-5 text-text" />
+              <NotificationBadge count={state.notificationUnread} />
+            </button>
+          </div>
+        )}
       </div>
     </header>
   );

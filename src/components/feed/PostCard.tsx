@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Post } from "@/lib/types";
 import { Avatar } from "@/components/ui/Avatar";
@@ -16,25 +16,30 @@ import { formatTimeAgo } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
 import { usePrototype } from "@/lib/hooks/usePrototype";
 import { mockPosts } from "@/data/mock/posts";
+import { buildReelItems, findReelIndex } from "@/lib/utils/reels";
 
 interface PostCardProps {
   post: Post;
   onHide?: () => void;
-  videoPosts?: Post[];
-  videoIndex?: number;
+  allPosts?: Post[];
 }
 
-export function PostCard({ post, onHide, videoPosts, videoIndex }: PostCardProps) {
+export function PostCard({ post, onHide, allPosts }: PostCardProps) {
   const [donateOpen, setDonateOpen] = useState(false);
   const [reelsOpen, setReelsOpen] = useState(false);
+  const [reelMediaIndex, setReelMediaIndex] = useState(0);
   const { isFollowing, isBlocked } = usePrototype();
 
   if (isBlocked(post.author.id)) return null;
 
-  const hasVideo = post.media?.some((m) => m.type === "video");
-  const reels = videoPosts ?? mockPosts.filter((p) => p.media?.some((m) => m.type === "video"));
-  const reelIdx = videoIndex ?? reels.findIndex((p) => p.id === post.id);
+  const reelItems = useMemo(() => buildReelItems(allPosts ?? mockPosts), [allPosts]);
+  const hasReelMedia = post.media?.some((m) => m.type === "video" || m.type === "image" || m.type === "gif");
   const profileHref = `/profile/${post.author.username}/`;
+
+  const openReels = (mediaIndex: number) => {
+    setReelMediaIndex(mediaIndex);
+    setReelsOpen(true);
+  };
 
   return (
     <>
@@ -74,11 +79,13 @@ export function PostCard({ post, onHide, videoPosts, videoIndex }: PostCardProps
                       key={i}
                       src={m.url}
                       thumbnail={m.thumbnail}
-                      className="aspect-[9/16] max-h-[480px]"
-                      onPlay={() => setReelsOpen(true)}
+                      className="aspect-[9/16] max-h-[480px] cursor-pointer"
+                      onPlay={() => openReels(i)}
                     />
                   ) : (
-                    <LazyImage key={i} src={m.url} thumbnail={m.thumbnail} alt="Post image" className="aspect-[4/3]" />
+                    <button key={i} type="button" onClick={() => openReels(i)} className="block w-full cursor-pointer">
+                      <LazyImage src={m.url} thumbnail={m.thumbnail} alt="Post image" className="aspect-[4/3]" />
+                    </button>
                   )
                 )}
               </div>
@@ -91,12 +98,12 @@ export function PostCard({ post, onHide, videoPosts, videoIndex }: PostCardProps
 
       <DonateModal open={donateOpen} onClose={() => setDonateOpen(false)} post={post} />
 
-      {hasVideo && reelsOpen && (
+      {hasReelMedia && reelsOpen && (
         <ReelsViewer
           open
           onClose={() => setReelsOpen(false)}
-          posts={reels}
-          initialIndex={reelIdx >= 0 ? reelIdx : 0}
+          items={reelItems}
+          initialIndex={findReelIndex(reelItems, post.id, reelMediaIndex)}
         />
       )}
     </>
