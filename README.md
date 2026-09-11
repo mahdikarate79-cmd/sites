@@ -44,6 +44,13 @@ npm run build:gh-pages # GitHub Pages build (base path /sites)
 
 ## Deployment
 
-Automatically deployed to GitHub Pages on push to `main`.
+On push to `main`, GitHub Actions builds the site and publishes to the `gh-pages` branch.
 
-Live: https://mahdikarate79-cmd.github.io/sites/
+### One-time setup
+
+1. Go to **Settings → Pages** in the repository
+2. Set **Source** to **Deploy from a branch**
+3. Select branch: `gh-pages` / folder: `/ (root)`
+4. Save
+
+Live URL: https://mahdikarate79-cmd.github.io/sites/
