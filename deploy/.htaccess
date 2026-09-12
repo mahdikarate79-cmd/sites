@@ -1,0 +1,11 @@
+DirectoryIndex index.html
+Options -Indexes
+
+# If Node.js app is not running, at least open the site homepage
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteRule ^api/ - [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^ index.html [L]
+</IfModule>

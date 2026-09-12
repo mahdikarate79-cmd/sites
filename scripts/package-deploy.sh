@@ -2,23 +2,18 @@
 set -e
 cd "$(dirname "$0")/.."
 
-echo "Building production frontend..."
-npm run build:prod
+bash scripts/prepare-deploy.sh
 
 ZIP_NAME="sheytoni-deploy.zip"
 rm -f "$ZIP_NAME"
 
 echo "Creating $ZIP_NAME ..."
-zip -r "$ZIP_NAME" \
-  backend \
-  out \
-  public \
-  package.json \
-  package-lock.json \
-  start.sh \
-  .env \
-  DEPLOY.md \
-  -x "backend/data/store.json" "backend/data/sheytoni.db*" "*/node_modules/*" "*/.git/*"
+cd deploy
+zip -r "../$ZIP_NAME" . \
+  -x "node_modules/*" "backend/data/sheytoni.db*" "*.git/*"
 
-echo "Done: $ZIP_NAME"
-echo "Upload to your host, extract into x.venify.xyz folder, then run: chmod +x start.sh && ./start.sh"
+cd ..
+echo ""
+echo "✅ Ready: $ZIP_NAME"
+echo "   Upload to x.venify.xyz, extract, then setup Node.js App in cPanel"
+echo "   Startup file: backend/server.mjs"

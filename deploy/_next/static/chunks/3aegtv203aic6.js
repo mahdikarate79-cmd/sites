@@ -1,0 +1,1 @@
+(globalThis.TURBOPACK||(globalThis.TURBOPACK=[])).push(["object"==typeof document?document.currentScript:void 0,44733,e=>{"use strict";var t=e.i(43476),i=e.i(71645),r=e.i(45206);e.s(["MiniAppGuard",0,function({children:e}){let{isMiniApp:u,requireMiniApp:c}=(0,r.useTelegramGate)();return(0,i.useEffect)(()=>{u||c()},[u,c]),(0,t.jsx)(t.Fragment,{children:e})}])}]);

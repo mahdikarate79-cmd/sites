@@ -1,0 +1,4 @@
+node_modules/
+backend/data/sheytoni.db
+backend/data/sheytoni.db-wal
+backend/data/sheytoni.db-shm

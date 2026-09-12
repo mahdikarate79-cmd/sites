@@ -9,6 +9,7 @@
     "build:gh-pages": "GITHUB_PAGES=true NEXT_PUBLIC_BASE_PATH=/sites next build",
     "start": "node backend/server.mjs",
     "package": "bash scripts/package-deploy.sh",
+    "deploy:prepare": "bash scripts/prepare-deploy.sh",
     "lint": "eslint"
   },
   "dependencies": {
