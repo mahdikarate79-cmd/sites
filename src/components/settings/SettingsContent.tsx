@@ -13,6 +13,7 @@ import {
   Clapperboard,
   HelpCircle,
   Shield,
+  Users,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { UserName } from "@/components/ui/UserName";
@@ -29,10 +30,10 @@ const THEME_OPTIONS: { value: Theme; label: string; icon: typeof Monitor }[] = [
 
 const LINK_ITEMS = [
   { href: "#", label: "Premium", icon: Crown, description: "Unlock exclusive features" },
-  { href: "#", label: "Bookmarks", icon: Bookmark, description: "Saved posts and reels" },
+  { href: "/settings/bookmarks/", label: "Bookmarks", icon: Bookmark, description: "Saved posts and reels" },
   { href: "/creator-studio/", label: "Creator Studio", icon: Clapperboard, description: "Earnings and analytics" },
-  { href: "#", label: "Help", icon: HelpCircle, description: "Support and FAQ" },
-  { href: "#", label: "Privacy", icon: Shield, description: "Privacy and security" },
+  { href: "/settings/help/", label: "Help", icon: HelpCircle, description: "Support and FAQ" },
+  { href: "/settings/privacy/", label: "Privacy", icon: Shield, description: "Privacy and security" },
 ];
 
 export function SettingsContent() {
@@ -63,14 +64,14 @@ export function SettingsContent() {
             <ChevronRight className="w-5 h-5 text-text-muted shrink-0" />
           </Link>
           <div className="flex justify-around px-4 py-3 border-t border-border text-center text-sm">
-            <div>
+            <Link href="/settings/following/" className="hover:opacity-80 transition-opacity">
               <p className="font-semibold">{formatCount(currentUser.following)}</p>
               <p className="text-text-muted text-xs">Following</p>
-            </div>
-            <div>
+            </Link>
+            <Link href="/settings/followers/" className="hover:opacity-80 transition-opacity">
               <p className="font-semibold">{formatCount(currentUser.followers)}</p>
               <p className="text-text-muted text-xs">Followers</p>
-            </div>
+            </Link>
             <div>
               <p className="font-semibold">{formatCount(currentUser.postsCount)}</p>
               <p className="text-text-muted text-xs">Posts</p>
@@ -88,7 +89,7 @@ export function SettingsContent() {
 
         <section className="glass-nav rounded-2xl overflow-hidden">
           <div className="px-4 py-3 border-b border-border">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Theme</h2>
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Appearance</h2>
           </div>
           <div className="divide-y divide-border">
             {THEME_OPTIONS.map(({ value, label, icon: Icon }) => (

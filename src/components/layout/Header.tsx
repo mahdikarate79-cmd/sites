@@ -35,14 +35,15 @@ export function Header({ title, hideActions }: HeaderProps) {
               <MessageCircle className="w-5 h-5 text-text" />
               <NotificationBadge count={state.chatUnread} />
             </Link>
-            <button
+            <Link
+              href="/notifications/"
               onClick={clearNotificationUnread}
               className="relative p-2.5 rounded-full hover:bg-surface transition-colors"
               aria-label="Notifications"
             >
               <Bell className="w-5 h-5 text-text" />
               <NotificationBadge count={state.notificationUnread} />
-            </button>
+            </Link>
           </div>
         )}
       </div>

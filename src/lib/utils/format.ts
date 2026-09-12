@@ -1,7 +1,16 @@
+function formatCompact(n: number, divisor: number, suffix: string): string {
+  const value = n / divisor;
+  if (value >= 100) return `${Math.floor(value)}${suffix}`;
+  const rounded = Math.round(value * 10) / 10;
+  const str = rounded.toFixed(1).replace(/\.0$/, "");
+  return `${str}${suffix}`;
+}
+
 export function formatCount(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, "")}K`;
-  return n.toString();
+  if (n < 1000) return n.toString();
+  if (n < 1_000_000) return formatCompact(n, 1000, "k");
+  if (n < 1_000_000_000) return formatCompact(n, 1_000_000, "m");
+  return formatCompact(n, 1_000_000_000, "b");
 }
 
 export function formatTimeAgo(dateStr: string): string {
@@ -13,7 +22,10 @@ export function formatTimeAgo(dateStr: string): string {
   if (hours < 24) return `${hours}h`;
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days}d`;
-  return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const weeks = Math.floor(days / 7);
+  if (weeks < 52) return `${weeks}w`;
+  const years = Math.floor(days / 365);
+  return `${years}y`;
 }
 
 export function formatChatTime(dateStr: string): string {

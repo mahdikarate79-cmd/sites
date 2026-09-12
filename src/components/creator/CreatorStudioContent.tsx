@@ -19,6 +19,7 @@ import { formatCount, formatStars } from "@/lib/utils/format";
 import { starsToUsd, formatUsd } from "@/lib/constants/stars";
 import { useToast } from "@/components/ui/ToastProvider";
 import { usePrototype } from "@/lib/hooks/usePrototype";
+import { TransactionRecord } from "@/lib/types";
 import { cn } from "@/lib/utils/cn";
 
 const STATS = {
@@ -29,22 +30,6 @@ const STATS = {
 };
 
 const STARS_LAST_21_DAYS = 1_250;
-
-interface Transaction {
-  id: string;
-  label: string;
-  amount: number;
-  date: string;
-}
-
-const INITIAL_TRANSACTIONS: Transaction[] = [
-  { id: "t1", label: "Donation from @alex", amount: 150, date: "2026-09-10T14:30:00Z" },
-  { id: "t2", label: "Donation from @sara", amount: 75, date: "2026-09-09T09:15:00Z" },
-  { id: "t3", label: "Withdrawal to TON wallet", amount: -500, date: "2026-09-05T18:00:00Z" },
-  { id: "t4", label: "Donation from @mmd", amount: 200, date: "2026-09-03T11:45:00Z" },
-  { id: "t5", label: "Premium subscription", amount: -25, date: "2026-09-01T08:00:00Z" },
-  { id: "t6", label: "Donation from @nika", amount: 320, date: "2026-08-28T16:20:00Z" },
-];
 
 const WITHDRAWAL_MIN_STARS = 1000;
 
@@ -57,9 +42,10 @@ export function CreatorStudioContent() {
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [walletAddress, setWalletAddress] = useState("");
   const [amountInput, setAmountInput] = useState("1000");
-  const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
+  const [selectedTx, setSelectedTx] = useState<TransactionRecord | null>(null);
   const { showToast } = useToast();
   const { state, withdrawEarnings } = usePrototype();
+  const transactions = state.transactions;
 
   const available = state.earnings;
   const amount = Math.max(0, parseInt(amountInput, 10) || 0);
@@ -95,15 +81,6 @@ export function CreatorStudioContent() {
       showToast("Insufficient balance");
       return;
     }
-    setTransactions((prev) => [
-      {
-        id: `t_${Date.now()}`,
-        label: `Withdrawal to ${walletAddress.trim().slice(0, 8)}...`,
-        amount: -amount,
-        date: new Date().toISOString(),
-      },
-      ...prev,
-    ]);
     showToast("Withdrawal request submitted");
     setWithdrawOpen(false);
     setWalletAddress("");
@@ -176,10 +153,16 @@ export function CreatorStudioContent() {
             <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Transactions</h2>
           </div>
           <div className="divide-y divide-border">
-            {transactions.map(({ id, label, amount: txAmount, date }) => {
+            {transactions.map((tx) => {
+              const { id, label, amount: txAmount, date } = tx;
               const isCredit = txAmount > 0;
               return (
-                <div key={id} className="flex items-center gap-3 px-4 py-3.5">
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setSelectedTx(tx)}
+                  className="flex items-center gap-3 px-4 py-3.5 w-full text-left hover:bg-surface/40 transition-colors"
+                >
                   <div
                     className={cn(
                       "w-9 h-9 rounded-full flex items-center justify-center shrink-0",
@@ -208,12 +191,25 @@ export function CreatorStudioContent() {
                     </span>
                     <TelegramStarIcon size={14} />
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>
         </section>
       </div>
+
+      <Modal open={!!selectedTx} onClose={() => setSelectedTx(null)} title="Transaction Details">
+        {selectedTx && (
+          <div className="px-4 py-4 space-y-3 text-sm">
+            <div className="flex justify-between"><span className="text-text-muted">Type</span><span className="capitalize">{selectedTx.type.replace("_", " ")}</span></div>
+            <div className="flex justify-between"><span className="text-text-muted">Amount</span><span className={cn("tabular-nums font-semibold", selectedTx.amount > 0 ? "text-green-500" : "text-like")}>{selectedTx.amount > 0 ? "+" : ""}{formatStars(selectedTx.amount)}</span></div>
+            <div className="flex justify-between"><span className="text-text-muted">Status</span><span className="capitalize">{selectedTx.status ?? "completed"}</span></div>
+            <div className="flex justify-between"><span className="text-text-muted">Date</span><span>{new Date(selectedTx.date).toLocaleString("en-US")}</span></div>
+            {selectedTx.hash && <div className="flex justify-between gap-4"><span className="text-text-muted shrink-0">Hash</span><span className="font-mono text-xs truncate">{selectedTx.hash}</span></div>}
+            <p className="text-text-muted text-xs pt-2 border-t border-border">{selectedTx.label}</p>
+          </div>
+        )}
+      </Modal>
 
       <Modal open={withdrawOpen} onClose={() => setWithdrawOpen(false)} title="Withdraw Earnings">
         <div className="px-4 py-4 space-y-4">

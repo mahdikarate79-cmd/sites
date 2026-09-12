@@ -10,9 +10,10 @@ interface PaidMediaModalProps {
 }
 
 export function PaidMediaModal({ stars, onClose, onUnlock }: PaidMediaModalProps) {
-  const { unlockPaidMedia } = usePrototype();
+  const { spendStars, unlockPaidMedia } = usePrototype();
 
   const handlePay = () => {
+    if (!spendStars(stars, "Paid media unlock", "paid_media")) return;
     unlockPaidMedia(stars);
     onUnlock();
   };

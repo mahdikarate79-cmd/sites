@@ -1,4 +1,4 @@
-import { Donator, PostDonationState, PrototypeState } from "@/lib/types";
+import { Donator, PostDonationState, PrototypeState, TransactionRecord } from "@/lib/types";
 import { currentUser } from "@/data/mock/users";
 
 const STORAGE_KEY = "sheytoni-prototype";
@@ -19,7 +19,66 @@ const DEFAULT_STATE: PrototypeState = {
   notificationUnread: 10,
   deletedChats: [],
   earnings: 2500,
+  starBalance: 999_999,
+  transactions: [
+    {
+      id: "t1",
+      type: "donation",
+      amount: 150,
+      label: "Donation from @alex",
+      date: "2026-09-10T14:30:00Z",
+      from: "u2",
+      status: "completed",
+      hash: "0xa1b2c3d4",
+    },
+    {
+      id: "t2",
+      type: "donation",
+      amount: 75,
+      label: "Donation from @sara",
+      date: "2026-09-09T09:15:00Z",
+      from: "u3",
+      status: "completed",
+      hash: "0xe5f6a7b8",
+    },
+    {
+      id: "t3",
+      type: "withdrawal",
+      amount: -500,
+      label: "Withdrawal to TON wallet",
+      date: "2026-09-05T18:00:00Z",
+      status: "completed",
+      hash: "0xc9d0e1f2",
+    },
+    {
+      id: "t5",
+      type: "premium",
+      amount: -25,
+      label: "Premium subscription",
+      date: "2026-09-01T08:00:00Z",
+      status: "completed",
+      hash: "0xf3a4b5c6",
+    },
+  ],
 };
+
+export const UNLIMITED_STAR_REFILL = 999_999;
+
+export function ensureStarBalance(balance: number): number {
+  return balance < 100_000 ? UNLIMITED_STAR_REFILL : balance;
+}
+
+export function createTransaction(
+  partial: Omit<TransactionRecord, "id" | "date"> & { date?: string }
+): TransactionRecord {
+  return {
+    id: `tx_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    date: partial.date ?? new Date().toISOString(),
+    status: partial.status ?? "completed",
+    hash: partial.hash ?? `0x${Math.random().toString(16).slice(2, 10)}`,
+    ...partial,
+  };
+}
 
 export function loadState(): PrototypeState {
   if (typeof window === "undefined") return DEFAULT_STATE;
