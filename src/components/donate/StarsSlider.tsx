@@ -2,6 +2,7 @@
 
 import { TelegramStarIcon } from "@/components/ui/TelegramStarIcon";
 import { formatStars } from "@/lib/utils/format";
+import { cn } from "@/lib/utils/cn";
 
 interface StarsSliderProps {
   value: number;
@@ -10,13 +11,17 @@ interface StarsSliderProps {
   topThreshold?: number;
   onChange: (value: number) => void;
   compact?: boolean;
+  wide?: boolean;
 }
 
-export function StarsSlider({ value, min = 1, max = 10000, topThreshold = 0, onChange, compact }: StarsSliderProps) {
+export function StarsSlider({ value, min = 1, max = 10000, topThreshold = 0, onChange, compact, wide }: StarsSliderProps) {
   const percent = ((value - min) / (max - min)) * 100;
 
   return (
-    <div className={compact ? "relative pt-11 pb-2 px-1" : "relative pt-14 pb-3 px-1"}>
+    <div className={cn(
+      compact ? "relative pt-11 pb-2" : "relative pt-14 pb-3 px-1",
+      wide ? "px-0 -mx-1" : compact ? "px-1" : undefined
+    )}>
       <div
         className="absolute top-0 z-10 pointer-events-none transition-[left] duration-75 ease-out"
         style={{ left: `clamp(28px, ${percent}%, calc(100% - 28px))`, transform: "translateX(-50%)" }}
@@ -41,7 +46,7 @@ export function StarsSlider({ value, min = 1, max = 10000, topThreshold = 0, onC
         </div>
       </div>
 
-      <div className="relative h-3 rounded-full overflow-visible">
+      <div className={cn("relative rounded-full overflow-visible", wide ? "h-3.5" : "h-3")}>
         <div className="absolute inset-0 rounded-full bg-[#2a2a2a] border border-white/5" />
         <div
           className="absolute inset-y-0 left-0 rounded-full overflow-hidden transition-[width] duration-75 ease-out"

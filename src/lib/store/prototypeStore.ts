@@ -67,6 +67,8 @@ const DEFAULT_STATE: PrototypeState = {
   comments: {},
   commentCounts: {},
   profileEdits: {},
+  userPosts: [],
+  unlockedPaidPosts: [],
 };
 
 export const UNLIMITED_STAR_REFILL = 999_999;

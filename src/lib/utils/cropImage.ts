@@ -1,7 +1,12 @@
 export interface CropRect {
-  x: number;
-  y: number;
-  size: number;
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+export function fullCropRect(width: number, height: number): CropRect {
+  return { left: 0, top: 0, right: width, bottom: height };
 }
 
 export async function cropImageToDataUrl(
@@ -25,24 +30,25 @@ export async function cropImageToDataUrl(
 
       const scaleX = img.naturalWidth / containerWidth;
       const scaleY = img.naturalHeight / containerHeight;
-      const sx = crop.x * scaleX;
-      const sy = crop.y * scaleY;
-      const sSize = crop.size * Math.max(scaleX, scaleY);
+      const sx = crop.left * scaleX;
+      const sy = crop.top * scaleY;
+      const sw = (crop.right - crop.left) * scaleX;
+      const sh = (crop.bottom - crop.top) * scaleY;
 
-      canvas.width = sSize;
-      canvas.height = sSize;
+      canvas.width = sw;
+      canvas.height = sh;
 
       if (mirrored) {
-        ctx.translate(sSize, 0);
+        ctx.translate(sw, 0);
         ctx.scale(-1, 1);
       }
       if (rotation) {
-        ctx.translate(sSize / 2, sSize / 2);
+        ctx.translate(sw / 2, sh / 2);
         ctx.rotate((rotation * Math.PI) / 180);
-        ctx.translate(-sSize / 2, -sSize / 2);
+        ctx.translate(-sw / 2, -sh / 2);
       }
 
-      ctx.drawImage(img, sx, sy, sSize, sSize, 0, 0, sSize, sSize);
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
       resolve(canvas.toDataURL("image/jpeg", 0.92));
     };
     img.onerror = () => reject(new Error("Failed to load image"));

@@ -8,7 +8,7 @@ export const currentUser: User = {
   cover: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1200&h=400&fit=crop",
   bio: "Building the future of social media.",
   verified: true,
-  premium: true,
+  premium: false,
   followers: 12400,
   following: 342,
   postsCount: 89,

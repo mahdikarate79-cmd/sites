@@ -5,7 +5,7 @@ import Image from "next/image";
 import { FlipHorizontal, RotateCw } from "lucide-react";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { GalleryItem } from "@/lib/types";
-import { cropImageToDataUrl, CropRect } from "@/lib/utils/cropImage";
+import { cropImageToDataUrl, CropRect, fullCropRect } from "@/lib/utils/cropImage";
 
 interface RotateCropSheetProps {
   open: boolean;
@@ -21,6 +21,9 @@ interface RotateCropSheetProps {
 }
 
 const CONTAINER_SIZE = 280;
+const MIN_SIZE = 48;
+
+type Edge = "top" | "bottom" | "left" | "right" | "move";
 
 export function RotateCropSheet({
   open,
@@ -34,41 +37,70 @@ export function RotateCropSheet({
   onCroppedUrlChange,
   onReset,
 }: RotateCropSheetProps) {
-  const [crop, setCrop] = useState<CropRect>({ x: 40, y: 40, size: 200 });
-  const dragging = useRef(false);
-  const dragStart = useRef({ x: 0, y: 0, cropX: 0, cropY: 0 });
+  const [crop, setCrop] = useState<CropRect>(() => fullCropRect(CONTAINER_SIZE, CONTAINER_SIZE));
+  const activeEdge = useRef<Edge | null>(null);
+  const dragStart = useRef({ x: 0, y: 0, crop: fullCropRect(CONTAINER_SIZE, CONTAINER_SIZE) });
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (open) {
-      const size = Math.min(200, CONTAINER_SIZE - 40);
-      const offset = (CONTAINER_SIZE - size) / 2;
-      setCrop({ x: offset, y: offset, size });
-    }
+    if (open) setCrop(fullCropRect(CONTAINER_SIZE, CONTAINER_SIZE));
   }, [open, item?.id]);
 
   const displayUrl = croppedUrl ?? item?.url ?? "";
 
-  const onPointerDown = (e: React.PointerEvent) => {
-    dragging.current = true;
-    dragStart.current = { x: e.clientX, y: e.clientY, cropX: crop.x, cropY: crop.y };
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  const clampCrop = (next: CropRect): CropRect => {
+    let { left, top, right, bottom } = next;
+    left = Math.max(0, Math.min(left, CONTAINER_SIZE - MIN_SIZE));
+    top = Math.max(0, Math.min(top, CONTAINER_SIZE - MIN_SIZE));
+    right = Math.max(left + MIN_SIZE, Math.min(right, CONTAINER_SIZE));
+    bottom = Math.max(top + MIN_SIZE, Math.min(bottom, CONTAINER_SIZE));
+    return { left, top, right, bottom };
+  };
+
+  const startDrag = (edge: Edge, e: React.PointerEvent) => {
+    activeEdge.current = edge;
+    dragStart.current = { x: e.clientX, y: e.clientY, crop: { ...crop } };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
-    if (!dragging.current) return;
+    if (!activeEdge.current) return;
     const dx = e.clientX - dragStart.current.x;
     const dy = e.clientY - dragStart.current.y;
-    const max = CONTAINER_SIZE - crop.size;
-    setCrop((c) => ({
-      ...c,
-      x: Math.max(0, Math.min(max, dragStart.current.cropX + dx)),
-      y: Math.max(0, Math.min(max, dragStart.current.cropY + dy)),
-    }));
+    const base = dragStart.current.crop;
+
+    let next: CropRect;
+    switch (activeEdge.current) {
+      case "top":
+        next = { ...base, top: base.top + dy };
+        break;
+      case "bottom":
+        next = { ...base, bottom: base.bottom + dy };
+        break;
+      case "left":
+        next = { ...base, left: base.left + dx };
+        break;
+      case "right":
+        next = { ...base, right: base.right + dx };
+        break;
+      case "move":
+        const w = base.right - base.left;
+        const h = base.bottom - base.top;
+        next = {
+          left: base.left + dx,
+          top: base.top + dy,
+          right: base.left + dx + w,
+          bottom: base.top + dy + h,
+        };
+        break;
+      default:
+        return;
+    }
+    setCrop(clampCrop(next));
   };
 
-  const onPointerUp = () => {
-    dragging.current = false;
+  const endDrag = () => {
+    activeEdge.current = null;
   };
 
   const handleApplyCrop = useCallback(async () => {
@@ -87,15 +119,27 @@ export function RotateCropSheet({
 
   if (!item) return null;
 
+  const cropW = crop.right - crop.left;
+  const cropH = crop.bottom - crop.top;
+
   return (
     <BottomSheet open={open} onClose={onClose} title="Edit media">
       <div className="px-4 pb-4">
         <div
           ref={containerRef}
-          className="relative w-[280px] h-[280px] mx-auto rounded-xl overflow-hidden bg-black mb-4"
+          className="relative w-[280px] h-[280px] mx-auto rounded-xl overflow-hidden bg-black mb-4 touch-none"
+          onPointerMove={onPointerMove}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
         >
           {item.type === "video" ? (
-            <video src={displayUrl} className="w-full h-full object-cover" style={{ transform: `rotate(${rotation}deg) scaleX(${mirrored ? -1 : 1})` }} muted playsInline />
+            <video
+              src={displayUrl}
+              className="w-full h-full object-cover"
+              style={{ transform: `rotate(${rotation}deg) scaleX(${mirrored ? -1 : 1})` }}
+              muted
+              playsInline
+            />
           ) : (
             <Image
               src={displayUrl}
@@ -107,19 +151,39 @@ export function RotateCropSheet({
             />
           )}
           {item.type !== "video" && (
-            <div
-              className="absolute border-2 border-white rounded-sm shadow-[0_0_0_9999px_rgba(0,0,0,0.55)] cursor-move touch-none"
-              style={{ left: crop.x, top: crop.y, width: crop.size, height: crop.size }}
-              onPointerDown={onPointerDown}
-              onPointerMove={onPointerMove}
-              onPointerUp={onPointerUp}
-            >
-              <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none">
-                {Array.from({ length: 9 }).map((_, i) => (
-                  <div key={i} className="border border-white/30" />
-                ))}
+            <>
+              <div
+                className="absolute border-2 border-white/90 rounded-sm shadow-[0_0_0_9999px_rgba(0,0,0,0.55)] cursor-move"
+                style={{ left: crop.left, top: crop.top, width: cropW, height: cropH }}
+                onPointerDown={(e) => startDrag("move", e)}
+              >
+                <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none">
+                  {Array.from({ length: 9 }).map((_, i) => (
+                    <div key={i} className="border border-white/25" />
+                  ))}
+                </div>
               </div>
-            </div>
+              <div
+                className="absolute left-0 right-0 h-3 cursor-ns-resize z-20"
+                style={{ top: crop.top - 6 }}
+                onPointerDown={(e) => startDrag("top", e)}
+              />
+              <div
+                className="absolute left-0 right-0 h-3 cursor-ns-resize z-20"
+                style={{ top: crop.bottom - 6 }}
+                onPointerDown={(e) => startDrag("bottom", e)}
+              />
+              <div
+                className="absolute top-0 bottom-0 w-3 cursor-ew-resize z-20"
+                style={{ left: crop.left - 6 }}
+                onPointerDown={(e) => startDrag("left", e)}
+              />
+              <div
+                className="absolute top-0 bottom-0 w-3 cursor-ew-resize z-20"
+                style={{ left: crop.right - 6 }}
+                onPointerDown={(e) => startDrag("right", e)}
+              />
+            </>
           )}
         </div>
 
@@ -136,7 +200,7 @@ export function RotateCropSheet({
 
         <div className="flex gap-2">
           <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-surface text-sm">Cancel</button>
-          <button type="button" onClick={() => { onReset(); onCroppedUrlChange(undefined); }} className="flex-1 py-2.5 rounded-xl bg-surface text-sm">Reset</button>
+          <button type="button" onClick={() => { onReset(); onCroppedUrlChange(undefined); setCrop(fullCropRect(CONTAINER_SIZE, CONTAINER_SIZE)); }} className="flex-1 py-2.5 rounded-xl bg-surface text-sm">Reset</button>
           <button type="button" onClick={handleApplyCrop} className="flex-1 py-2.5 rounded-xl bg-[#3b82f6] text-white text-sm font-medium">
             {item.type === "video" ? "Done" : "Crop"}
           </button>

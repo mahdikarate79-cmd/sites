@@ -1,24 +1,32 @@
 import { Post } from "@/lib/types";
 import { mockPosts } from "@/data/mock/posts";
+import { loadState } from "@/lib/store/prototypeStore";
+import { shouldExcludeFromPublicDiscovery } from "@/lib/utils/postAccess";
+
+function allPosts(): Post[] {
+  if (typeof window === "undefined") return mockPosts;
+  const state = loadState();
+  return [...(state.userPosts ?? []), ...mockPosts];
+}
 
 export async function getFeedPosts(): Promise<Post[]> {
-  // TODO: GET /api/posts/feed
-  return mockPosts;
+  return allPosts();
 }
 
 export async function getPostById(id: string): Promise<Post | undefined> {
-  // TODO: GET /api/posts/:id
-  return mockPosts.find((p) => p.id === id);
+  return allPosts().find((p) => p.id === id);
 }
 
 export async function getPostsByUser(userId: string): Promise<Post[]> {
-  // TODO: GET /api/users/:userId/posts
-  return mockPosts.filter((p) => p.author.id === userId);
+  return allPosts().filter((p) => p.author.id === userId);
+}
+
+export async function getPublicPosts(): Promise<Post[]> {
+  return allPosts().filter((p) => !shouldExcludeFromPublicDiscovery(p));
 }
 
 export async function toggleLike(postId: string): Promise<{ liked: boolean; likes: number }> {
-  // TODO: POST /api/posts/:id/like
-  const post = mockPosts.find((p) => p.id === postId);
+  const post = allPosts().find((p) => p.id === postId);
   if (!post) throw new Error("Post not found");
   post.liked = !post.liked;
   post.likes += post.liked ? 1 : -1;
@@ -26,15 +34,18 @@ export async function toggleLike(postId: string): Promise<{ liked: boolean; like
 }
 
 export async function toggleBookmark(postId: string): Promise<{ bookmarked: boolean }> {
-  // TODO: POST /api/posts/:id/bookmark
-  const post = mockPosts.find((p) => p.id === postId);
+  const post = allPosts().find((p) => p.id === postId);
   if (!post) throw new Error("Post not found");
   post.bookmarked = !post.bookmarked;
   return { bookmarked: !!post.bookmarked };
 }
 
 export async function searchPosts(query: string): Promise<Post[]> {
-  // TODO: GET /api/posts/search?q=
   const q = query.toLowerCase();
-  return mockPosts.filter((p) => p.content.toLowerCase().includes(q));
+  return allPosts().filter(
+    (p) =>
+      !shouldExcludeFromPublicDiscovery(p) &&
+      (p.content.toLowerCase().includes(q) ||
+        p.tags?.some((t) => t.includes(q.replace(/^#/, ""))))
+  );
 }

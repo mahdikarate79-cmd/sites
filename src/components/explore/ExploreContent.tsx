@@ -10,6 +10,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { UserName } from "@/components/ui/UserName";
 import { ReelsViewer } from "@/components/video/ReelsViewer";
 import { buildReelItems, findReelIndex } from "@/lib/utils/reels";
+import { shouldExcludeFromPublicDiscovery } from "@/lib/utils/postAccess";
 import { formatCount } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
 
@@ -28,7 +29,10 @@ export function ExploreContent() {
   const [reelsOpen, setReelsOpen] = useState(false);
   const [reelIndex, setReelIndex] = useState(0);
 
-  const reelItems = useMemo(() => buildReelItems(mockPosts), []);
+  const reelItems = useMemo(
+    () => buildReelItems(mockPosts.filter((p) => !shouldExcludeFromPublicDiscovery(p))),
+    []
+  );
 
   const accounts = useMemo(() => {
     let users = mockUsers.filter((u) => u.id !== "u1");
@@ -90,15 +94,15 @@ export function ExploreContent() {
 
   return (
     <div>
-      <div className="px-4 py-3 sticky top-0 z-30 bg-bg/90 backdrop-blur-sm safe-top">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+      <div className="px-5 py-4 sticky top-0 z-30 bg-bg/90 backdrop-blur-sm safe-top">
+        <div className="relative mx-1">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
           <input
             type="search"
             placeholder="Search Sheytoni..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-surface border border-border text-sm outline-none focus:border-text-muted transition-colors"
+            className="w-full pl-10 pr-11 py-3 rounded-2xl bg-surface border border-border text-sm outline-none focus:border-text-muted transition-colors"
           />
           <button
             onClick={() => setShowFilters(!showFilters)}

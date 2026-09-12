@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useState, ReactNode } from "react";
 import { Comment, Donator, Post, PostDonationState, PrototypeState, User } from "@/lib/types";
+import { canViewPostMedia, PostAccessContext, shouldShowInFeed } from "@/lib/utils/postAccess";
 import { loadState, saveState, getPostDonation, ensureStarBalance, createTransaction } from "@/lib/store/prototypeStore";
 import { currentUser as baseCurrentUser } from "@/data/mock/users";
 
@@ -45,6 +46,12 @@ interface PrototypeContextValue {
   addComment: (postId: string, content: string) => Comment;
   filterPosts: (posts: Post[]) => Post[];
   sortPosts: (posts: Post[]) => Post[];
+  addPost: (post: Post) => void;
+  isPaidPostUnlocked: (postId: string) => boolean;
+  unlockPaidPost: (postId: string, stars: number) => boolean;
+  canViewPost: (post: Post) => boolean;
+  shouldShowInFeed: (post: Post) => boolean;
+  getUserPosts: () => Post[];
 }
 
 const PrototypeContext = createContext<PrototypeContextValue | null>(null);
@@ -389,6 +396,44 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
     [state.interestedAuthors, state.notInterestedAuthors]
   );
 
+  const isPaidPostUnlocked = useCallback(
+    (postId: string) => state.unlockedPaidPosts.includes(postId),
+    [state.unlockedPaidPosts]
+  );
+
+  const unlockPaidPost = useCallback((postId: string, stars: number): boolean => {
+    if (stars <= 0 || state.starBalance < stars) return false;
+    const tx = createTransaction({ type: "paid_media", amount: -stars, label: "Paid post unlock", postId });
+    update((s) => ({
+      ...s,
+      starBalance: ensureStarBalance(s.starBalance - stars),
+      unlockedPaidPosts: [...new Set([...s.unlockedPaidPosts, postId])],
+      transactions: [tx, ...s.transactions].slice(0, 100),
+    }));
+    return true;
+  }, [update, state.starBalance]);
+
+  const addPost = useCallback((post: Post) => {
+    update((s) => ({ ...s, userPosts: [post, ...s.userPosts] }));
+  }, [update]);
+
+  const getUserPosts = useCallback(() => state.userPosts, [state.userPosts]);
+
+  const accessCtx = useCallback((): PostAccessContext => {
+    const user = { ...baseCurrentUser, ...state.profileEdits };
+    return { viewerId: user.id, isFollowing, isUnlocked: isPaidPostUnlocked };
+  }, [state.profileEdits, isFollowing, isPaidPostUnlocked]);
+
+  const canViewPostFn = useCallback(
+    (post: Post) => canViewPostMedia(post, accessCtx()),
+    [accessCtx]
+  );
+
+  const shouldShowInFeedFn = useCallback(
+    (post: Post) => shouldShowInFeed(post, accessCtx()),
+    [accessCtx]
+  );
+
   return (
     <PrototypeContext.Provider
       value={{
@@ -431,6 +476,12 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
         addComment,
         filterPosts,
         sortPosts,
+        addPost,
+        isPaidPostUnlocked,
+        unlockPaidPost,
+        canViewPost: canViewPostFn,
+        shouldShowInFeed: shouldShowInFeedFn,
+        getUserPosts,
       }}
     >
       {children}
@@ -474,6 +525,8 @@ const DEFAULT_LOAD: PrototypeState = {
   comments: {},
   commentCounts: {},
   profileEdits: {},
+  userPosts: [],
+  unlockedPaidPosts: [],
 };
 
 export function usePrototype() {

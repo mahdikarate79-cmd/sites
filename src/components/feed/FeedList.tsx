@@ -10,7 +10,7 @@ export function FeedList() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
-  const { filterPosts, sortPosts } = usePrototype();
+  const { filterPosts, sortPosts, shouldShowInFeed } = usePrototype();
 
   useEffect(() => {
     getFeedPosts().then((data) => {
@@ -19,7 +19,7 @@ export function FeedList() {
     });
   }, []);
 
-  const visible = sortPosts(filterPosts(posts)).filter((p) => !hidden.has(p.id));
+  const visible = sortPosts(filterPosts(posts)).filter((p) => !hidden.has(p.id) && shouldShowInFeed(p));
 
   const handleHide = (postId: string) => {
     setHidden((prev) => new Set([...prev, postId]));

@@ -24,7 +24,7 @@ export function DonateModal({ open, onClose, post }: DonateModalProps) {
   const [stars, setStars] = useState(64);
   const [showInTop, setShowInTop] = useState(true);
   const [donating, setDonating] = useState(false);
-  const { getDonation, donate, state } = usePrototype();
+  const { getDonation, donate } = usePrototype();
   const { showToast } = useToast();
 
   const donation = getDonation(post.id, {
@@ -52,13 +52,9 @@ export function DonateModal({ open, onClose, post }: DonateModalProps) {
   return (
     <BottomSheet open={open} onClose={onClose} title="Star Reaction" className="max-h-[88dvh] overflow-hidden">
       <div className="px-4 pb-5">
-        <StarsSlider value={stars} topThreshold={topThreshold} onChange={setStars} compact />
+        <StarsSlider value={stars} topThreshold={topThreshold} onChange={setStars} compact wide />
 
-        <p className="text-[10px] text-text-muted text-center mt-1">
-          Balance: <span className="text-white tabular-nums">{formatStars(state.starBalance)}</span> Stars
-        </p>
-
-        <p className="text-xs text-text-muted text-center leading-relaxed mt-1 mb-3 px-1">
+        <p className="text-xs text-text-muted text-center leading-relaxed mt-2 mb-3 px-1">
           Choose how many Stars you want to send to{" "}
           <span className="text-text font-medium">{post.author.displayName}</span> to support this post.
         </p>

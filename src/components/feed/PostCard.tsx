@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { Lock } from "lucide-react";
 import { Post } from "@/lib/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { UserName } from "@/components/ui/UserName";
@@ -10,13 +11,17 @@ import { LazyImage } from "@/components/ui/LazyImage";
 import { LazyVideo } from "@/components/ui/LazyVideo";
 import { PostMenu } from "./PostMenu";
 import { PostActions } from "./PostActions";
+import { PostAccessModal } from "./PostAccessModal";
 import { DonateModal } from "@/components/donate/DonateModal";
 import { ReelsViewer } from "@/components/video/ReelsViewer";
+import { SpoilerOverlay, PaidPriceBadge } from "@/components/chat/SpoilerOverlay";
 import { formatTimeAgo } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
 import { usePrototype } from "@/lib/hooks/usePrototype";
+import { useToast } from "@/components/ui/ToastProvider";
 import { mockPosts } from "@/data/mock/posts";
 import { buildReelItems, findReelIndex } from "@/lib/utils/reels";
+import { hasPrivateAccess, isPostPaid, isPostPrivate, PostAccessContext } from "@/lib/utils/postAccess";
 
 interface PostCardProps {
   post: Post;
@@ -28,16 +33,52 @@ export function PostCard({ post, onHide, allPosts }: PostCardProps) {
   const [donateOpen, setDonateOpen] = useState(false);
   const [reelsOpen, setReelsOpen] = useState(false);
   const [reelMediaIndex, setReelMediaIndex] = useState(0);
-  const { isFollowing } = usePrototype();
+  const [accessModal, setAccessModal] = useState<"paid" | "private" | null>(null);
+  const { isFollowing, isPaidPostUnlocked, unlockPaidPost, getCurrentUser } = usePrototype();
+  const { showToast } = useToast();
 
-  const reelItems = useMemo(() => buildReelItems(allPosts ?? mockPosts), [allPosts]);
+  const user = getCurrentUser();
+  const isAuthor = post.author.id === user.id;
+  const accessCtx: PostAccessContext = {
+    viewerId: user.id,
+    isFollowing,
+    isUnlocked: isPaidPostUnlocked,
+  };
+  const paid = isPostPaid(post);
+  const privatePost = isPostPrivate(post);
+  const privateLocked = privatePost && !isAuthor && !hasPrivateAccess(post, accessCtx);
+  const paidLocked = paid && !isAuthor && !isPaidPostUnlocked(post.id) && !privateLocked;
+
+  const reelSource = allPosts ?? mockPosts;
+  const reelItems = useMemo(
+    () => buildReelItems(reelSource.filter((p) => p.author.id === user.id || (!isPostPaid(p) && !isPostPrivate(p)))),
+    [reelSource, user.id]
+  );
   const hasReelMedia = post.media?.some((m) => m.type === "video" || m.type === "image" || m.type === "gif");
   const profileHref = `/profile/${post.author.username}/`;
 
   const openReels = (mediaIndex: number) => {
+    if (paidLocked || privateLocked) return;
     setReelMediaIndex(mediaIndex);
     setReelsOpen(true);
   };
+
+  const handleMediaClick = () => {
+    if (paidLocked) setAccessModal("paid");
+    else if (privateLocked) setAccessModal("private");
+  };
+
+  const handleUnlock = () => {
+    if (!post.paidStars) return;
+    if (unlockPaidPost(post.id, post.paidStars)) {
+      showToast("Content unlocked");
+      setAccessModal(null);
+    } else {
+      showToast("Not enough Stars");
+    }
+  };
+
+  const showMediaOverlay = paidLocked || privateLocked;
 
   return (
     <>
@@ -54,7 +95,7 @@ export function PostCard({ post, onHide, allPosts }: PostCardProps) {
                 </Link>
                 <span className="text-text-muted text-sm">·</span>
                 <span className="text-text-muted text-sm">{formatTimeAgo(post.createdAt)}</span>
-                {!isFollowing(post.author.id) && post.author.id !== "u1" && (
+                {!isFollowing(post.author.id) && post.author.id !== user.id && (
                   <FollowButton userId={post.author.id} size="sm" className="ml-1" />
                 )}
               </div>
@@ -66,22 +107,45 @@ export function PostCard({ post, onHide, allPosts }: PostCardProps) {
             )}
 
             {post.media && post.media.length > 0 && (
-              <div className={cn("mt-3 rounded-xl overflow-hidden border border-border", post.media.length > 1 && "grid grid-cols-2 gap-0.5")}>
-                {post.media.map((m, i) =>
-                  m.type === "video" ? (
-                    <LazyVideo
-                      key={i}
-                      src={m.url}
-                      thumbnail={m.thumbnail}
-                      className="aspect-[9/16] max-h-[480px] cursor-pointer"
-                      onPlay={() => openReels(i)}
-                    />
-                  ) : (
-                    <button key={i} type="button" onClick={() => openReels(i)} className="block w-full cursor-pointer">
-                      <LazyImage src={m.url} thumbnail={m.thumbnail} alt="Post image" className="aspect-[4/3]" />
-                    </button>
-                  )
-                )}
+              <div className={cn("mt-3 rounded-xl overflow-hidden border border-border relative", post.media.length > 1 && "grid grid-cols-2 gap-0.5")}>
+                {post.media.map((m, i) => (
+                  <div key={i} className="relative">
+                    {m.type === "video" ? (
+                      <LazyVideo
+                        src={showMediaOverlay ? (m.thumbnail ?? m.url) : m.url}
+                        thumbnail={m.thumbnail}
+                        className="aspect-[9/16] max-h-[480px] cursor-pointer"
+                        onPlay={() => (showMediaOverlay ? handleMediaClick() : openReels(i))}
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => (showMediaOverlay ? handleMediaClick() : openReels(i))}
+                        className="block w-full cursor-pointer relative"
+                      >
+                        <LazyImage src={m.url} thumbnail={m.thumbnail} alt="Post image" className="aspect-[4/3]" />
+                      </button>
+                    )}
+                    {showMediaOverlay && i === 0 && (
+                      paidLocked ? (
+                        <SpoilerOverlay stars={post.paidStars} onClick={handleMediaClick} />
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={handleMediaClick}
+                          className="absolute inset-0 flex items-center justify-center overflow-hidden"
+                        >
+                          <div className="absolute inset-0 bg-black/25" aria-hidden />
+                          <div className="relative z-[1] px-4 py-3 rounded-2xl glass-pill flex items-center gap-2">
+                            <Lock className="w-5 h-5 text-white/90" />
+                            <span className="text-xs text-white/90 font-medium">Private</span>
+                          </div>
+                        </button>
+                      )
+                    )}
+                    {paid && isAuthor && i === 0 && <PaidPriceBadge stars={post.paidStars!} />}
+                  </div>
+                ))}
               </div>
             )}
 
@@ -92,7 +156,17 @@ export function PostCard({ post, onHide, allPosts }: PostCardProps) {
 
       <DonateModal open={donateOpen} onClose={() => setDonateOpen(false)} post={post} />
 
-      {hasReelMedia && reelsOpen && (
+      {accessModal && (
+        <PostAccessModal
+          open
+          onClose={() => setAccessModal(null)}
+          post={post}
+          variant={accessModal}
+          onUnlock={accessModal === "paid" ? handleUnlock : undefined}
+        />
+      )}
+
+      {hasReelMedia && reelsOpen && !showMediaOverlay && (
         <ReelsViewer
           open
           onClose={() => setReelsOpen(false)}

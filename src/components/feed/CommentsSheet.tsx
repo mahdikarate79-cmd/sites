@@ -70,23 +70,28 @@ export function CommentsSheet({ open, onClose, postId, initialCount, onCountChan
   return (
     <BottomSheet open={open} onClose={onClose} title={`Comments · ${count}`}>
       <div className="flex flex-col max-h-[70dvh]">
-        <div className="flex-1 overflow-y-auto px-4 min-h-[200px] max-h-[50dvh] space-y-4">
+        <div className="flex-1 overflow-y-auto px-4 min-h-[200px] max-h-[50dvh]">
           {localComments.length === 0 && (
             <p className="text-center text-text-muted text-sm py-8">No comments yet</p>
           )}
-          {localComments.map((c) => (
-            <div key={c.id} className="flex gap-2.5">
-              <Avatar src={c.authorAvatar} alt="" size="sm" className="shrink-0 mt-0.5" />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1 flex-wrap">
-                  <UserName
-                    user={{ displayName: c.authorName, verified: c.authorVerified, premium: c.authorPremium }}
-                    nameClassName="text-sm font-semibold"
-                  />
-                  <span className="text-xs text-text-muted">{formatTimeAgo(c.createdAt)}</span>
-                  {c.sendStatus === "sending" && <Loader2 className="w-3 h-3 animate-spin text-text-muted" />}
+          {localComments.map((c, i) => (
+            <div key={c.id}>
+              {i > 0 && (
+                <div className="my-3 h-px bg-gradient-to-r from-transparent via-white/12 to-transparent backdrop-blur-sm" aria-hidden />
+              )}
+              <div className="flex gap-2.5 py-1">
+                <Avatar src={c.authorAvatar} alt="" size="sm" className="shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <UserName
+                      user={{ displayName: c.authorName, verified: c.authorVerified, premium: c.authorPremium }}
+                      nameClassName="text-sm font-semibold"
+                    />
+                    <span className="text-xs text-text-muted">{formatTimeAgo(c.createdAt)}</span>
+                    {c.sendStatus === "sending" && <Loader2 className="w-3 h-3 animate-spin text-text-muted" />}
+                  </div>
+                  <p className="text-sm mt-0.5 leading-relaxed">{c.content}</p>
                 </div>
-                <p className="text-sm mt-0.5 leading-relaxed">{c.content}</p>
               </div>
             </div>
           ))}

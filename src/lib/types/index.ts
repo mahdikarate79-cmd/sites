@@ -36,12 +36,21 @@ export interface PostMedia {
   height?: number;
 }
 
+export interface PostPrivacy {
+  enabled?: boolean;
+  followersOnly?: boolean;
+  followingOnly?: boolean;
+}
+
 export interface Post {
   id: string;
   author: User;
   content: string;
   media?: PostMedia[];
   category?: string;
+  tags?: string[];
+  paidStars?: number;
+  privacy?: PostPrivacy;
   createdAt: string;
   likes: number;
   comments: number;
@@ -223,4 +232,6 @@ export interface PrototypeState {
   comments: Record<string, Comment[]>;
   commentCounts: Record<string, number>;
   profileEdits: Partial<User>;
+  userPosts: Post[];
+  unlockedPaidPosts: string[];
 }
