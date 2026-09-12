@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useState, ReactNode } from "react";
 import { Donator, Post, PostDonationState, PrototypeState } from "@/lib/types";
-import { loadState, saveState, getPostDonation } from "@/lib/store/prototypeStore";
+import { loadState, saveState, getPostDonation, ensureStarBalance, createTransaction } from "@/lib/store/prototypeStore";
 import { currentUser } from "@/data/mock/users";
 
 interface PrototypeContextValue {
@@ -26,7 +26,9 @@ interface PrototypeContextValue {
   deleteChat: (chatId: string) => void;
   isChatDeleted: (chatId: string) => boolean;
   unlockPaidMedia: (stars: number) => void;
+  spendStars: (stars: number, label: string, type?: "paid_media" | "premium") => boolean;
   withdrawEarnings: (amount: number) => boolean;
+  getBookmarkedPosts: (allPosts: Post[]) => Post[];
   filterPosts: (posts: Post[]) => Post[];
   sortPosts: (posts: Post[]) => Post[];
 }
@@ -117,8 +119,17 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
         .slice(0, 3)
         .map((d, i) => ({ ...d, rank: i + 1 }));
 
+      const tx = createTransaction({
+        type: "donation",
+        amount: -stars,
+        label: `Donation to @${postId}`,
+        to: authorId,
+        postId,
+      });
+
       return {
         ...s,
+        starBalance: ensureStarBalance(s.starBalance - stars),
         donations: {
           ...s.donations,
           [postId]: {
@@ -127,7 +138,8 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
             userDonated: true,
           },
         },
-        earnings: authorId === currentUser.id ? s.earnings : s.earnings,
+        earnings: authorId === currentUser.id ? s.earnings + stars : s.earnings,
+        transactions: [tx, ...s.transactions].slice(0, 100),
       };
     });
   }, [update]);
@@ -169,14 +181,48 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
   const isChatDeleted = useCallback((chatId: string) => state.deletedChats.includes(chatId), [state.deletedChats]);
 
   const unlockPaidMedia = useCallback((stars: number) => {
-    update((s) => ({ ...s, earnings: s.earnings + stars }));
+    const tx = createTransaction({
+      type: "paid_media",
+      amount: stars,
+      label: "Paid media unlock",
+    });
+    update((s) => ({
+      ...s,
+      earnings: s.earnings + stars,
+      transactions: [tx, ...s.transactions].slice(0, 100),
+    }));
+  }, [update]);
+
+  const spendStars = useCallback((stars: number, label: string, type: "paid_media" | "premium" = "paid_media"): boolean => {
+    if (stars <= 0) return false;
+    const tx = createTransaction({ type, amount: -stars, label });
+    update((s) => ({
+      ...s,
+      starBalance: ensureStarBalance(s.starBalance - stars),
+      transactions: [tx, ...s.transactions].slice(0, 100),
+    }));
+    return true;
   }, [update]);
 
   const withdrawEarnings = useCallback((amount: number): boolean => {
     if (amount <= 0 || amount > state.earnings) return false;
-    update((s) => ({ ...s, earnings: s.earnings - amount }));
+    const tx = createTransaction({
+      type: "withdrawal",
+      amount: -amount,
+      label: "Withdrawal to TON wallet",
+    });
+    update((s) => ({
+      ...s,
+      earnings: s.earnings - amount,
+      transactions: [tx, ...s.transactions].slice(0, 100),
+    }));
     return true;
   }, [update, state.earnings]);
+
+  const getBookmarkedPosts = useCallback(
+    (allPosts: Post[]) => allPosts.filter((p) => state.bookmarks[p.id]),
+    [state.bookmarks]
+  );
 
   const filterPosts = useCallback(
     (posts: Post[]) =>
@@ -227,7 +273,9 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
         deleteChat,
         isChatDeleted,
         unlockPaidMedia,
+        spendStars,
         withdrawEarnings,
+        getBookmarkedPosts,
         filterPosts,
         sortPosts,
       }}
@@ -253,6 +301,19 @@ const DEFAULT_LOAD: PrototypeState = {
   notificationUnread: 10,
   deletedChats: [],
   earnings: 2500,
+  starBalance: 999_999,
+  transactions: [
+    {
+      id: "t1",
+      type: "donation",
+      amount: 150,
+      label: "Donation from @alex",
+      date: "2026-09-10T14:30:00Z",
+      from: "u2",
+      status: "completed",
+      hash: "0xa1b2c3d4",
+    },
+  ],
 };
 
 export function usePrototype() {

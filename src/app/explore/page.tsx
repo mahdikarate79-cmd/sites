@@ -3,7 +3,7 @@ import { ExploreContent } from "@/components/explore/ExploreContent";
 
 export default function ExplorePage() {
   return (
-    <AppLayout title="Explore">
+    <AppLayout hideHeader hideHeaderActions>
       <ExploreContent />
     </AppLayout>
   );

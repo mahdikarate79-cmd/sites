@@ -1,40 +1,94 @@
 "use client";
 
-import { useState } from "react";
-import { Search, TrendingUp, Clock, Flame, Filter } from "lucide-react";
-import { trendingTopics, categories, mockPosts } from "@/data/mock/posts";
-import { PostCard } from "@/components/feed/PostCard";
+import { useMemo, useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
+import { Search, Filter, Video, ImageIcon, Film } from "lucide-react";
+import { mockPosts } from "@/data/mock/posts";
+import { mockUsers } from "@/data/mock/users";
+import { Avatar } from "@/components/ui/Avatar";
+import { UserName } from "@/components/ui/UserName";
+import { ReelsViewer } from "@/components/video/ReelsViewer";
+import { buildReelItems, findReelIndex } from "@/lib/utils/reels";
 import { formatCount } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
 
-type Tab = "trending" | "newest" | "popular";
+type SearchTab = "accounts" | "reels";
+type SortFilter = "newest" | "popular" | "views" | "oldest";
+
+function accountScore(user: typeof mockUsers[0]): number {
+  return (user.verified ? 1000 : 0) + (user.premium ? 500 : 0) + user.followers;
+}
 
 export function ExploreContent() {
   const [query, setQuery] = useState("");
-  const [tab, setTab] = useState<Tab>("trending");
-  const [category, setCategory] = useState("All");
+  const [tab, setTab] = useState<SearchTab>("accounts");
+  const [filter, setFilter] = useState<SortFilter>("popular");
   const [showFilters, setShowFilters] = useState(false);
+  const [reelsOpen, setReelsOpen] = useState(false);
+  const [reelIndex, setReelIndex] = useState(0);
 
-  const tabs = [
-    { id: "trending" as Tab, label: "Trending", icon: TrendingUp },
-    { id: "newest" as Tab, label: "Newest", icon: Clock },
-    { id: "popular" as Tab, label: "Popular", icon: Flame },
+  const reelItems = useMemo(() => buildReelItems(mockPosts), []);
+
+  const accounts = useMemo(() => {
+    let users = mockUsers.filter((u) => u.id !== "u1");
+    const q = query.trim().toLowerCase();
+    if (q) {
+      if (q.startsWith("@")) {
+        const username = q.slice(1);
+        users = users
+          .filter((u) => u.username.includes(username))
+          .sort((a, b) => {
+            if (a.username === username) return -1;
+            if (b.username === username) return 1;
+            return a.username.localeCompare(b.username);
+          });
+      } else {
+        users = users.filter(
+          (u) =>
+            u.displayName.toLowerCase().includes(q) ||
+            u.username.toLowerCase().includes(q)
+        );
+      }
+    }
+    return [...users].sort((a, b) => accountScore(b) - accountScore(a));
+  }, [query]);
+
+  const reels = useMemo(() => {
+    let items = [...reelItems];
+    const q = query.trim().toLowerCase();
+    if (q) {
+      items = items.filter(
+        (item) =>
+          item.post.content.toLowerCase().includes(q) ||
+          item.post.content.toLowerCase().includes(`#${q}`)
+      );
+    }
+    return items.sort((a, b) => {
+      const pa = a.post;
+      const pb = b.post;
+      if (filter === "newest") return new Date(pb.createdAt).getTime() - new Date(pa.createdAt).getTime();
+      if (filter === "oldest") return new Date(pa.createdAt).getTime() - new Date(pb.createdAt).getTime();
+      if (filter === "views") return pb.views - pa.views;
+      return pb.likes - pa.likes;
+    });
+  }, [query, filter, reelItems]);
+
+  const openReel = (index: number) => {
+    setReelIndex(index);
+    setReelsOpen(true);
+  };
+
+  const filterLabels: { id: SortFilter; label: string }[] = [
+    { id: "newest", label: "Newest" },
+    { id: "popular", label: "Most Popular" },
+    { id: "views", label: "Most Viewed" },
+    { id: "oldest", label: "Oldest" },
   ];
-
-  const filteredPosts = mockPosts.filter((p) => {
-    if (query && !p.content.toLowerCase().includes(query.toLowerCase())) return false;
-    return true;
-  });
-
-  const sortedPosts = [...filteredPosts].sort((a, b) => {
-    if (tab === "newest") return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    if (tab === "popular") return b.likes - a.likes;
-    return b.views - a.views;
-  });
 
   return (
     <div>
-      <div className="px-4 py-3 sticky top-14 z-30 bg-bg/90 backdrop-blur-sm">
+      <div className="px-4 py-3 sticky top-0 z-30 bg-bg/90 backdrop-blur-sm safe-top">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
           <input
@@ -53,20 +107,18 @@ export function ExploreContent() {
           </button>
         </div>
 
-        {showFilters && (
+        {showFilters && tab === "reels" && (
           <div className="flex gap-2 mt-3 overflow-x-auto scrollbar-hide pb-1">
-            {categories.map((cat) => (
+            {filterLabels.map(({ id, label }) => (
               <button
-                key={cat}
-                onClick={() => setCategory(cat)}
+                key={id}
+                onClick={() => setFilter(id)}
                 className={cn(
                   "px-3 py-1.5 rounded-full text-xs whitespace-nowrap border transition-colors",
-                  category === cat
-                    ? "bg-text text-bg border-text"
-                    : "border-border text-text-muted hover:border-text-muted"
+                  filter === id ? "bg-text text-bg border-text" : "border-border text-text-muted"
                 )}
               >
-                {cat}
+                {label}
               </button>
             ))}
           </div>
@@ -74,46 +126,73 @@ export function ExploreContent() {
       </div>
 
       <div className="flex border-b border-border">
-        {tabs.map(({ id, label, icon: Icon }) => (
+        {(["accounts", "reels"] as SearchTab[]).map((t) => (
           <button
-            key={id}
-            onClick={() => setTab(id)}
+            key={t}
+            onClick={() => setTab(t)}
             className={cn(
-              "flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-medium transition-colors border-b-2",
-              tab === id
-                ? "border-text text-text"
-                : "border-transparent text-text-muted"
+              "flex-1 py-3 text-sm font-medium capitalize transition-colors border-b-2",
+              tab === t ? "border-text text-text" : "border-transparent text-text-muted"
             )}
           >
-            <Icon className="w-4 h-4" />
-            {label}
+            {t}
           </button>
         ))}
       </div>
 
-      {tab === "trending" && !query && (
-        <div className="px-4 py-3 border-b border-border">
-          <h3 className="text-sm font-semibold text-text-muted mb-2">Hot Topics</h3>
-          <div className="space-y-2">
-            {trendingTopics.map((t, i) => (
-              <button
-                key={t.id}
-                className="flex items-center justify-between w-full py-1.5 text-left hover:bg-surface rounded-lg px-2 -mx-2 transition-colors"
-              >
-                <div>
-                  <span className="text-xs text-text-muted">{i + 1} · Trending</span>
-                  <p className="text-sm font-medium">{t.tag}</p>
-                </div>
-                <span className="text-xs text-text-muted">{formatCount(t.posts)} posts</span>
-              </button>
-            ))}
-          </div>
+      {tab === "accounts" && (
+        <div className="divide-y divide-border">
+          {accounts.map((user) => (
+            <Link
+              key={user.id}
+              href={`/profile/${user.username}/`}
+              className="flex items-center gap-3 px-4 py-3.5 hover:bg-surface/40 transition-colors"
+            >
+              <Avatar src={user.avatar} alt="" size="lg" />
+              <div className="flex-1 min-w-0">
+                <UserName user={user} nameClassName="font-semibold text-sm" />
+                <p className="text-xs text-text-muted">@{user.username}</p>
+                <p className="text-xs text-text-muted mt-0.5">{formatCount(user.followers)} followers</p>
+              </div>
+            </Link>
+          ))}
+          {accounts.length === 0 && (
+            <p className="text-center text-text-muted py-12 text-sm">No accounts found</p>
+          )}
         </div>
       )}
 
-      {sortedPosts.map((post) => (
-        <PostCard key={post.id} post={post} />
-      ))}
+      {tab === "reels" && (
+        <div className="grid grid-cols-3 gap-0.5 p-0.5">
+          {reels.map((item, i) => {
+            const thumb = item.media.thumbnail ?? item.media.url;
+            const Icon = item.media.type === "video" ? Video : item.media.type === "gif" ? Film : ImageIcon;
+            return (
+              <button
+                key={`${item.post.id}-${item.mediaIndex}`}
+                type="button"
+                onClick={() => openReel(i)}
+                className="relative aspect-[3/4] bg-surface overflow-hidden"
+              >
+                <Image src={thumb} alt="" fill className="object-cover" sizes="33vw" unoptimized />
+                <Icon className="absolute top-1.5 right-1.5 w-3.5 h-3.5 text-white drop-shadow" />
+              </button>
+            );
+          })}
+          {reels.length === 0 && (
+            <p className="col-span-3 text-center text-text-muted py-12 text-sm">No reels found</p>
+          )}
+        </div>
+      )}
+
+      {reelsOpen && (
+        <ReelsViewer
+          open
+          onClose={() => setReelsOpen(false)}
+          items={reels}
+          initialIndex={reelIndex}
+        />
+      )}
     </div>
   );
 }

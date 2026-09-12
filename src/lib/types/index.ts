@@ -142,6 +142,43 @@ export interface PostDonationState {
   userDonated?: boolean;
 }
 
+export type TransactionType =
+  | "donation"
+  | "paid_media"
+  | "withdrawal"
+  | "premium"
+  | "ads"
+  | "subscription";
+
+export interface TransactionRecord {
+  id: string;
+  type: TransactionType;
+  amount: number;
+  label: string;
+  date: string;
+  from?: string;
+  to?: string;
+  hash?: string;
+  status?: "completed" | "pending";
+  postId?: string;
+}
+
+export type NotificationType = "follow" | "like" | "comment" | "donation";
+
+export interface AppNotification {
+  id: string;
+  type: NotificationType;
+  user?: User;
+  users?: User[];
+  othersCount?: number;
+  stars?: number;
+  postId?: string;
+  postThumbnail?: string;
+  text: string;
+  createdAt: string;
+  read?: boolean;
+}
+
 export interface PrototypeState {
   following: string[];
   blocked: string[];
@@ -158,4 +195,6 @@ export interface PrototypeState {
   notificationUnread: number;
   deletedChats: string[];
   earnings: number;
+  starBalance: number;
+  transactions: TransactionRecord[];
 }
