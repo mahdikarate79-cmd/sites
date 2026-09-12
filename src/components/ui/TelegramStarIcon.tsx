@@ -1,5 +1,7 @@
-import Image from "next/image";
+"use client";
+
 import { cn } from "@/lib/utils/cn";
+import { useAssetPath } from "@/lib/hooks/useAssetPath";
 
 type Variant = "post" | "donate";
 
@@ -15,11 +17,10 @@ const ICONS: Record<Variant, string> = {
 };
 
 export function TelegramStarIcon({ variant = "post", size = 20, className }: TelegramStarIconProps) {
-  const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-  const src = `${base}${ICONS[variant]}`;
+  const src = useAssetPath(ICONS[variant]);
 
   return (
-    <Image
+    <img
       src={src}
       alt=""
       width={size}
@@ -31,7 +32,6 @@ export function TelegramStarIcon({ variant = "post", size = 20, className }: Tel
         className
       )}
       aria-hidden
-      unoptimized
       draggable={false}
     />
   );
