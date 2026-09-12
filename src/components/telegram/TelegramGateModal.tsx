@@ -18,8 +18,8 @@ export function TelegramGateModal({ open, onClose }: TelegramGateModalProps) {
           background: "radial-gradient(ellipse at 50% 0%, rgba(34,158,217,0.18) 0%, transparent 55%), linear-gradient(180deg, rgba(15,23,42,0.95) 0%, rgba(0,0,0,0.98) 100%)",
         }}
       >
-        <div className="mx-auto mb-5 mt-2">
-          <TelegramLogo size={72} />
+        <div className="flex justify-center items-center mb-5 mt-2">
+          <TelegramLogo size={72} className="block shrink-0" />
         </div>
 
         <h3 className="text-lg font-semibold mb-2 text-[#2AABEE]">Telegram Mini App</h3>

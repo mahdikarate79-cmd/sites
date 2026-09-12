@@ -3,7 +3,7 @@ interface TelegramLogoProps {
   className?: string;
 }
 
-/** Official-style Telegram paper plane logo */
+/** Official Telegram app icon (square, solid blue) */
 export function TelegramLogo({ size = 56, className }: TelegramLogoProps) {
   return (
     <svg
@@ -12,17 +12,12 @@ export function TelegramLogo({ size = 56, className }: TelegramLogoProps) {
       viewBox="0 0 240 240"
       className={className}
       aria-hidden
+      role="img"
     >
-      <defs>
-        <linearGradient id="tg-grad" x1="0.5" y1="0" x2="0.5" y2="1">
-          <stop offset="0%" stopColor="#2AABEE" />
-          <stop offset="100%" stopColor="#229ED9" />
-        </linearGradient>
-      </defs>
-      <circle cx="120" cy="120" r="120" fill="url(#tg-grad)" />
+      <rect width="240" height="240" fill="#2AABEE" />
       <path
         fill="#fff"
-        d="M175.5 68.5L56 119.5c-6.5 2.8-6.4 12.2.2 14.7l30.2 11.2 11.6 36.8c1.8 5.7 8.7 7.4 13.1 3.4l16.5-15.1 32.4 23.9c4.4 3.3 10.7.9 11.9-4.6l19.1-99.2c1.3-6.8-5.4-12.2-11.9-9.8zM96.4 134.5l-.3 28.5c0 3.4-4.5 4.5-6.2 1.6l-12.8-20.5 19.3-9.6zm9.1-2.2l56.2-35.2c2.5-1.6 1.2-5.6-1.9-5.1L86.2 118l19.3-9.6z"
+        d="M175.189 68.315L56.609 119.508c-8.634 3.726-8.523 15.57.182 19.015l30.396 11.265 11.668 36.951c1.828 5.715 8.919 7.434 13.458 3.445l16.585-15.2 32.482 23.903c4.558 3.417 11.036.948 12.27-4.772l19.088-99.213c1.312-6.824-5.454-12.236-12.069-9.825zM97.43 134.447l-.286 28.58c0 3.454-4.573 4.563-6.254 1.628l-12.925-20.853 19.465-9.355zm9.753-2.085l56.69-35.502c2.521-1.615 1.209-5.648-1.922-5.18l-72.816 26.897 19.048-9.355z"
       />
     </svg>
   );
