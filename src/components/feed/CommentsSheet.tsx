@@ -6,6 +6,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { Avatar } from "@/components/ui/Avatar";
 import { UserName } from "@/components/ui/UserName";
 import { usePrototype } from "@/lib/hooks/usePrototype";
+import { useTelegramGate } from "@/lib/hooks/useTelegramGate";
 import { formatTimeAgo } from "@/lib/utils/format";
 import { Comment } from "@/lib/types";
 import { currentUser } from "@/data/mock/users";
@@ -20,6 +21,7 @@ interface CommentsSheetProps {
 
 export function CommentsSheet({ open, onClose, postId, initialCount, onCountChange }: CommentsSheetProps) {
   const { getComments, getCommentCount, addComment, getCurrentUser } = usePrototype();
+  const { requireMiniApp } = useTelegramGate();
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [localComments, setLocalComments] = useState<Comment[]>([]);
@@ -37,6 +39,7 @@ export function CommentsSheet({ open, onClose, postId, initialCount, onCountChan
   const handleSend = async () => {
     const content = text.trim();
     if (!content || sending) return;
+    if (!requireMiniApp()) return;
 
     const clientId = `pending_${Date.now()}`;
     const optimistic: Comment = {

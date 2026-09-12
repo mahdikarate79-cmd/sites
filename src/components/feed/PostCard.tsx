@@ -18,6 +18,7 @@ import { SpoilerOverlay, PaidPriceBadge } from "@/components/chat/SpoilerOverlay
 import { formatTimeAgo } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
 import { usePrototype } from "@/lib/hooks/usePrototype";
+import { useTelegramGate } from "@/lib/hooks/useTelegramGate";
 import { useToast } from "@/components/ui/ToastProvider";
 import { mockPosts } from "@/data/mock/posts";
 import { buildAccessibleReelItems, findReelIndex } from "@/lib/utils/reels";
@@ -35,6 +36,7 @@ export function PostCard({ post, onHide, allPosts }: PostCardProps) {
   const [reelMediaIndex, setReelMediaIndex] = useState(0);
   const [accessModal, setAccessModal] = useState<"paid" | "private" | null>(null);
   const { isFollowing, isPaidPostUnlocked, unlockPaidPost, getCurrentUser } = usePrototype();
+  const { requireMiniApp } = useTelegramGate();
   const { showToast } = useToast();
 
   const user = getCurrentUser();
@@ -64,11 +66,15 @@ export function PostCard({ post, onHide, allPosts }: PostCardProps) {
   };
 
   const handleMediaClick = () => {
-    if (paidLocked) setAccessModal("paid");
-    else if (privateLocked) setAccessModal("private");
+    if (paidLocked) {
+      if (requireMiniApp()) setAccessModal("paid");
+    } else if (privateLocked) {
+      if (requireMiniApp()) setAccessModal("private");
+    }
   };
 
   const handleUnlock = () => {
+    if (!requireMiniApp()) return;
     if (!post.paidStars) return;
     if (unlockPaidPost(post.id, post.paidStars)) {
       showToast("Content unlocked");
@@ -126,7 +132,7 @@ export function PostCard({ post, onHide, allPosts }: PostCardProps) {
                       >
                         <LazyImage
                           src={m.url}
-                          thumbnail={m.thumbnail ?? m.url}
+                          thumbnail={m.thumbnail}
                           alt="Post image"
                           className="aspect-[4/3]"
                           blurred={showMediaOverlay}
@@ -156,7 +162,7 @@ export function PostCard({ post, onHide, allPosts }: PostCardProps) {
               </div>
             )}
 
-            <PostActions post={post} onDonate={() => setDonateOpen(true)} />
+            <PostActions post={post} onDonate={() => { if (requireMiniApp()) setDonateOpen(true); }} />
           </div>
         </div>
       </article>

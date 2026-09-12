@@ -29,7 +29,7 @@ const THEME_OPTIONS: { value: Theme; label: string; icon: typeof Monitor }[] = [
 ];
 
 const LINK_ITEMS = [
-  { href: "#", label: "Premium", icon: Crown, description: "Unlock exclusive features" },
+  { href: "/settings/premium/", label: "Premium", icon: Crown, description: "Unlock exclusive features" },
   { href: "/settings/bookmarks/", label: "Bookmarks", icon: Bookmark, description: "Saved posts and reels" },
   { href: "/creator-studio/", label: "Creator Studio", icon: Clapperboard, description: "Earnings and analytics" },
   { href: "/settings/help/", label: "Help", icon: HelpCircle, description: "Support and FAQ" },

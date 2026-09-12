@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import Image from "next/image";
 import { Play } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 
@@ -16,8 +15,8 @@ interface LazyVideoProps {
 export function LazyVideo({ src, thumbnail, className, onPlay, blurred }: LazyVideoProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
-  const [thumbError, setThumbError] = useState(false);
-  const poster = thumbnail && !thumbError ? thumbnail : undefined;
+  const [thumbFailed, setThumbFailed] = useState(false);
+  const poster = thumbnail && !thumbFailed ? thumbnail : undefined;
 
   const handleClick = () => {
     if (onPlay) {
@@ -34,15 +33,12 @@ export function LazyVideo({ src, thumbnail, className, onPlay, blurred }: LazyVi
     <div className={cn("relative overflow-hidden bg-black cursor-pointer", className)} onClick={handleClick}>
       {!playing && poster && (
         <>
-          <Image
+          <img
             src={poster}
-            alt="Video thumbnail"
-            fill
-            className={cn("object-cover", blurred && "blur-xl scale-110")}
+            alt=""
+            className={cn("absolute inset-0 w-full h-full object-cover", blurred && "blur-xl scale-110")}
             loading="lazy"
-            sizes="100vw"
-            unoptimized
-            onError={() => setThumbError(true)}
+            onError={() => setThumbFailed(true)}
           />
           {!blurred && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/20">

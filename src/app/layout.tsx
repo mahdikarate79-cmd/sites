@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import { ThemeProvider } from "@/lib/hooks/useTheme";
 import { PrototypeProvider } from "@/lib/hooks/usePrototype";
+import { TelegramGateProvider } from "@/lib/hooks/useTelegramGate";
 import { ToastProvider } from "@/components/ui/ToastProvider";
 import "./globals.css";
 
@@ -39,7 +40,9 @@ export default function RootLayout({
       <body className={`${inter.variable} font-sans antialiased`}>
         <ThemeProvider>
           <PrototypeProvider>
-            <ToastProvider>{children}</ToastProvider>
+            <TelegramGateProvider>
+              <ToastProvider>{children}</ToastProvider>
+            </TelegramGateProvider>
           </PrototypeProvider>
         </ThemeProvider>
       </body>

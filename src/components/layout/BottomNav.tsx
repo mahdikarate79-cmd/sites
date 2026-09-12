@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { GatedLink } from "@/components/telegram/GatedLink";
 import { usePathname } from "next/navigation";
 import { Home, Search, SquarePlus, User } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
@@ -27,8 +28,10 @@ export function BottomNav() {
         <div className="flex items-center justify-around h-14 px-2">
           {navItems.map(({ href, icon: Icon, label }) => {
             const active = isActive(href);
+            const gated = href === "/new-post/" || href === "/profile/";
+            const NavLink = gated ? GatedLink : Link;
             return (
-              <Link
+              <NavLink
                 key={href}
                 href={href}
                 className={cn(
@@ -40,7 +43,7 @@ export function BottomNav() {
               >
                 {active && <PremiumParticles count={4} centered />}
                 <Icon className={cn("w-5 h-5 relative z-[1]", active && "stroke-[2.5]")} />
-              </Link>
+              </NavLink>
             );
           })}
         </div>

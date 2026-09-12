@@ -24,6 +24,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { StarsSlider } from "@/components/donate/StarsSlider";
+import { MiniAppGuard } from "@/components/telegram/MiniAppGuard";
 
 export default function NewPostPage() {
   const router = useRouter();
@@ -112,6 +113,7 @@ export default function NewPostPage() {
   };
 
   return (
+    <MiniAppGuard>
     <AppLayout title="New Post">
       <div className="px-4 py-4 pb-8 max-w-lg mx-auto">
         <div className="flex gap-3 mb-4">
@@ -288,5 +290,6 @@ export default function NewPostPage() {
         </div>
       </div>
     </AppLayout>
+    </MiniAppGuard>
   );
 }

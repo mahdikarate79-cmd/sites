@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils/cn";
 import { usePrototype } from "@/lib/hooks/usePrototype";
+import { useTelegramGate } from "@/lib/hooks/useTelegramGate";
 import { PremiumParticles } from "./PremiumParticles";
 
 interface FollowButtonProps {
@@ -13,10 +14,12 @@ interface FollowButtonProps {
 
 export function FollowButton({ userId, size = "md", className }: FollowButtonProps) {
   const { isFollowing, toggleFollow } = usePrototype();
+  const { requireMiniApp } = useTelegramGate();
   const following = isFollowing(userId);
   const [burst, setBurst] = useState(false);
 
   const handleClick = () => {
+    if (!requireMiniApp()) return;
     if (!following) {
       setBurst(true);
       setTimeout(() => setBurst(false), 600);

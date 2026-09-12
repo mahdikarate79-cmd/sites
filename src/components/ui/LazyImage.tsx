@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 import { cn } from "@/lib/utils/cn";
 
 interface LazyImageProps {
@@ -24,43 +23,38 @@ export function LazyImage({
   objectFit = "cover",
 }: LazyImageProps) {
   const [loaded, setLoaded] = useState(false);
-  const [error, setError] = useState(false);
-  const displaySrc = error && thumbnail ? thumbnail : src;
   const fitClass = objectFit === "contain" ? "object-contain" : "object-cover";
+  const placeholder = thumbnail && thumbnail !== src ? thumbnail : null;
 
   return (
-    <div className={cn("relative overflow-hidden bg-black", className)} style={{ aspectRatio }}>
-      {thumbnail && !loaded && !error && (
-        <Image
-          src={thumbnail}
+    <div className={cn("relative overflow-hidden bg-surface", className)} style={{ aspectRatio }}>
+      {placeholder && !loaded && (
+        <img
+          src={placeholder}
           alt=""
-          fill
-          className={cn(fitClass, "blur-sm scale-105")}
+          className={cn("absolute inset-0 w-full h-full", fitClass, "blur-sm scale-105")}
           aria-hidden
-          unoptimized
-          onError={() => setError(true)}
         />
       )}
-      <Image
-        src={displaySrc}
+      <img
+        src={src}
         alt={alt}
-        fill
         className={cn(
+          "absolute inset-0 w-full h-full",
           fitClass,
+          placeholder && !loaded ? "opacity-0" : "opacity-100",
           "transition-opacity duration-200",
-          loaded ? "opacity-100" : thumbnail && !error ? "opacity-0" : "opacity-100",
           blurred && "blur-xl scale-110"
         )}
         loading="lazy"
-        unoptimized
+        decoding="async"
         onLoad={() => setLoaded(true)}
-        onError={() => {
-          if (!error && thumbnail && displaySrc !== thumbnail) {
-            setError(true);
-            setLoaded(false);
+        onError={(e) => {
+          const img = e.currentTarget;
+          if (placeholder && img.src !== placeholder) {
+            img.src = placeholder;
           }
         }}
-        sizes="(max-width: 768px) 100vw, 600px"
       />
     </div>
   );

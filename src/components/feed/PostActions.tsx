@@ -9,6 +9,7 @@ import { ShareChatPicker } from "@/components/chat/ShareChatPicker";
 import { CommentsSheet } from "./CommentsSheet";
 import { cn } from "@/lib/utils/cn";
 import { usePrototype } from "@/lib/hooks/usePrototype";
+import { useTelegramGate } from "@/lib/hooks/useTelegramGate";
 import { useToast } from "@/components/ui/ToastProvider";
 
 interface PostActionsProps {
@@ -18,6 +19,7 @@ interface PostActionsProps {
 
 export function PostActions({ post, onDonate }: PostActionsProps) {
   const { isLiked, isBookmarked, toggleLike, toggleBookmark, getDonation, getCommentCount } = usePrototype();
+  const { requireMiniApp } = useTelegramGate();
   const { showToast } = useToast();
   const liked = isLiked(post.id);
   const bookmarked = isBookmarked(post.id);
@@ -32,6 +34,7 @@ export function PostActions({ post, onDonate }: PostActionsProps) {
   const [commentsOpen, setCommentsOpen] = useState(false);
 
   const handleLike = () => {
+    if (!requireMiniApp()) return;
     setAnimating(true);
     setTimeout(() => setAnimating(false), 200);
     const nowLiked = toggleLike(post.id);
@@ -46,14 +49,14 @@ export function PostActions({ post, onDonate }: PostActionsProps) {
     <>
       <div className="flex items-center justify-between mt-3 -ml-1">
         <div className="flex items-center gap-0.5">
-          <DonateButton total={donation.total} donated={donation.userDonated} onClick={onDonate} />
+          <DonateButton total={donation.total} donated={donation.userDonated} onClick={() => { if (requireMiniApp()) onDonate(); }} />
 
           <button onClick={handleLike} className="flex items-center gap-1 px-2 py-1.5 rounded-full hover:bg-surface transition-colors" aria-label={liked ? "Unlike" : "Like"}>
             <Heart className={cn("w-[18px] h-[18px] transition-colors", liked ? "text-like fill-like" : "text-text-muted", animating && "animate-like")} />
             {likes > 0 && <span className="text-xs text-text-muted">{formatCount(likes)}</span>}
           </button>
 
-          <button onClick={() => setCommentsOpen(true)} className="flex items-center gap-1 px-2 py-1.5 rounded-full hover:bg-surface transition-colors" aria-label="Comments">
+          <button onClick={() => { if (requireMiniApp()) setCommentsOpen(true); }} className="flex items-center gap-1 px-2 py-1.5 rounded-full hover:bg-surface transition-colors" aria-label="Comments">
             <MessageCircle className="w-[18px] h-[18px] text-text-muted" />
             {comments > 0 && <span className="text-xs text-text-muted">{formatCount(comments)}</span>}
           </button>
@@ -63,12 +66,12 @@ export function PostActions({ post, onDonate }: PostActionsProps) {
             {post.views > 0 && <span className="text-xs text-text-muted">{formatCount(post.views)}</span>}
           </button>
 
-          <button onClick={() => setShareOpen(true)} className="flex items-center gap-1 px-2 py-1.5 rounded-full hover:bg-surface transition-colors" aria-label="Share">
+          <button onClick={() => { if (requireMiniApp()) setShareOpen(true); }} className="flex items-center gap-1 px-2 py-1.5 rounded-full hover:bg-surface transition-colors" aria-label="Share">
             <Share2 className="w-[18px] h-[18px] text-text-muted" />
           </button>
         </div>
 
-        <button onClick={() => toggleBookmark(post.id)} className="p-1.5 rounded-full hover:bg-surface transition-colors" aria-label={bookmarked ? "Remove bookmark" : "Bookmark"}>
+        <button onClick={() => { if (requireMiniApp()) toggleBookmark(post.id); }} className="p-1.5 rounded-full hover:bg-surface transition-colors" aria-label={bookmarked ? "Remove bookmark" : "Bookmark"}>
           <Bookmark className={cn("w-[18px] h-[18px]", bookmarked ? "text-text fill-text" : "text-text-muted")} />
         </button>
       </div>

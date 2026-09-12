@@ -17,6 +17,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { DonateModal } from "@/components/donate/DonateModal";
 import { ReportModal } from "@/components/feed/ReportModal";
 import { usePrototype } from "@/lib/hooks/usePrototype";
+import { useTelegramGate } from "@/lib/hooks/useTelegramGate";
 import { useToast } from "@/components/ui/ToastProvider";
 import { formatCount } from "@/lib/utils/format";
 import { lockScroll, unlockScroll } from "@/lib/utils/scrollLock";
@@ -49,6 +50,7 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrolling = useRef(false);
   const { isLiked, toggleLike, getDonation, isFollowing, markInterested, markNotInterested, hidePost, toggleBookmark, isBookmarked } = usePrototype();
+  const { requireMiniApp } = useTelegramGate();
   const { showToast } = useToast();
 
   const item = items[index];
@@ -131,6 +133,7 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
     if (now - lastTap.current < 300 && inCenter) {
       if (tapTimer.current) { clearTimeout(tapTimer.current); tapTimer.current = null; }
       lastTap.current = 0;
+      if (!requireMiniApp()) return;
       toggleLike(post.id);
       setShowHeart(true);
       setTimeout(() => setShowHeart(false), 600);
@@ -268,18 +271,18 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
                     className="absolute right-3 flex flex-col items-center gap-5 z-10 bottom-[max(5.5rem,calc(env(safe-area-inset-bottom)+4.5rem))]"
                     data-reel-ui
                   >
-                    <button onClick={(e) => { e.stopPropagation(); toggleLike(reelPost.id); }} className="flex flex-col items-center gap-0.5">
+                    <button onClick={(e) => { e.stopPropagation(); if (requireMiniApp()) toggleLike(reelPost.id); }} className="flex flex-col items-center gap-0.5">
                       <Heart className={cn("w-7 h-7 drop-shadow", isLiked(reelPost.id) ? "text-like fill-like" : "text-white")} />
                       <span className="text-white text-xs font-medium drop-shadow">{formatCount(reelPost.likes)}</span>
                     </button>
-                    <div onClick={(e) => { e.stopPropagation(); setDonateOpen(true); }}>
+                    <div onClick={(e) => { e.stopPropagation(); if (requireMiniApp()) setDonateOpen(true); }}>
                       <DonateButton total={getDonation(reelPost.id, { total: reelPost.stars ?? 0, topDonators: reelPost.topDonators ?? [] }).total} donated={getDonation(reelPost.id).userDonated} onClick={() => setDonateOpen(true)} vertical size="sm" />
                     </div>
                     <button className="flex flex-col items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
                       <MessageCircle className="w-7 h-7 text-white drop-shadow" />
                       <span className="text-white text-xs font-medium drop-shadow">{formatCount(reelPost.comments)}</span>
                     </button>
-                    <button className="flex flex-col items-center gap-0.5" onClick={(e) => { e.stopPropagation(); setShareOpen(true); }}>
+                    <button className="flex flex-col items-center gap-0.5" onClick={(e) => { e.stopPropagation(); if (requireMiniApp()) setShareOpen(true); }}>
                       <Share2 className="w-7 h-7 text-white drop-shadow" />
                       <span className="text-white text-xs font-medium drop-shadow">{formatCount(reelPost.shares)}</span>
                     </button>

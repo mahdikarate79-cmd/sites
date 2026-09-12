@@ -422,7 +422,7 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
     };
     update((s) => ({
       ...s,
-      userPosts: [safe, ...s.userPosts].slice(0, 50),
+      userPosts: [safe, ...s.userPosts],
     }));
   }, [update]);
 

@@ -1,5 +1,10 @@
 import { NotificationsContent } from "@/components/notifications/NotificationsContent";
+import { MiniAppGuard } from "@/components/telegram/MiniAppGuard";
 
 export default function NotificationsPage() {
-  return <NotificationsContent />;
+  return (
+    <MiniAppGuard>
+      <NotificationsContent />
+    </MiniAppGuard>
+  );
 }

@@ -2,6 +2,7 @@
 
 import { Ban, ShieldOff } from "lucide-react";
 import { usePrototype } from "@/lib/hooks/usePrototype";
+import { useTelegramGate } from "@/lib/hooks/useTelegramGate";
 import { useToast } from "@/components/ui/ToastProvider";
 import { cn } from "@/lib/utils/cn";
 
@@ -14,10 +15,12 @@ interface BlockButtonProps {
 
 export function BlockButton({ userId, className, variant = "button", onAction }: BlockButtonProps) {
   const { isBlocked, blockUser, unblockUser } = usePrototype();
+  const { requireMiniApp } = useTelegramGate();
   const { showToast } = useToast();
   const blocked = isBlocked(userId);
 
   const handleClick = () => {
+    if (!requireMiniApp()) return;
     if (blocked) {
       unblockUser(userId);
       showToast("User unblocked");

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { GatedLink } from "@/components/telegram/GatedLink";
 import { ArrowLeft, MessageCircle, Bell } from "lucide-react";
 import { Logo } from "./Logo";
 import { NotificationBadge } from "@/components/ui/NotificationBadge";
@@ -34,7 +35,7 @@ export function Header({ title, hideActions, backHref }: HeaderProps) {
         )}
         {!hideActions && (
           <div className="flex items-center gap-1">
-            <Link
+            <GatedLink
               href="/chat/"
               onClick={clearChatUnread}
               className="relative p-2.5 rounded-full hover:bg-surface transition-colors"
@@ -42,8 +43,8 @@ export function Header({ title, hideActions, backHref }: HeaderProps) {
             >
               <MessageCircle className="w-5 h-5 text-text" />
               <NotificationBadge count={state.chatUnread} />
-            </Link>
-            <Link
+            </GatedLink>
+            <GatedLink
               href="/notifications/"
               onClick={clearNotificationUnread}
               className="relative p-2.5 rounded-full hover:bg-surface transition-colors"
@@ -51,7 +52,7 @@ export function Header({ title, hideActions, backHref }: HeaderProps) {
             >
               <Bell className="w-5 h-5 text-text" />
               <NotificationBadge count={state.notificationUnread} />
-            </Link>
+            </GatedLink>
           </div>
         )}
       </div>

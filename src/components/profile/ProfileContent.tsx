@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { GatedLink } from "@/components/telegram/GatedLink";
 import { ArrowLeft, MoreVertical, FileText, ImageIcon, Video, Flag, Link2, Info } from "lucide-react";
 import { BlockButton } from "@/components/ui/BlockButton";
 import { User, Post } from "@/lib/types";
@@ -93,12 +94,12 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
           <div className="flex gap-2">
             {isOwnProfile ? (
               <div className="flex gap-2">
-                <Link href="/settings/" className="p-2 rounded-full glass-nav" aria-label="Settings">
+                <GatedLink href="/settings/" className="p-2 rounded-full glass-nav" aria-label="Settings">
                   <Settings className="w-4 h-4" />
-                </Link>
-                <Link href="/settings/edit-profile/" className="px-4 py-1.5 rounded-full border border-border text-sm font-medium glass-nav">
+                </GatedLink>
+                <GatedLink href="/settings/edit-profile/" className="px-4 py-1.5 rounded-full border border-border text-sm font-medium glass-nav">
                   Edit Profile
-                </Link>
+                </GatedLink>
               </div>
             ) : (
               <>
