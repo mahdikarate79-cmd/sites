@@ -60,6 +60,12 @@ const DEFAULT_STATE: PrototypeState = {
       hash: "0xf3a4b5c6",
     },
   ],
+  unlockedPaidMedia: {},
+  expiredTempMedia: {},
+  viewedTempMedia: {},
+  comments: {},
+  commentCounts: {},
+  profileEdits: {},
 };
 
 export const UNLIMITED_STAR_REFILL = 999_999;

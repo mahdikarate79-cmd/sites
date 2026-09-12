@@ -1,5 +1,8 @@
 import { Chat, ChatMessage, ChatMediaItem } from "@/lib/types";
-import { mockChats, mockMessages } from "@/data/mock/chats";
+import { mockChats, mockMessages as defaultMessages } from "@/data/mock/chats";
+import { appendPersistedMessage, loadChatMessages, persistChatMessages, replacePersistedMessage } from "./chatStorage";
+
+const mockMessages = defaultMessages;
 
 const MAX_MESSAGES_PER_CHAT = 100;
 
@@ -17,7 +20,10 @@ export async function getChats(): Promise<Chat[]> {
 }
 
 export async function getChatMessages(chatId: string): Promise<ChatMessage[]> {
-  return mockMessages[chatId] ?? [];
+  const fallback = mockMessages[chatId] ?? [];
+  const loaded = loadChatMessages(chatId, fallback);
+  mockMessages[chatId] = loaded;
+  return loaded;
 }
 
 export async function sendMessage(
@@ -32,8 +38,7 @@ export async function sendMessage(
   };
 
   if (!mockMessages[chatId]) mockMessages[chatId] = [];
-  mockMessages[chatId].push(newMessage);
-  mockMessages[chatId] = trimMessages(mockMessages[chatId]);
+  mockMessages[chatId] = trimMessages(appendPersistedMessage(chatId, newMessage, mockMessages[chatId]));
 
   const chat = mockChats.find((c) => c.id === chatId);
   if (chat) {
@@ -78,8 +83,7 @@ export async function sendAlbumMessage(
   };
 
   if (!mockMessages[chatId]) mockMessages[chatId] = [];
-  mockMessages[chatId].push(newMessage);
-  mockMessages[chatId] = trimMessages(mockMessages[chatId]);
+  mockMessages[chatId] = trimMessages(appendPersistedMessage(chatId, newMessage, mockMessages[chatId]));
 
   const chat = mockChats.find((c) => c.id === chatId);
   if (chat) {
@@ -111,8 +115,7 @@ export async function forwardMessage(
   };
 
   if (!mockMessages[targetChatId]) mockMessages[targetChatId] = [];
-  mockMessages[targetChatId].push(newMessage);
-  mockMessages[targetChatId] = trimMessages(mockMessages[targetChatId]);
+  mockMessages[targetChatId] = trimMessages(appendPersistedMessage(targetChatId, newMessage, mockMessages[targetChatId]));
 
   const chat = mockChats.find((c) => c.id === targetChatId);
   if (chat) chat.lastMessage = newMessage;
@@ -120,4 +123,4 @@ export async function forwardMessage(
   return newMessage;
 }
 
-export { MAX_MESSAGES_PER_CHAT };
+export { replacePersistedMessage, persistChatMessages, MAX_MESSAGES_PER_CHAT };

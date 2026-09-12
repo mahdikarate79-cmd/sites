@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { UserName } from "@/components/ui/UserName";
-import { currentUser } from "@/data/mock/users";
+import { usePrototype } from "@/lib/hooks/usePrototype";
 import { formatCount } from "@/lib/utils/format";
 import { useTheme, type Theme } from "@/lib/hooks/useTheme";
 import { cn } from "@/lib/utils/cn";
@@ -38,6 +38,8 @@ const LINK_ITEMS = [
 
 export function SettingsContent() {
   const { theme, setTheme } = useTheme();
+  const { getCurrentUser } = usePrototype();
+  const currentUser = getCurrentUser();
 
   return (
     <div className="min-h-dvh pb-6">

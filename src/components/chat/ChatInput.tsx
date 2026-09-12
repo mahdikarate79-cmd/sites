@@ -12,6 +12,7 @@ interface ChatInputProps {
   disabledMessage?: string;
   replyTo?: ChatMessage | null;
   onCancelReply?: () => void;
+  embedded?: boolean;
 }
 
 export function ChatInput({
@@ -21,6 +22,7 @@ export function ChatInput({
   disabledMessage,
   replyTo,
   onCancelReply,
+  embedded,
 }: ChatInputProps) {
   const [text, setText] = useState("");
   const [galleryOpen, setGalleryOpen] = useState(false);
@@ -67,7 +69,7 @@ export function ChatInput({
     : "";
 
   return (
-    <div className="border-t border-border glass-nav px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+    <div className={embedded ? "px-3 py-2" : "border-t border-border glass-nav px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]"}>
       {replyTo && (
         <div className="flex items-center gap-2 mb-2 px-2 py-1.5 rounded-lg bg-surface/60 border-l-2 border-[#8b5cf6]">
           <div className="flex-1 min-w-0">

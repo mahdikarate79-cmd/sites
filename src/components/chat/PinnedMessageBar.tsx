@@ -20,10 +20,10 @@ function previewText(msg: ChatMessage): string {
 
 export function PinnedMessageBar({ message, scope, onClick, onUnpin }: PinnedMessageBarProps) {
   return (
-    <div className="mx-3 mt-2">
+    <div className="mx-3 mt-1.5">
       <button
         onClick={onClick}
-        className="w-full glass-nav rounded-xl px-3 py-2 flex items-center gap-2.5 text-left hover:bg-surface/40 transition-colors"
+        className="w-full glass-nav rounded-2xl px-3 py-2 flex items-center gap-2.5 text-left hover:bg-surface/30 transition-colors"
       >
         <Pin className="w-4 h-4 text-[#8b5cf6] shrink-0" />
         <div className="flex-1 min-w-0">

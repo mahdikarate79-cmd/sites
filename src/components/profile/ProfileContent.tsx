@@ -132,21 +132,23 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
 
         {user.bio && <p className="text-sm mb-3 leading-relaxed">{user.bio}</p>}
 
-        {isOwnProfile ? (
-          <div className="flex gap-4 text-sm mb-4">
+        <div className="flex gap-4 text-sm mb-4">
+          {isOwnProfile ? (
             <Link href="/settings/following/" className="hover:opacity-80 transition-opacity">
               <strong>{formatCount(user.following)}</strong> <span className="text-text-muted">Following</span>
             </Link>
+          ) : (
+            <span><strong>{formatCount(user.following)}</strong> <span className="text-text-muted">Following</span></span>
+          )}
+          {isOwnProfile ? (
             <Link href="/settings/followers/" className="hover:opacity-80 transition-opacity">
               <strong>{formatCount(user.followers)}</strong> <span className="text-text-muted">Followers</span>
             </Link>
-            <span><strong>{formatCount(user.postsCount)}</strong> <span className="text-text-muted">Posts</span></span>
-          </div>
-        ) : (
-          <div className="flex gap-4 text-sm mb-4">
-            <span><strong>{formatCount(user.postsCount)}</strong> <span className="text-text-muted">Posts</span></span>
-          </div>
-        )}
+          ) : (
+            <span><strong>{formatCount(user.followers)}</strong> <span className="text-text-muted">Followers</span></span>
+          )}
+          <span><strong>{formatCount(user.postsCount)}</strong> <span className="text-text-muted">Posts</span></span>
+        </div>
       </div>
 
       <div className="flex border-b border-border">
@@ -209,5 +211,6 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
 }
 
 export function OwnProfile() {
-  return <ProfileContent user={currentUser} isOwnProfile />;
+  const { getCurrentUser } = usePrototype();
+  return <ProfileContent user={getCurrentUser()} isOwnProfile />;
 }

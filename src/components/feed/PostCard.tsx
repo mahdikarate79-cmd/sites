@@ -52,9 +52,6 @@ export function PostCard({ post, onHide, allPosts }: PostCardProps) {
                 <Link href={profileHref} className="font-semibold text-sm truncate hover:underline">
                   <UserName user={post.author} nameClassName="font-semibold text-sm" />
                 </Link>
-                <Link href={profileHref} className="text-text-muted text-sm truncate hover:underline">
-                  @{post.author.username}
-                </Link>
                 <span className="text-text-muted text-sm">·</span>
                 <span className="text-text-muted text-sm">{formatTimeAgo(post.createdAt)}</span>
                 {!isFollowing(post.author.id) && post.author.id !== "u1" && (

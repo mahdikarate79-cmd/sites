@@ -1,9 +1,9 @@
 "use client";
 
 import { createContext, useCallback, useContext, useState, ReactNode } from "react";
-import { Donator, Post, PostDonationState, PrototypeState } from "@/lib/types";
+import { Comment, Donator, Post, PostDonationState, PrototypeState, User } from "@/lib/types";
 import { loadState, saveState, getPostDonation, ensureStarBalance, createTransaction } from "@/lib/store/prototypeStore";
-import { currentUser } from "@/data/mock/users";
+import { currentUser as baseCurrentUser } from "@/data/mock/users";
 
 interface PrototypeContextValue {
   state: PrototypeState;
@@ -29,6 +29,16 @@ interface PrototypeContextValue {
   spendStars: (stars: number, label: string, type?: "paid_media" | "premium") => boolean;
   withdrawEarnings: (amount: number) => boolean;
   getBookmarkedPosts: (allPosts: Post[]) => Post[];
+  getCurrentUser: () => User;
+  updateProfile: (edits: Partial<User>) => void;
+  isPaidMediaUnlocked: (chatId: string, messageId: string) => boolean;
+  unlockPaidMediaMessage: (chatId: string, messageId: string) => void;
+  isTempMediaExpired: (chatId: string, messageId: string) => boolean;
+  markTempMediaViewed: (chatId: string, messageId: string) => void;
+  expireTempMedia: (chatId: string, messageId: string) => void;
+  getComments: (postId: string) => Comment[];
+  getCommentCount: (postId: string, initial?: number) => number;
+  addComment: (postId: string, content: string) => Comment;
   filterPosts: (posts: Post[]) => Post[];
   sortPosts: (posts: Post[]) => Post[];
 }
@@ -107,14 +117,15 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
   const donate = useCallback((postId: string, stars: number, anonymous: boolean, authorId: string) => {
     update((s) => {
       const existing = getPostDonation(s, postId);
-      const prevUser = existing.topDonators.find((d) => d.user.id === currentUser.id);
+      const user = { ...baseCurrentUser, ...s.profileEdits };
+      const prevUser = existing.topDonators.find((d) => d.user.id === user.id);
       const newDonator: Donator = {
         rank: 0,
-        user: currentUser,
+        user,
         stars: (prevUser?.stars ?? 0) + stars,
         anonymous,
       };
-      const merged = [...existing.topDonators.filter((d) => d.user.id !== currentUser.id), newDonator]
+      const merged = [...existing.topDonators.filter((d) => d.user.id !== user.id), newDonator]
         .sort((a, b) => b.stars - a.stars)
         .slice(0, 3)
         .map((d, i) => ({ ...d, rank: i + 1 }));
@@ -138,7 +149,7 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
             userDonated: true,
           },
         },
-        earnings: authorId === currentUser.id ? s.earnings + stars : s.earnings,
+        earnings: authorId === user.id ? s.earnings + stars : s.earnings,
         transactions: [tx, ...s.transactions].slice(0, 100),
       };
     });
@@ -224,6 +235,93 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
     [state.bookmarks]
   );
 
+  const getCurrentUser = useCallback(
+    (): User => ({ ...baseCurrentUser, ...state.profileEdits }),
+    [state.profileEdits]
+  );
+
+  const updateProfile = useCallback((edits: Partial<User>) => {
+    update((s) => ({ ...s, profileEdits: { ...s.profileEdits, ...edits } }));
+  }, [update]);
+
+  const isPaidMediaUnlocked = useCallback(
+    (chatId: string, messageId: string) => (state.unlockedPaidMedia[chatId] ?? []).includes(messageId),
+    [state.unlockedPaidMedia]
+  );
+
+  const unlockPaidMediaMessage = useCallback((chatId: string, messageId: string) => {
+    update((s) => ({
+      ...s,
+      unlockedPaidMedia: {
+        ...s.unlockedPaidMedia,
+        [chatId]: [...new Set([...(s.unlockedPaidMedia[chatId] ?? []), messageId])],
+      },
+    }));
+  }, [update]);
+
+  const isTempMediaExpired = useCallback(
+    (chatId: string, messageId: string) => (state.expiredTempMedia[chatId] ?? []).includes(messageId),
+    [state.expiredTempMedia]
+  );
+
+  const markTempMediaViewed = useCallback((chatId: string, messageId: string) => {
+    update((s) => ({
+      ...s,
+      viewedTempMedia: {
+        ...s.viewedTempMedia,
+        [chatId]: [...new Set([...(s.viewedTempMedia[chatId] ?? []), messageId])],
+      },
+    }));
+  }, [update]);
+
+  const expireTempMedia = useCallback((chatId: string, messageId: string) => {
+    update((s) => ({
+      ...s,
+      expiredTempMedia: {
+        ...s.expiredTempMedia,
+        [chatId]: [...new Set([...(s.expiredTempMedia[chatId] ?? []), messageId])],
+      },
+    }));
+  }, [update]);
+
+  const getComments = useCallback(
+    (postId: string) => state.comments[postId] ?? [],
+    [state.comments]
+  );
+
+  const getCommentCount = useCallback(
+    (postId: string, initial = 0) => state.commentCounts[postId] ?? initial,
+    [state.commentCounts]
+  );
+
+  const addComment = useCallback((postId: string, content: string): Comment => {
+    const user = { ...baseCurrentUser, ...state.profileEdits };
+    const comment: Comment = {
+      id: `cmt_${Date.now()}`,
+      postId,
+      authorId: user.id,
+      authorName: user.displayName,
+      authorAvatar: user.avatar,
+      authorVerified: user.verified,
+      authorPremium: user.premium,
+      content,
+      createdAt: new Date().toISOString(),
+      sendStatus: "sent",
+    };
+    update((s) => ({
+      ...s,
+      comments: {
+        ...s.comments,
+        [postId]: [...(s.comments[postId] ?? []), comment],
+      },
+      commentCounts: {
+        ...s.commentCounts,
+        [postId]: (s.commentCounts[postId] ?? 0) + 1,
+      },
+    }));
+    return comment;
+  }, [update, state.profileEdits]);
+
   const filterPosts = useCallback(
     (posts: Post[]) =>
       posts.filter(
@@ -276,6 +374,16 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
         spendStars,
         withdrawEarnings,
         getBookmarkedPosts,
+        getCurrentUser,
+        updateProfile,
+        isPaidMediaUnlocked,
+        unlockPaidMediaMessage,
+        isTempMediaExpired,
+        markTempMediaViewed,
+        expireTempMedia,
+        getComments,
+        getCommentCount,
+        addComment,
         filterPosts,
         sortPosts,
       }}
@@ -314,6 +422,12 @@ const DEFAULT_LOAD: PrototypeState = {
       hash: "0xa1b2c3d4",
     },
   ],
+  unlockedPaidMedia: {},
+  expiredTempMedia: {},
+  viewedTempMedia: {},
+  comments: {},
+  commentCounts: {},
+  profileEdits: {},
 };
 
 export function usePrototype() {

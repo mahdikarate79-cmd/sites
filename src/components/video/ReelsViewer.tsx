@@ -197,7 +197,7 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
       )}
 
       <div
-        className="relative w-full h-dvh"
+        className="relative w-full h-dvh overflow-hidden"
         onClick={isVideo ? handleVideoTap : undefined}
         onWheel={handleWheel}
         onTouchStart={handleTouchStart}
@@ -206,21 +206,33 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
       >
-        {isVideo ? (
-          <video
-            ref={videoRef}
-            key={media.url}
-            src={media.url}
-            poster={media.thumbnail}
-            className="w-full h-full object-cover"
-            loop
-            playsInline
-            muted={muted}
-            autoPlay
-          />
-        ) : (
-          <Image src={media.url} alt="" fill className="object-cover" priority unoptimized />
-        )}
+        <div
+          className="transition-transform duration-300 ease-out will-change-transform"
+          style={{ transform: `translateY(-${index * 100}%)` }}
+        >
+          {items.map((reelItem, i) => {
+            const reelMedia = reelItem.media;
+            const reelIsVideo = reelMedia.type === "video";
+            return (
+              <div key={`${reelItem.post.id}-${reelItem.mediaIndex}`} className="relative w-full h-dvh shrink-0">
+                {reelIsVideo ? (
+                  <video
+                    ref={i === index ? videoRef : undefined}
+                    src={reelMedia.url}
+                    poster={reelMedia.thumbnail}
+                    className="w-full h-full object-cover"
+                    loop
+                    playsInline
+                    muted={muted}
+                    autoPlay={i === index}
+                  />
+                ) : (
+                  <Image src={reelMedia.url} alt="" fill className="object-cover" priority={i === index} unoptimized />
+                )}
+              </div>
+            );
+          })}
+        </div>
 
         {isVideo && paused && !fullscreen && (
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
@@ -277,7 +289,6 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
                 </Link>
                 {!following && <FollowButton userId={post.author.id} size="sm" />}
               </div>
-              <p className="text-white text-xs mb-0.5">@{post.author.username}</p>
               {post.content && (
                 <button
                   onClick={(e) => { e.stopPropagation(); setCaptionOpen(!captionOpen); }}

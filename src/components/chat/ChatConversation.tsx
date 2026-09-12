@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, MoreVertical, Check, CheckCheck, Search, Trash2, CornerUpRight } from "lucide-react";
+import { ArrowLeft, MoreVertical, Check, CheckCheck, Search, Trash2, CornerUpRight, Loader2, AlertCircle, RotateCcw } from "lucide-react";
 import { ChatMessage, PinnedMessageInfo } from "@/lib/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { BlockButton } from "@/components/ui/BlockButton";
@@ -20,6 +20,7 @@ import { LockedMediaOverlay } from "./LockedMediaOverlay";
 import { ShareChatPicker } from "./ShareChatPicker";
 import { usePrototype } from "@/lib/hooks/usePrototype";
 import { useToast } from "@/components/ui/ToastProvider";
+import { lockScroll, unlockScroll } from "@/lib/utils/scrollLock";
 import Image from "next/image";
 import { cn } from "@/lib/utils/cn";
 
@@ -41,13 +42,16 @@ function mediaTransform(rotation?: number, mirrored?: boolean) {
   return parts.length ? parts.join(" ") : undefined;
 }
 
+function makeOptimisticId() {
+  return `opt_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
 export function ChatConversation({ chatId }: ChatConversationProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [paidModal, setPaidModal] = useState<ChatMessage | null>(null);
-  const [unlocked, setUnlocked] = useState<Set<string>>(new Set());
   const [openedTemp, setOpenedTemp] = useState<Set<string>>(new Set());
   const [pinned, setPinned] = useState<PinnedMessageInfo | null>(INITIAL_PINNED[chatId] ?? null);
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
@@ -56,19 +60,26 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const sendingRef = useRef(false);
   const tempTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const chat = mockChats.find((c) => c.id === chatId);
-  const { deleteChat, isBlocked } = usePrototype();
+  const {
+    deleteChat, isBlocked, isPaidMediaUnlocked, unlockPaidMediaMessage,
+    isTempMediaExpired, markTempMediaViewed, expireTempMedia,
+  } = usePrototype();
   const { showToast } = useToast();
   const blocked = chat ? isBlocked(chat.participant.id) : false;
 
   useEffect(() => {
+    lockScroll();
+    return () => unlockScroll();
+  }, []);
+
+  useEffect(() => {
     getChatMessages(chatId).then((data) => {
-      setMessages(data);
+      setMessages(data.filter((m) => !isTempMediaExpired(chatId, m.id)));
       setLoading(false);
     });
-  }, [chatId]);
+  }, [chatId, isTempMediaExpired]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -83,9 +94,10 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
   const pinnedMessage = pinned ? messages.find((m) => m.id === pinned.messageId) : null;
 
   const removeMessage = useCallback((msgId: string) => {
+    expireTempMedia(chatId, msgId);
     setMessages((prev) => prev.filter((m) => m.id !== msgId));
     if (pinned?.messageId === msgId) setPinned(null);
-  }, [pinned]);
+  }, [chatId, expireTempMedia, pinned]);
 
   const scheduleTempDelete = useCallback((msgId: string, seconds: number) => {
     if (tempTimers.current[msgId]) clearTimeout(tempTimers.current[msgId]);
@@ -97,25 +109,52 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
 
   const openTemporaryMedia = useCallback((msg: ChatMessage) => {
     setOpenedTemp((prev) => new Set([...prev, msg.id]));
+    markTempMediaViewed(chatId, msg.id);
     if (msg.temporary === "view_once") {
       scheduleTempDelete(msg.id, 1);
     } else if (msg.temporary && TEMP_SECONDS[msg.temporary]) {
       scheduleTempDelete(msg.id, TEMP_SECONDS[msg.temporary]);
     }
-  }, [scheduleTempDelete]);
+  }, [chatId, markTempMediaViewed, scheduleTempDelete]);
 
-  const appendMessage = (msg: ChatMessage) => {
-    setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
-  };
+  const upsertMessage = useCallback((clientId: string, next: ChatMessage) => {
+    setMessages((prev) => {
+      const exists = prev.some((m) => m.id === next.id || m.clientId === clientId);
+      if (exists) {
+        return prev.map((m) => (m.clientId === clientId || m.id === clientId ? next : m));
+      }
+      return [...prev, next];
+    });
+  }, []);
+
+  const addOptimistic = useCallback((msg: ChatMessage) => {
+    setMessages((prev) => (prev.some((m) => m.clientId === msg.clientId) ? prev : [...prev, msg]));
+  }, []);
 
   const handleSend = async (
     content: string,
     type: "text" | "image" | "video" | "gif" = "text",
     extras?: Partial<ChatMessage>
   ) => {
-    if (blocked || sendingRef.current) return;
-    sendingRef.current = true;
+    if (blocked) return;
+    const clientId = makeOptimisticId();
+    const optimistic: ChatMessage = {
+      id: clientId,
+      clientId,
+      chatId,
+      senderId: currentUser.id,
+      type,
+      content,
+      createdAt: new Date().toISOString(),
+      read: false,
+      sendStatus: "sending",
+      ...extras,
+    };
+    addOptimistic(optimistic);
+    setReplyTo(null);
+
     try {
+      await new Promise((r) => setTimeout(r, 200));
       const msg = await sendMessage(chatId, {
         chatId,
         senderId: currentUser.id,
@@ -123,18 +162,57 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
         content,
         ...extras,
       });
-      appendMessage(msg);
-      setReplyTo(null);
-    } finally {
-      sendingRef.current = false;
+      upsertMessage(clientId, { ...msg, sendStatus: "sent", clientId });
+    } catch {
+      upsertMessage(clientId, { ...optimistic, sendStatus: "failed" });
+    }
+  };
+
+  const retrySend = async (msg: ChatMessage) => {
+    if (!msg.clientId) return;
+    upsertMessage(msg.clientId, { ...msg, sendStatus: "sending" });
+    try {
+      const sent = await sendMessage(chatId, {
+        chatId,
+        senderId: currentUser.id,
+        type: msg.type,
+        content: msg.content,
+        replyTo: msg.replyTo,
+      });
+      upsertMessage(msg.clientId, { ...sent, sendStatus: "sent", clientId: msg.clientId });
+    } catch {
+      upsertMessage(msg.clientId, { ...msg, sendStatus: "failed" });
     }
   };
 
   const handleSendAlbum = async (items: SelectedMedia[], caption: string) => {
-    if (blocked || sendingRef.current || items.length === 0) return;
-    sendingRef.current = true;
+    if (blocked || items.length === 0) return;
+    const replyId = replyTo?.id;
+    const clientId = makeOptimisticId();
+    const first = items[0];
+    const optimistic: ChatMessage = {
+      id: clientId,
+      clientId,
+      chatId,
+      senderId: currentUser.id,
+      type: "album",
+      content: caption,
+      album: items.map((m) => ({ type: m.item.type, url: m.item.url, rotation: m.rotation })),
+      caption,
+      paidStars: first?.paidStars,
+      temporary: first?.temporary,
+      rotation: first?.rotation,
+      mirrored: first?.mirrored,
+      createdAt: new Date().toISOString(),
+      read: false,
+      sendStatus: "sending",
+      replyTo: replyId,
+    };
+    addOptimistic(optimistic);
+    setReplyTo(null);
+
     try {
-      const first = items[0];
+      await new Promise((r) => setTimeout(r, 250));
       const msg = await sendAlbumMessage(chatId, {
         senderId: currentUser.id,
         album: items.map((m) => ({
@@ -145,23 +223,20 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
         caption: caption || undefined,
         spoiler: items.some((m) => m.spoiler),
         paidStars: first?.paidStars,
-        replyTo: replyTo?.id,
+        replyTo: replyId,
         temporary: first?.temporary,
         rotation: first?.rotation,
         mirrored: first?.mirrored,
       });
-      appendMessage(msg);
-      setReplyTo(null);
-    } finally {
-      sendingRef.current = false;
+      upsertMessage(clientId, { ...msg, sendStatus: "sent", clientId });
+    } catch {
+      upsertMessage(clientId, { ...optimistic, sendStatus: "failed" });
     }
   };
 
   const handleForward = async (targetChatIds: string[]) => {
     if (!forwardMsg || targetChatIds.length === 0) return;
-    const sourceUser = forwardMsg.senderId === currentUser.id
-      ? currentUser
-      : chat?.participant;
+    const sourceUser = forwardMsg.senderId === currentUser.id ? currentUser : chat?.participant;
     const forwardedFrom = {
       userId: sourceUser?.id ?? forwardMsg.senderId,
       displayName: sourceUser?.displayName ?? "User",
@@ -174,7 +249,9 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
         source: forwardMsg,
         forwardedFrom,
       });
-      if (targetId === chatId) appendMessage(msg);
+      if (targetId === chatId) {
+        setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
+      }
     }
     showToast("Forwarded");
     setForwardMsg(null);
@@ -186,9 +263,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
     setMenuOpen(false);
   };
 
-  const handleDeleteMessage = (msgId: string) => {
-    removeMessage(msgId);
-  };
+  const handleDeleteMessage = (msgId: string) => removeMessage(msgId);
 
   const handlePin = (msg: ChatMessage, scope: "me" | "both") => {
     setPinned({ messageId: msg.id, scope });
@@ -213,12 +288,25 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
   };
 
   const isPaidLocked = (msg: ChatMessage, isMe: boolean) =>
-    !!msg.paidStars && !isMe && !unlocked.has(msg.id) && !msg.paidUnlocked;
+    !!msg.paidStars && !isMe && !isPaidMediaUnlocked(chatId, msg.id) && !msg.paidUnlocked;
 
   const isTempLocked = (msg: ChatMessage, isMe: boolean) =>
-    !!msg.temporary && !isMe && !openedTemp.has(msg.id);
+    !!msg.temporary && !isMe && !openedTemp.has(msg.id) && !isTempMediaExpired(chatId, msg.id);
 
-  if (loading) return <div className="flex-1 flex items-center justify-center text-text-muted">Loading...</div>;
+  const renderStatusIcon = (msg: ChatMessage, isMe: boolean) => {
+    if (!isMe) return null;
+    if (msg.sendStatus === "sending") return <Loader2 className="w-3 h-3 text-text-muted animate-spin" />;
+    if (msg.sendStatus === "failed") {
+      return (
+        <button type="button" onClick={() => retrySend(msg)} aria-label="Retry send">
+          <AlertCircle className="w-3 h-3 text-like" />
+        </button>
+      );
+    }
+    return msg.read ? <CheckCheck className="w-3 h-3 text-[#6366f1]" /> : <Check className="w-3 h-3 text-text-muted" />;
+  };
+
+  if (loading) return <div className="flex-1 flex items-center justify-center text-text-muted h-dvh">Loading...</div>;
 
   const renderForwarded = (msg: ChatMessage) => {
     if (!msg.forwardedFrom) return null;
@@ -246,29 +334,14 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
 
     if (msg.type === "image" || msg.type === "gif") {
       return (
-        <div
-          className={cn("relative w-48 h-36 rounded-xl overflow-hidden", locked && "cursor-pointer")}
-          onClick={handleMediaClick}
-        >
+        <div className={cn("relative w-48 h-36 rounded-xl overflow-hidden", locked && "cursor-pointer")} onClick={handleMediaClick}>
           {!locked && (
-            <Image
-              src={msg.content}
-              alt=""
-              fill
-              className={cn("object-cover", msg.spoiler && "blur-lg")}
-              style={{ transform }}
-              loading="lazy"
-              sizes="192px"
-            />
+            <Image src={msg.content} alt="" fill className={cn("object-cover", msg.spoiler && "blur-lg")} style={{ transform }} loading="lazy" sizes="192px" />
           )}
           {locked && (
             <>
               <Image src={msg.content} alt="" fill className="object-cover blur-xl scale-110" sizes="192px" />
-              {paid ? (
-                <LockedMediaOverlay stars={msg.paidStars} onClick={handleMediaClick} />
-              ) : (
-                <LockedMediaOverlay label="Tap to view" onClick={handleMediaClick} />
-              )}
+              {paid ? <LockedMediaOverlay stars={msg.paidStars} onClick={handleMediaClick} /> : <LockedMediaOverlay label="Tap to view" onClick={handleMediaClick} />}
             </>
           )}
         </div>
@@ -277,22 +350,11 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
 
     if (msg.type === "album" && msg.album) {
       return (
-        <div
-          className={cn(
-            "grid gap-0.5 rounded-xl overflow-hidden",
-            msg.album.length === 1 ? "grid-cols-1" : "grid-cols-2",
-            locked && "cursor-pointer"
-          )}
-          onClick={handleMediaClick}
-        >
+        <div className={cn("grid gap-0.5 rounded-xl overflow-hidden", msg.album.length === 1 ? "grid-cols-1" : "grid-cols-2", locked && "cursor-pointer")} onClick={handleMediaClick}>
           {locked ? (
             <div className="relative col-span-2 w-48 h-36 rounded-xl overflow-hidden">
               <Image src={msg.album[0].url} alt="" fill className="object-cover blur-xl scale-110" unoptimized />
-              {paid ? (
-                <LockedMediaOverlay stars={msg.paidStars} onClick={handleMediaClick} />
-              ) : (
-                <LockedMediaOverlay label="Tap to view" onClick={handleMediaClick} />
-              )}
+              {paid ? <LockedMediaOverlay stars={msg.paidStars} onClick={handleMediaClick} /> : <LockedMediaOverlay label="Tap to view" onClick={handleMediaClick} />}
             </div>
           ) : (
             msg.album.map((item, i) => (
@@ -314,42 +376,25 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
         return (
           <div className="relative w-48 h-36 rounded-xl overflow-hidden cursor-pointer" onClick={handleMediaClick}>
             <div className="w-full h-full bg-surface" />
-            {paid ? (
-              <LockedMediaOverlay stars={msg.paidStars} onClick={handleMediaClick} />
-            ) : (
-              <LockedMediaOverlay label="Tap to view" onClick={handleMediaClick} />
-            )}
+            {paid ? <LockedMediaOverlay stars={msg.paidStars} onClick={handleMediaClick} /> : <LockedMediaOverlay label="Tap to view" onClick={handleMediaClick} />}
           </div>
         );
       }
-      return (
-        <video
-          src={msg.content}
-          className="w-48 rounded-xl"
-          style={{ transform }}
-          controls
-          playsInline
-          preload="none"
-        />
-      );
+      return <video src={msg.content} className="w-48 rounded-xl" style={{ transform }} controls playsInline preload="none" />;
     }
 
     return null;
   };
 
   return (
-    <div className="flex flex-col h-dvh max-w-2xl mx-auto w-full overflow-hidden">
-      <header className="shrink-0 z-30 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-1">
-        <div className="glass-nav rounded-2xl px-2 py-2 flex items-center gap-2">
+    <div className="flex flex-col h-dvh w-full max-w-2xl mx-auto overflow-hidden bg-bg">
+      <header className="shrink-0 z-30 px-3 pt-[max(0.5rem,env(safe-area-inset-top))] pb-1">
+        <div className="glass-nav rounded-2xl px-2 py-1.5 flex items-center gap-2">
           <Link href="/chat/" className="p-2 rounded-full hover:bg-surface/60 transition-colors shrink-0" aria-label="Back">
             <ArrowLeft className="w-5 h-5" />
           </Link>
-
           {chat && (
-            <Link
-              href={`/profile/${chat.participant.username}/`}
-              className="flex-1 flex items-center gap-2.5 min-w-0 px-2 py-1 rounded-xl hover:bg-surface/40 transition-colors"
-            >
+            <Link href={`/profile/${chat.participant.username}/`} className="flex-1 flex items-center gap-2.5 min-w-0 px-2 py-1 rounded-xl hover:bg-surface/40 transition-colors">
               <Avatar src={chat.participant.avatar} alt="" size="sm" />
               <div className="min-w-0 text-left">
                 <UserName user={chat.participant} nameClassName="font-semibold text-sm" />
@@ -357,24 +402,15 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
               </div>
             </Link>
           )}
-
           <div className="relative shrink-0">
             <button onClick={() => setMenuOpen(!menuOpen)} className="p-2 rounded-full hover:bg-surface/60 transition-colors" aria-label="More">
               <MoreVertical className="w-5 h-5" />
             </button>
             {menuOpen && (
               <div className="absolute right-0 top-full mt-1 w-52 bg-surface border border-border rounded-xl py-1 shadow-lg z-20">
-                <button className="flex items-center gap-2 w-full px-4 py-2.5 text-sm hover:bg-surface/80">
-                  <Search className="w-4 h-4" /> Search
-                </button>
+                <button className="flex items-center gap-2 w-full px-4 py-2.5 text-sm hover:bg-surface/80"><Search className="w-4 h-4" /> Search</button>
                 {chat && <BlockButton userId={chat.participant.id} variant="menu" onAction={() => setMenuOpen(false)} />}
-                <button
-                  onClick={() => {
-                    setDeleteConfirm(true);
-                    setMenuOpen(false);
-                  }}
-                  className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-like hover:bg-surface/80"
-                >
+                <button onClick={() => { setDeleteConfirm(true); setMenuOpen(false); }} className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-like hover:bg-surface/80">
                   <Trash2 className="w-4 h-4" /> Delete conversation
                 </button>
               </div>
@@ -384,42 +420,34 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
       </header>
 
       {pinnedMessage && pinned && (
-        <div className="shrink-0">
-          <PinnedMessageBar
-            message={pinnedMessage}
-            scope={pinned.scope}
-            onClick={() => scrollToMessage(pinned.messageId)}
-            onUnpin={() => {
-              setPinned(null);
-              setMessages((prev) => prev.map((m) => ({ ...m, pinned: false, pinnedScope: undefined })));
-            }}
-          />
+        <div className="shrink-0 z-20">
+          <PinnedMessageBar message={pinnedMessage} scope={pinned.scope} onClick={() => scrollToMessage(pinned.messageId)} onUnpin={() => {
+            setPinned(null);
+            setMessages((prev) => prev.map((m) => ({ ...m, pinned: false, pinnedScope: undefined })));
+          }} />
         </div>
       )}
 
       {blocked && (
-        <div className="shrink-0 mx-4 mt-2 px-3 py-2 rounded-xl bg-surface/60 border border-border text-xs text-text-muted text-center">
+        <div className="shrink-0 mx-3 px-3 py-2 rounded-xl glass-nav text-xs text-text-muted text-center">
           You blocked this user. They cannot send you messages.
         </div>
       )}
 
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-3">
-        {messages.map((msg) => {
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 py-2 space-y-3">
+        {messages.filter((m) => !isTempMediaExpired(chatId, m.id)).map((msg) => {
           const isMe = msg.senderId === currentUser.id;
           const replySource = msg.replyTo ? messages.find((m) => m.id === msg.replyTo) : null;
 
           return (
             <div
-              key={msg.id}
+              key={msg.clientId ?? msg.id}
               ref={(el) => { messageRefs.current[msg.id] = el; }}
               className={cn("flex gap-2 group", isMe && "flex-row-reverse")}
               onTouchStart={() => startLongPress(msg)}
               onTouchEnd={cancelLongPress}
               onTouchMove={cancelLongPress}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                setContextMsg(msg);
-              }}
+              onContextMenu={(e) => { e.preventDefault(); setContextMsg(msg); }}
             >
               {!isMe && chat && <Avatar src={chat.participant.avatar} alt="" size="xs" className="mt-1" />}
               <div className={cn("max-w-[75%]", isMe && "items-end")}>
@@ -430,18 +458,8 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
                   </div>
                 )}
                 {msg.type === "text" && (
-                  <div
-                    className={cn(
-                      "px-3.5 py-2 rounded-2xl text-sm leading-relaxed",
-                      isMe ? "bg-text text-bg rounded-br-md" : "bg-surface rounded-bl-md"
-                    )}
-                    style={msg.rotation ? { transform: `rotate(${msg.rotation}deg)` } : undefined}
-                  >
-                    {msg.spoiler ? (
-                      <span className="blur-sm hover:blur-none transition-all">{msg.content}</span>
-                    ) : (
-                      msg.content
-                    )}
+                  <div className={cn("px-3.5 py-2 rounded-2xl text-sm leading-relaxed", isMe ? "bg-text text-bg rounded-br-md" : "bg-surface rounded-bl-md")}>
+                    {msg.spoiler ? <span className="blur-sm hover:blur-none transition-all">{msg.content}</span> : msg.content}
                   </div>
                 )}
                 {msg.type !== "text" && renderMedia(msg, isMe)}
@@ -450,7 +468,12 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
                   <span className={cn("text-[10px]", !isMe && !msg.read ? "text-[#8b5cf6]" : "text-text-muted")}>
                     {formatChatTime(msg.createdAt)}
                   </span>
-                  {isMe && (msg.read ? <CheckCheck className="w-3 h-3 text-[#6366f1]" /> : <Check className="w-3 h-3 text-text-muted" />)}
+                  {renderStatusIcon(msg, isMe)}
+                  {msg.sendStatus === "failed" && isMe && (
+                    <button type="button" onClick={() => retrySend(msg)} className="text-[10px] text-like flex items-center gap-0.5">
+                      <RotateCcw className="w-2.5 h-2.5" /> Retry
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -459,15 +482,18 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
         <div ref={bottomRef} />
       </div>
 
-      <div className="shrink-0">
-        <ChatInput
-          onSend={handleSend}
-          onSendAlbum={handleSendAlbum}
-          disabled={blocked}
-          disabledMessage="You cannot message this user"
-          replyTo={replyTo}
-          onCancelReply={() => setReplyTo(null)}
-        />
+      <div className="shrink-0 px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+        <div className="glass-nav rounded-2xl overflow-hidden">
+          <ChatInput
+            onSend={handleSend}
+            onSendAlbum={handleSendAlbum}
+            disabled={blocked}
+            disabledMessage="You cannot message this user"
+            replyTo={replyTo}
+            onCancelReply={() => setReplyTo(null)}
+            embedded
+          />
+        </div>
       </div>
 
       <MessageContextMenu
@@ -478,23 +504,13 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
         onClose={() => setContextMsg(null)}
         onReply={() => contextMsg && setReplyTo(contextMsg)}
         onForward={() => contextMsg && setForwardMsg(contextMsg)}
-        onCopy={async () => {
-          if (contextMsg) {
-            await navigator.clipboard.writeText(contextMsg.content);
-            showToast("Copied");
-          }
-        }}
+        onCopy={async () => { if (contextMsg) { await navigator.clipboard.writeText(contextMsg.content); showToast("Copied"); } }}
         onPin={(scope) => contextMsg && handlePin(contextMsg, scope)}
         onDelete={() => contextMsg && handleDeleteMessage(contextMsg.id)}
         onSave={() => showToast("Saved to gallery")}
       />
 
-      <ShareChatPicker
-        open={!!forwardMsg}
-        onClose={() => setForwardMsg(null)}
-        title="Forward to"
-        onSend={handleForward}
-      />
+      <ShareChatPicker open={!!forwardMsg} onClose={() => setForwardMsg(null)} title="Forward to" onSend={handleForward} />
 
       {deleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -514,7 +530,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
           stars={paidModal.paidStars ?? 0}
           onClose={() => setPaidModal(null)}
           onUnlock={() => {
-            setUnlocked((prev) => new Set([...prev, paidModal.id]));
+            unlockPaidMediaMessage(chatId, paidModal.id);
             setPaidModal(null);
           }}
         />

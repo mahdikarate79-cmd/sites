@@ -13,6 +13,8 @@ interface DonateButtonProps {
   vertical?: boolean;
 }
 
+const ICON_PX = { sm: 18, md: 20 } as const;
+
 export function DonateButton({
   total,
   donated,
@@ -21,6 +23,8 @@ export function DonateButton({
   showCount = true,
   vertical = false,
 }: DonateButtonProps) {
+  const iconSize = ICON_PX[size];
+
   return (
     <button
       onClick={onClick}
@@ -31,15 +35,15 @@ export function DonateButton({
       )}
       aria-label="Donate Stars"
     >
-      <span className="relative">
-        <TelegramStarIcon variant="post" size={size === "sm" ? 16 : 18} />
-        <span
-          className="absolute -top-0.5 -right-0.5 w-1 h-1 rounded-full bg-gold/70 animate-pulse pointer-events-none"
-          aria-hidden
-        />
+      <span
+        className="relative shrink-0 flex items-center justify-center overflow-hidden"
+        style={{ width: iconSize, height: iconSize, minWidth: iconSize, minHeight: iconSize }}
+      >
+        <TelegramStarIcon variant="post" size={iconSize} />
+        <span className="absolute -top-0.5 -right-0.5 w-1 h-1 rounded-full bg-gold/70 animate-pulse pointer-events-none" aria-hidden />
       </span>
       {showCount && (
-        <span className={cn("font-medium text-gold tabular-nums", size === "sm" ? "text-[10px]" : "text-xs")}>
+        <span className={cn("font-medium text-gold tabular-nums shrink-0", size === "sm" ? "text-[10px]" : "text-xs")}>
           {formatCount(total)}
         </span>
       )}

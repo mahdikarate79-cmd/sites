@@ -5,9 +5,9 @@ import Image from "next/image";
 import Link from "next/link";
 import { ArrowLeft, Camera } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
-import { currentUser } from "@/data/mock/users";
 import { Orientation } from "@/lib/types";
 import { useToast } from "@/components/ui/ToastProvider";
+import { usePrototype } from "@/lib/hooks/usePrototype";
 import { cn } from "@/lib/utils/cn";
 
 const ORIENTATIONS: { value: Orientation; label: string }[] = [
@@ -48,13 +48,15 @@ function calculateAge(day: number, month: number, year: number): number {
 }
 
 export function EditProfileContent() {
-  const initialDob = defaultBirthDate(currentUser.age);
+  const { getCurrentUser, updateProfile } = usePrototype();
+  const user = getCurrentUser();
+  const initialDob = defaultBirthDate(user.age);
   const { showToast } = useToast();
 
-  const [displayName, setDisplayName] = useState(currentUser.displayName);
-  const [username, setUsername] = useState(currentUser.username);
-  const [bio, setBio] = useState(currentUser.bio ?? "");
-  const [orientation, setOrientation] = useState<Orientation | "">(currentUser.orientation ?? "");
+  const [displayName, setDisplayName] = useState(user.displayName);
+  const [username, setUsername] = useState(user.username);
+  const [bio, setBio] = useState(user.bio ?? "");
+  const [orientation, setOrientation] = useState<Orientation | "">(user.orientation ?? "");
   const [day, setDay] = useState(initialDob.day);
   const [month, setMonth] = useState(initialDob.month);
   const [year, setYear] = useState(initialDob.year);
@@ -103,6 +105,14 @@ export function EditProfileContent() {
     }
     if (!validateDob(day, month, year)) return;
 
+    const age = calculateAge(parseInt(day, 10), parseInt(month, 10), parseInt(year, 10));
+    updateProfile({
+      displayName: displayName.trim(),
+      username: username.trim(),
+      bio: bio.trim() || undefined,
+      orientation: orientation || undefined,
+      age,
+    });
     showToast("Profile updated");
   };
 
@@ -131,8 +141,8 @@ export function EditProfileContent() {
 
       <div className="max-w-2xl mx-auto">
         <div className="relative h-32 sm:h-40 bg-surface">
-          {currentUser.cover && (
-            <Image src={currentUser.cover} alt="Cover" fill className="object-cover" sizes="100vw" />
+          {user.cover && (
+            <Image src={user.cover} alt="Cover" fill className="object-cover" sizes="100vw" />
           )}
           <button
             type="button"
@@ -146,7 +156,7 @@ export function EditProfileContent() {
 
         <div className="px-4 -mt-10 mb-6">
           <div className="relative inline-block">
-            <Avatar src={currentUser.avatar} alt={displayName} size="xl" className="border-4 border-bg" />
+            <Avatar src={user.avatar} alt={displayName} size="xl" className="border-4 border-bg" />
             <button
               type="button"
               className="absolute bottom-1 right-1 p-1.5 rounded-full glass-nav"

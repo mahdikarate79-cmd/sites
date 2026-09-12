@@ -9,13 +9,15 @@ interface AppLayoutProps {
   hideNav?: boolean;
   hideHeader?: boolean;
   hideHeaderActions?: boolean;
+  noPadding?: boolean;
+  fullHeight?: boolean;
 }
 
-export function AppLayout({ children, title, hideNav, hideHeader, hideHeaderActions }: AppLayoutProps) {
+export function AppLayout({ children, title, hideNav, hideHeader, hideHeaderActions, noPadding, fullHeight }: AppLayoutProps) {
   return (
-    <div className="min-h-dvh flex flex-col">
+    <div className={fullHeight ? "h-dvh flex flex-col overflow-hidden" : "min-h-dvh flex flex-col"}>
       {!hideHeader && <Header title={title} hideActions={hideHeaderActions} />}
-      <main className="flex-1 pb-24 max-w-2xl mx-auto w-full">{children}</main>
+      <main className={`flex-1 max-w-2xl mx-auto w-full ${fullHeight ? "h-full overflow-hidden p-0" : ""} ${!noPadding && !fullHeight ? "pb-24" : ""}`}>{children}</main>
       {!hideNav && <BottomNav />}
     </div>
   );

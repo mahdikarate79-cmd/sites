@@ -75,6 +75,23 @@ export interface ForwardInfo {
   preview: string;
 }
 
+export type SendStatus = "sending" | "sent" | "failed";
+
+export interface Comment {
+  id: string;
+  postId: string;
+  authorId: string;
+  authorName: string;
+  authorAvatar: string;
+  authorVerified?: boolean;
+  authorPremium?: boolean;
+  content: string;
+  createdAt: string;
+  sendStatus?: SendStatus;
+  clientId?: string;
+  replyTo?: string;
+}
+
 export interface ChatMessage {
   id: string;
   chatId: string;
@@ -85,6 +102,8 @@ export interface ChatMessage {
   createdAt: string;
   read: boolean;
   delivered?: boolean;
+  sendStatus?: SendStatus;
+  clientId?: string;
   replyTo?: string;
   pinned?: boolean;
   pinnedScope?: "me" | "both";
@@ -197,4 +216,10 @@ export interface PrototypeState {
   earnings: number;
   starBalance: number;
   transactions: TransactionRecord[];
+  unlockedPaidMedia: Record<string, string[]>;
+  expiredTempMedia: Record<string, string[]>;
+  viewedTempMedia: Record<string, string[]>;
+  comments: Record<string, Comment[]>;
+  commentCounts: Record<string, number>;
+  profileEdits: Partial<User>;
 }

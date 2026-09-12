@@ -13,7 +13,7 @@ export default async function ChatDetailPage({
 }) {
   const { id } = await params;
   return (
-    <AppLayout hideNav hideHeader>
+    <AppLayout hideNav hideHeader noPadding fullHeight>
       <ChatConversation chatId={id} />
     </AppLayout>
   );
