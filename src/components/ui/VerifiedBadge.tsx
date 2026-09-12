@@ -1,31 +1,28 @@
-import Image from "next/image";
-import { cn } from "@/lib/utils/cn";
-import { assetPath } from "@/lib/utils/assets";
+"use client";
 
-export function OfficialVerificationBadge({ className }: { className?: string }) {
+import { cn } from "@/lib/utils/cn";
+import { useAssetPath } from "@/lib/hooks/useAssetPath";
+
+function BadgeImg({ src, alt, className }: { src: string; alt: string; className?: string }) {
+  const href = useAssetPath(src);
   return (
-    <Image
-      src={assetPath("/badges/official.png")}
-      alt="Verified"
+    <img
+      src={href}
+      alt={alt}
+      className={cn("shrink-0 object-contain", className)}
       width={20}
       height={20}
-      className={cn("shrink-0 object-contain", className)}
-      unoptimized
+      draggable={false}
     />
   );
 }
 
+export function OfficialVerificationBadge({ className }: { className?: string }) {
+  return <BadgeImg src="/badges/official.png" alt="Verified" className={className} />;
+}
+
 export function PremiumVerificationBadge({ className }: { className?: string }) {
-  return (
-    <Image
-      src={assetPath("/badges/premium.png")}
-      alt="Premium"
-      width={20}
-      height={20}
-      className={cn("shrink-0 object-contain", className)}
-      unoptimized
-    />
-  );
+  return <BadgeImg src="/badges/premium.png" alt="Premium" className={className} />;
 }
 
 export function VerificationBadge({

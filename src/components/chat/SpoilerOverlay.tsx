@@ -1,8 +1,8 @@
 "use client";
 
-import { Flame } from "lucide-react";
 import { TelegramStarIcon } from "@/components/ui/TelegramStarIcon";
 import { formatStars } from "@/lib/utils/format";
+import { useAssetPath } from "@/lib/hooks/useAssetPath";
 import { cn } from "@/lib/utils/cn";
 
 interface SpoilerOverlayProps {
@@ -16,6 +16,7 @@ interface SpoilerOverlayProps {
 
 export function SpoilerOverlay({ stars, label, variant = "default", onClick, className, compact }: SpoilerOverlayProps) {
   const isTemp = variant === "temp";
+  const fireSrc = useAssetPath("/icons/temp-fire.png");
 
   return (
     <button
@@ -27,8 +28,15 @@ export function SpoilerOverlay({ stars, label, variant = "default", onClick, cla
       <div className="absolute inset-0 bg-black/25" aria-hidden />
       <div className="spoiler-dots absolute inset-0" aria-hidden />
       {isTemp ? (
-        <div className="relative z-[1] flex items-center justify-center w-12 h-12 rounded-full bg-black/40">
-          <Flame className="w-7 h-7 text-orange-400 flame-live" fill="currentColor" />
+        <div className="relative z-[1] flex items-center justify-center w-14 h-14">
+          <img
+            src={fireSrc}
+            alt=""
+            width={48}
+            height={48}
+            className="flame-live object-contain drop-shadow-md"
+            draggable={false}
+          />
         </div>
       ) : (stars !== undefined || label) ? (
         <div className={cn("relative z-[1] px-3 py-2 rounded-full glass-pill flex items-center gap-1.5", compact && "px-2 py-1")}>
