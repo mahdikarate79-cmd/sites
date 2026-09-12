@@ -34,8 +34,12 @@ interface PrototypeContextValue {
   isPaidMediaUnlocked: (chatId: string, messageId: string) => boolean;
   unlockPaidMediaMessage: (chatId: string, messageId: string) => void;
   isTempMediaExpired: (chatId: string, messageId: string) => boolean;
+  isTempMediaViewed: (chatId: string, messageId: string) => boolean;
   markTempMediaViewed: (chatId: string, messageId: string) => void;
   expireTempMedia: (chatId: string, messageId: string) => void;
+  startTempMediaTimer: (chatId: string, messageId: string) => void;
+  getTempMediaOpenedAt: (chatId: string, messageId: string) => number | null;
+  getTempMediaRemaining: (chatId: string, messageId: string, mode: string) => number | null;
   getComments: (postId: string) => Comment[];
   getCommentCount: (postId: string, initial?: number) => number;
   addComment: (postId: string, content: string) => Comment;
@@ -259,9 +263,16 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
     }));
   }, [update]);
 
+  const TEMP_SECONDS: Record<string, number> = { "3s": 3, "10s": 10, "30s": 30 };
+
   const isTempMediaExpired = useCallback(
     (chatId: string, messageId: string) => (state.expiredTempMedia[chatId] ?? []).includes(messageId),
     [state.expiredTempMedia]
+  );
+
+  const isTempMediaViewed = useCallback(
+    (chatId: string, messageId: string) => (state.viewedTempMedia[chatId] ?? []).includes(messageId),
+    [state.viewedTempMedia]
   );
 
   const markTempMediaViewed = useCallback((chatId: string, messageId: string) => {
@@ -283,6 +294,36 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
       },
     }));
   }, [update]);
+
+  const startTempMediaTimer = useCallback((chatId: string, messageId: string) => {
+    update((s) => ({
+      ...s,
+      tempMediaOpenedAt: {
+        ...s.tempMediaOpenedAt,
+        [chatId]: {
+          ...(s.tempMediaOpenedAt[chatId] ?? {}),
+          [messageId]: Date.now(),
+        },
+      },
+    }));
+  }, [update]);
+
+  const getTempMediaOpenedAt = useCallback(
+    (chatId: string, messageId: string) => state.tempMediaOpenedAt[chatId]?.[messageId] ?? null,
+    [state.tempMediaOpenedAt]
+  );
+
+  const getTempMediaRemaining = useCallback(
+    (chatId: string, messageId: string, mode: string): number | null => {
+      const seconds = TEMP_SECONDS[mode];
+      if (!seconds) return null;
+      const openedAt = state.tempMediaOpenedAt[chatId]?.[messageId];
+      if (!openedAt) return seconds;
+      const remaining = Math.ceil(seconds - (Date.now() - openedAt) / 1000);
+      return Math.max(0, remaining);
+    },
+    [state.tempMediaOpenedAt]
+  );
 
   const getComments = useCallback(
     (postId: string) => state.comments[postId] ?? [],
@@ -379,8 +420,12 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
         isPaidMediaUnlocked,
         unlockPaidMediaMessage,
         isTempMediaExpired,
+        isTempMediaViewed,
         markTempMediaViewed,
         expireTempMedia,
+        startTempMediaTimer,
+        getTempMediaOpenedAt,
+        getTempMediaRemaining,
         getComments,
         getCommentCount,
         addComment,
@@ -425,6 +470,7 @@ const DEFAULT_LOAD: PrototypeState = {
   unlockedPaidMedia: {},
   expiredTempMedia: {},
   viewedTempMedia: {},
+  tempMediaOpenedAt: {},
   comments: {},
   commentCounts: {},
   profileEdits: {},

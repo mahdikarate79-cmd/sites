@@ -219,6 +219,7 @@ export interface PrototypeState {
   unlockedPaidMedia: Record<string, string[]>;
   expiredTempMedia: Record<string, string[]>;
   viewedTempMedia: Record<string, string[]>;
+  tempMediaOpenedAt: Record<string, Record<string, number>>;
   comments: Record<string, Comment[]>;
   commentCounts: Record<string, number>;
   profileEdits: Partial<User>;

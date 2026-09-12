@@ -63,6 +63,7 @@ const DEFAULT_STATE: PrototypeState = {
   unlockedPaidMedia: {},
   expiredTempMedia: {},
   viewedTempMedia: {},
+  tempMediaOpenedAt: {},
   comments: {},
   commentCounts: {},
   profileEdits: {},

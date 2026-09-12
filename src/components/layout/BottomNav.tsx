@@ -22,7 +22,7 @@ export function BottomNav() {
   };
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 px-4 pb-4 safe-bottom pointer-events-none">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 px-4 pb-6 mb-1 safe-bottom pointer-events-none">
       <div className="glass-nav rounded-2xl max-w-sm mx-auto pointer-events-auto">
         <div className="flex items-center justify-around h-14 px-2">
           {navItems.map(({ href, icon: Icon, label }) => {

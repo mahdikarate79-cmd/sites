@@ -13,11 +13,11 @@ import { currentUser } from "@/data/mock/users";
 import { mockChats } from "@/data/mock/chats";
 import { formatChatTime } from "@/lib/utils/format";
 import { ChatInput } from "./ChatInput";
-import { PaidMediaModal } from "./PaidMediaModal";
 import { PinnedMessageBar } from "./PinnedMessageBar";
 import { MessageContextMenu } from "./MessageContextMenu";
-import { LockedMediaOverlay } from "./LockedMediaOverlay";
+import { SpoilerOverlay, PaidPriceBadge } from "./SpoilerOverlay";
 import { ShareChatPicker } from "./ShareChatPicker";
+import { ChatMediaViewer } from "./ChatMediaViewer";
 import { usePrototype } from "@/lib/hooks/usePrototype";
 import { useToast } from "@/components/ui/ToastProvider";
 import { lockScroll, unlockScroll } from "@/lib/utils/scrollLock";
@@ -33,8 +33,6 @@ const INITIAL_PINNED: Record<string, PinnedMessageInfo> = {
   c2: { messageId: "c2m1", scope: "me" },
 };
 
-const TEMP_SECONDS: Record<string, number> = { "3s": 3, "10s": 10, "30s": 30 };
-
 function mediaTransform(rotation?: number, mirrored?: boolean) {
   const parts: string[] = [];
   if (rotation) parts.push(`rotate(${rotation}deg)`);
@@ -46,13 +44,28 @@ function makeOptimisticId() {
   return `opt_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
+function getViewerMedia(msg: ChatMessage) {
+  if (msg.type === "image" || msg.type === "gif") {
+    return { url: msg.content, type: msg.type as "image" | "gif", rotation: msg.rotation, mirrored: msg.mirrored };
+  }
+  if (msg.type === "video") {
+    return { url: msg.content, type: "video" as const, rotation: msg.rotation, mirrored: msg.mirrored };
+  }
+  if (msg.type === "album" && msg.album?.[0]) {
+    const item = msg.album[0];
+    return { url: item.url, type: item.type, rotation: item.rotation };
+  }
+  return null;
+}
+
 export function ChatConversation({ chatId }: ChatConversationProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
-  const [paidModal, setPaidModal] = useState<ChatMessage | null>(null);
-  const [openedTemp, setOpenedTemp] = useState<Set<string>>(new Set());
+  const [viewerMsg, setViewerMsg] = useState<ChatMessage | null>(null);
+  const [showUnlockAnim, setShowUnlockAnim] = useState(false);
+  const [, setTimerTick] = useState(0);
   const [pinned, setPinned] = useState<PinnedMessageInfo | null>(INITIAL_PINNED[chatId] ?? null);
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [contextMsg, setContextMsg] = useState<ChatMessage | null>(null);
@@ -60,11 +73,11 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const tempTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const chat = mockChats.find((c) => c.id === chatId);
   const {
     deleteChat, isBlocked, isPaidMediaUnlocked, unlockPaidMediaMessage,
-    isTempMediaExpired, markTempMediaViewed, expireTempMedia,
+    isTempMediaExpired, isTempMediaViewed, markTempMediaViewed, expireTempMedia,
+    startTempMediaTimer, getTempMediaRemaining, spendStars, unlockPaidMedia,
   } = usePrototype();
   const { showToast } = useToast();
   const blocked = chat ? isBlocked(chat.participant.id) : false;
@@ -86,10 +99,21 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
   }, [messages]);
 
   useEffect(() => {
-    return () => {
-      Object.values(tempTimers.current).forEach(clearTimeout);
-    };
-  }, []);
+    const interval = setInterval(() => {
+      setTimerTick((t) => t + 1);
+      messages.forEach((msg) => {
+        if (!msg.temporary || msg.temporary === "view_once") return;
+        if (!isTempMediaViewed(chatId, msg.id)) return;
+        const remaining = getTempMediaRemaining(chatId, msg.id, msg.temporary);
+        if (remaining !== null && remaining <= 0) {
+          expireTempMedia(chatId, msg.id);
+          setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+          if (viewerMsg?.id === msg.id) setViewerMsg(null);
+        }
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [messages, viewerMsg, chatId, isTempMediaViewed, getTempMediaRemaining, expireTempMedia]);
 
   const pinnedMessage = pinned ? messages.find((m) => m.id === pinned.messageId) : null;
 
@@ -98,24 +122,6 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
     setMessages((prev) => prev.filter((m) => m.id !== msgId));
     if (pinned?.messageId === msgId) setPinned(null);
   }, [chatId, expireTempMedia, pinned]);
-
-  const scheduleTempDelete = useCallback((msgId: string, seconds: number) => {
-    if (tempTimers.current[msgId]) clearTimeout(tempTimers.current[msgId]);
-    tempTimers.current[msgId] = setTimeout(() => {
-      removeMessage(msgId);
-      delete tempTimers.current[msgId];
-    }, seconds * 1000);
-  }, [removeMessage]);
-
-  const openTemporaryMedia = useCallback((msg: ChatMessage) => {
-    setOpenedTemp((prev) => new Set([...prev, msg.id]));
-    markTempMediaViewed(chatId, msg.id);
-    if (msg.temporary === "view_once") {
-      scheduleTempDelete(msg.id, 1);
-    } else if (msg.temporary && TEMP_SECONDS[msg.temporary]) {
-      scheduleTempDelete(msg.id, TEMP_SECONDS[msg.temporary]);
-    }
-  }, [chatId, markTempMediaViewed, scheduleTempDelete]);
 
   const upsertMessage = useCallback((clientId: string, next: ChatMessage) => {
     setMessages((prev) => {
@@ -291,7 +297,41 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
     !!msg.paidStars && !isMe && !isPaidMediaUnlocked(chatId, msg.id) && !msg.paidUnlocked;
 
   const isTempLocked = (msg: ChatMessage, isMe: boolean) =>
-    !!msg.temporary && !isMe && !openedTemp.has(msg.id) && !isTempMediaExpired(chatId, msg.id);
+    !!msg.temporary && !isMe && !isTempMediaViewed(chatId, msg.id) && !isTempMediaExpired(chatId, msg.id);
+
+  const openMediaViewer = (msg: ChatMessage, isMe: boolean) => {
+    const media = getViewerMedia(msg);
+    if (!media) return;
+
+    if (isTempLocked(msg, isMe)) {
+      markTempMediaViewed(chatId, msg.id);
+      if (msg.temporary && msg.temporary !== "view_once") {
+        startTempMediaTimer(chatId, msg.id);
+      }
+    }
+
+    setViewerMsg(msg);
+  };
+
+  const closeMediaViewer = () => {
+    if (viewerMsg) {
+      const isMe = viewerMsg.senderId === currentUser.id;
+      if (viewerMsg.temporary === "view_once" && !isMe) {
+        expireTempMedia(chatId, viewerMsg.id);
+        removeMessage(viewerMsg.id);
+      }
+    }
+    setViewerMsg(null);
+    setShowUnlockAnim(false);
+  };
+
+  const handlePayInViewer = () => {
+    if (!viewerMsg?.paidStars) return;
+    if (!spendStars(viewerMsg.paidStars, "Paid media unlock", "paid_media")) return;
+    unlockPaidMedia(viewerMsg.paidStars);
+    unlockPaidMediaMessage(chatId, viewerMsg.id);
+    setShowUnlockAnim(true);
+  };
 
   const renderStatusIcon = (msg: ChatMessage, isMe: boolean) => {
     if (!isMe) return null;
@@ -326,65 +366,100 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
     const tempLocked = isTempLocked(msg, isMe);
     const locked = paid || tempLocked;
     const transform = mediaTransform(msg.rotation, msg.mirrored);
+    const isMediaType = msg.type === "image" || msg.type === "gif" || msg.type === "video" || msg.type === "album";
 
     const handleMediaClick = () => {
-      if (paid) setPaidModal(msg);
-      else if (tempLocked) openTemporaryMedia(msg);
+      if (!isMediaType) return;
+      if (paid && !isMe) {
+        openMediaViewer(msg, isMe);
+        return;
+      }
+      if (tempLocked) {
+        openMediaViewer(msg, isMe);
+        return;
+      }
+      openMediaViewer(msg, isMe);
     };
+
+    const showPaidBadge = !!msg.paidStars && isMe;
 
     if (msg.type === "image" || msg.type === "gif") {
       return (
-        <div className={cn("relative w-48 h-36 rounded-xl overflow-hidden", locked && "cursor-pointer")} onClick={handleMediaClick}>
-          {!locked && (
-            <Image src={msg.content} alt="" fill className={cn("object-cover", msg.spoiler && "blur-lg")} style={{ transform }} loading="lazy" sizes="192px" />
-          )}
+        <div className={cn("relative w-48 h-36 rounded-xl overflow-hidden cursor-pointer", locked && "cursor-pointer")} onClick={handleMediaClick}>
+          <Image
+            src={msg.content}
+            alt=""
+            fill
+            className={cn("object-cover", locked && "blur-xl scale-110")}
+            style={!locked ? { transform } : undefined}
+            loading="lazy"
+            sizes="192px"
+            unoptimized
+          />
           {locked && (
-            <>
-              <Image src={msg.content} alt="" fill className="object-cover blur-xl scale-110" sizes="192px" />
-              {paid ? <LockedMediaOverlay stars={msg.paidStars} onClick={handleMediaClick} /> : <LockedMediaOverlay label="Tap to view" onClick={handleMediaClick} />}
-            </>
+            paid
+              ? <SpoilerOverlay stars={msg.paidStars} onClick={handleMediaClick} />
+              : <SpoilerOverlay label="Tap to view" onClick={handleMediaClick} />
           )}
+          {showPaidBadge && <PaidPriceBadge stars={msg.paidStars!} />}
         </div>
       );
     }
 
     if (msg.type === "album" && msg.album) {
       return (
-        <div className={cn("grid gap-0.5 rounded-xl overflow-hidden", msg.album.length === 1 ? "grid-cols-1" : "grid-cols-2", locked && "cursor-pointer")} onClick={handleMediaClick}>
+        <div className={cn("relative rounded-xl overflow-hidden cursor-pointer", locked ? "w-48 h-36" : "grid gap-0.5", !locked && (msg.album.length === 1 ? "grid-cols-1" : "grid-cols-2"))} onClick={handleMediaClick}>
           {locked ? (
-            <div className="relative col-span-2 w-48 h-36 rounded-xl overflow-hidden">
+            <>
               <Image src={msg.album[0].url} alt="" fill className="object-cover blur-xl scale-110" unoptimized />
-              {paid ? <LockedMediaOverlay stars={msg.paidStars} onClick={handleMediaClick} /> : <LockedMediaOverlay label="Tap to view" onClick={handleMediaClick} />}
-            </div>
+              {paid
+                ? <SpoilerOverlay stars={msg.paidStars} onClick={handleMediaClick} />
+                : <SpoilerOverlay label="Tap to view" onClick={handleMediaClick} />}
+            </>
           ) : (
             msg.album.map((item, i) => (
               <div key={i} className="relative w-24 h-24 bg-surface">
                 {item.type === "video" ? (
                   <video src={item.url} className="w-full h-full object-cover" muted playsInline />
                 ) : (
-                  <Image src={item.url} alt="" fill className={cn("object-cover", msg.spoiler && "blur-lg")} unoptimized />
+                  <Image src={item.url} alt="" fill className="object-cover" unoptimized />
                 )}
               </div>
             ))
           )}
+          {showPaidBadge && <PaidPriceBadge stars={msg.paidStars!} />}
         </div>
       );
     }
 
     if (msg.type === "video") {
-      if (locked) {
-        return (
-          <div className="relative w-48 h-36 rounded-xl overflow-hidden cursor-pointer" onClick={handleMediaClick}>
-            <div className="w-full h-full bg-surface" />
-            {paid ? <LockedMediaOverlay stars={msg.paidStars} onClick={handleMediaClick} /> : <LockedMediaOverlay label="Tap to view" onClick={handleMediaClick} />}
-          </div>
-        );
-      }
-      return <video src={msg.content} className="w-48 rounded-xl" style={{ transform }} controls playsInline preload="none" />;
+      return (
+        <div className={cn("relative w-48 h-36 rounded-xl overflow-hidden cursor-pointer")} onClick={handleMediaClick}>
+          {locked ? (
+            <>
+              <div className="w-full h-full bg-surface" />
+              {paid
+                ? <SpoilerOverlay stars={msg.paidStars} onClick={handleMediaClick} />
+                : <SpoilerOverlay label="Tap to view" onClick={handleMediaClick} />}
+            </>
+          ) : (
+            <video src={msg.content} className="w-full h-full object-cover rounded-xl" style={{ transform }} muted playsInline preload="metadata" />
+          )}
+          {showPaidBadge && <PaidPriceBadge stars={msg.paidStars!} />}
+        </div>
+      );
     }
 
     return null;
   };
+
+  const viewerMedia = viewerMsg ? getViewerMedia(viewerMsg) : null;
+  const viewerIsMe = viewerMsg ? viewerMsg.senderId === currentUser.id : false;
+  const viewerPaidLocked = viewerMsg ? isPaidLocked(viewerMsg, viewerIsMe) && !showUnlockAnim : false;
+  const viewerTempRestricted = viewerMsg ? !!viewerMsg.temporary && !viewerIsMe : false;
+  const viewerTimerRemaining = viewerMsg?.temporary && viewerMsg.temporary !== "view_once"
+    ? getTempMediaRemaining(chatId, viewerMsg.id, viewerMsg.temporary)
+    : null;
 
   return (
     <div className="flex flex-col h-dvh w-full max-w-2xl mx-auto overflow-hidden bg-bg">
@@ -501,6 +576,8 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
         message={contextMsg}
         isMedia={contextMsg ? contextMsg.type !== "text" : false}
         isViewOnce={contextMsg?.temporary === "view_once"}
+        isTempMedia={!!contextMsg?.temporary}
+        isPaidMedia={!!contextMsg?.paidStars}
         onClose={() => setContextMsg(null)}
         onReply={() => contextMsg && setReplyTo(contextMsg)}
         onForward={() => contextMsg && setForwardMsg(contextMsg)}
@@ -525,14 +602,25 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
         </div>
       )}
 
-      {paidModal && (
-        <PaidMediaModal
-          stars={paidModal.paidStars ?? 0}
-          onClose={() => setPaidModal(null)}
-          onUnlock={() => {
-            unlockPaidMediaMessage(chatId, paidModal.id);
-            setPaidModal(null);
-          }}
+      {viewerMsg && viewerMedia && chat && (
+        <ChatMediaViewer
+          open
+          message={viewerMsg}
+          media={viewerMedia}
+          sender={viewerIsMe ? currentUser : chat.participant}
+          isMe={viewerIsMe}
+          paidLocked={viewerPaidLocked}
+          tempRestricted={viewerTempRestricted}
+          isViewOnce={viewerMsg.temporary === "view_once"}
+          timerSeconds={viewerMsg.temporary && viewerMsg.temporary !== "view_once" ? viewerMsg.temporary : undefined}
+          timerRemaining={viewerTimerRemaining}
+          onClose={closeMediaViewer}
+          onReply={() => { setReplyTo(viewerMsg); closeMediaViewer(); }}
+          onForward={() => { setForwardMsg(viewerMsg); closeMediaViewer(); }}
+          onSave={() => showToast("Saved to gallery")}
+          onPay={handlePayInViewer}
+          showUnlockAnimation={showUnlockAnim}
+          onUnlockAnimationComplete={() => setShowUnlockAnim(false)}
         />
       )}
     </div>

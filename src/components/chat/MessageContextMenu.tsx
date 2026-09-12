@@ -10,6 +10,8 @@ interface MessageContextMenuProps {
   message: ChatMessage | null;
   isMedia: boolean;
   isViewOnce?: boolean;
+  isTempMedia?: boolean;
+  isPaidMedia?: boolean;
   onClose: () => void;
   onReply: () => void;
   onForward: () => void;
@@ -24,6 +26,8 @@ export function MessageContextMenu({
   message,
   isMedia,
   isViewOnce,
+  isTempMedia,
+  isPaidMedia,
   onClose,
   onReply,
   onForward,
@@ -43,9 +47,11 @@ export function MessageContextMenu({
     { icon: Trash2, label: "Delete", action: onDelete, danger: true },
   ];
 
+  const restricted = isViewOnce || isTempMedia || isPaidMedia;
+
   const mediaActions = [
-    ...(isViewOnce ? [] : [{ icon: Download, label: "Save", action: onSave }]),
-    ...(isViewOnce ? [] : [{ icon: Forward, label: "Forward", action: onForward }]),
+    ...(restricted ? [] : [{ icon: Download, label: "Save", action: onSave }]),
+    ...(restricted ? [] : [{ icon: Forward, label: "Forward", action: onForward }]),
     { icon: Copy, label: "Copy", action: onCopy },
     { icon: Pin, label: "Pin for me", action: () => onPin("me") },
     { icon: Pin, label: "Pin for both", action: () => onPin("both") },
