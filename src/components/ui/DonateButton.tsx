@@ -3,6 +3,7 @@
 import { cn } from "@/lib/utils/cn";
 import { formatCount } from "@/lib/utils/format";
 import { TelegramStarIcon } from "./TelegramStarIcon";
+import { DonateStarGlow } from "./PremiumGlowStars";
 
 interface DonateButtonProps {
   total: number;
@@ -36,13 +37,14 @@ export function DonateButton({
       aria-label="Donate Stars"
     >
       <span
-        className="relative shrink-0 flex items-center justify-center overflow-hidden"
-        style={{ width: iconSize, height: iconSize, minWidth: iconSize, minHeight: iconSize }}
+        className="relative shrink-0 flex items-center justify-center"
+        style={{ width: iconSize + 8, height: iconSize + 8, minWidth: iconSize + 8, minHeight: iconSize + 8 }}
       >
-        <TelegramStarIcon variant="post" size={iconSize} />
+        <DonateStarGlow />
+        <TelegramStarIcon variant="post" size={iconSize} className="relative z-[1]" />
       </span>
       {showCount && (
-        <span className={cn("font-medium text-gold tabular-nums shrink-0", size === "sm" ? "text-[10px]" : "text-xs")}>
+        <span className={cn("font-medium text-gold tabular-nums shrink-0 relative z-[1]", size === "sm" ? "text-[10px]" : "text-xs")}>
           {formatCount(total)}
         </span>
       )}

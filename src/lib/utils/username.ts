@@ -17,7 +17,7 @@ export const BANNED_USERNAMES = new Set([
 ]);
 
 const TAKEN_USERNAMES = new Set(
-  mockUsers.map((u) => u.username.toLowerCase())
+  mockUsers.map((u) => u.username?.toLowerCase()).filter(Boolean) as string[]
 );
 
 export type UsernameValidation =
@@ -26,26 +26,27 @@ export type UsernameValidation =
 
 export function validateUsername(value: string, currentUsername: string): UsernameValidation {
   const username = value.trim().toLowerCase();
-  const isOwn = username === currentUsername.toLowerCase();
+  const current = (currentUsername ?? "").trim().toLowerCase();
+  const isOwn = username === current;
 
   if (!username) {
-    return { valid: false, error: "نام کاربری باید حداقل 4 کارکتر داشته باشد." };
+    return { valid: true };
   }
 
   if (username.length > 32) {
-    return { valid: false, error: "نام کاربری نباید بیش از 32 کارکتر باشد." };
+    return { valid: false, error: "Username must not exceed 32 characters." };
   }
 
   if (!USERNAME_PATTERN.test(username)) {
-    return { valid: false, error: "این نام کاربری نامعتبر است." };
+    return { valid: false, error: "This username is invalid." };
   }
 
   if (!isOwn) {
     if (username.length < 4) {
-      return { valid: false, error: "نام کاربری باید حداقل 4 کارکتر داشته باشد." };
+      return { valid: false, error: "Username must be at least 4 characters." };
     }
     if (TAKEN_USERNAMES.has(username) || BANNED_USERNAMES.has(username)) {
-      return { valid: false, error: "این نام کاربری قبلا انتخاب شده." };
+      return { valid: false, error: "This username is already taken." };
     }
   }
 

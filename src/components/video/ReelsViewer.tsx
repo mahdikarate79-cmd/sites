@@ -43,11 +43,11 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
   const [speed2x, setSpeed2x] = useState(false);
   const [progress, setProgress] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const lastTap = useRef(0);
   const tapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const touchStartY = useRef(0);
+  const scrolling = useRef(false);
   const { isLiked, toggleLike, getDonation, isFollowing, markInterested, markNotInterested, hidePost, toggleBookmark, isBookmarked } = usePrototype();
   const { showToast } = useToast();
 
@@ -66,6 +66,14 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
   }, [open, initialIndex]);
 
   useEffect(() => {
+    if (!open || !scrollRef.current) return;
+    const el = scrollRef.current;
+    requestAnimationFrame(() => {
+      el.scrollTop = initialIndex * el.clientHeight;
+    });
+  }, [open, initialIndex]);
+
+  useEffect(() => {
     if (!videoRef.current || !isVideo) return;
     videoRef.current.playbackRate = speed2x ? 2 : 1;
     if (paused) videoRef.current.pause();
@@ -76,30 +84,34 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
     setProgress(0);
     const video = videoRef.current;
     if (!video || !isVideo) return;
-
     const onTimeUpdate = () => {
       if (video.duration) setProgress((video.currentTime / video.duration) * 100);
     };
-
     video.addEventListener("timeupdate", onTimeUpdate);
     return () => video.removeEventListener("timeupdate", onTimeUpdate);
   }, [index, isVideo]);
 
-  const goNext = useCallback(() => {
-    if (index < items.length - 1) {
-      setIndex((i) => i + 1);
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el || scrolling.current) return;
+    const i = Math.round(el.scrollTop / el.clientHeight);
+    if (i !== index && i >= 0 && i < items.length) {
+      setIndex(i);
       setProgress(0);
       setPaused(false);
     }
   }, [index, items.length]);
 
-  const goPrev = useCallback(() => {
-    if (index > 0) {
-      setIndex((i) => i - 1);
-      setProgress(0);
-      setPaused(false);
-    }
-  }, [index]);
+  const scrollToIndex = (i: number) => {
+    const el = scrollRef.current;
+    if (!el || i < 0 || i >= items.length) return;
+    scrolling.current = true;
+    el.scrollTo({ top: i * el.clientHeight, behavior: "smooth" });
+    setIndex(i);
+    setProgress(0);
+    setPaused(false);
+    setTimeout(() => { scrolling.current = false; }, 400);
+  };
 
   const handleVideoTap = (e: React.MouseEvent) => {
     if (!post || !isVideo) return;
@@ -112,10 +124,7 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
     const inCenter = relX > 0.2 && relX < 0.8;
 
     if (now - lastTap.current < 300 && inCenter) {
-      if (tapTimer.current) {
-        clearTimeout(tapTimer.current);
-        tapTimer.current = null;
-      }
+      if (tapTimer.current) { clearTimeout(tapTimer.current); tapTimer.current = null; }
       lastTap.current = 0;
       toggleLike(post.id);
       setShowHeart(true);
@@ -129,21 +138,6 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
       if (inCenter) setPaused((p) => !p);
       tapTimer.current = null;
     }, 280);
-  };
-
-  const handleWheel = (e: React.WheelEvent) => {
-    if (e.deltaY > 30) goNext();
-    else if (e.deltaY < -30) goPrev();
-  };
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartY.current = e.touches[0].clientY;
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    const diff = touchStartY.current - e.changedTouches[0].clientY;
-    if (diff > 60) goNext();
-    else if (diff < -60) goPrev();
   };
 
   const handlePointerDown = (e: React.PointerEvent) => {
@@ -184,7 +178,7 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
   ];
 
   return (
-    <div className="fixed inset-0 z-50 bg-black" ref={containerRef}>
+    <div className="fixed inset-0 z-50 bg-black">
       {!fullscreen && (
         <>
           <button onClick={onClose} className="absolute top-4 left-4 z-20 p-2 safe-top" data-reel-ui aria-label="Back">
@@ -197,130 +191,119 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
       )}
 
       <div
-        className="relative w-full h-dvh overflow-hidden"
+        ref={scrollRef}
+        className="h-dvh overflow-y-scroll snap-y snap-mandatory scrollbar-hide"
+        onScroll={handleScroll}
         onClick={isVideo ? handleVideoTap : undefined}
-        onWheel={handleWheel}
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
         onPointerDown={handlePointerDown}
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
       >
-        <div
-          className="transition-transform duration-300 ease-out will-change-transform"
-          style={{ transform: `translateY(-${index * 100}%)` }}
-        >
-          {items.map((reelItem, i) => {
-            const reelMedia = reelItem.media;
-            const reelIsVideo = reelMedia.type === "video";
-            return (
-              <div key={`${reelItem.post.id}-${reelItem.mediaIndex}`} className="relative w-full h-dvh shrink-0">
-                {reelIsVideo ? (
-                  <video
-                    ref={i === index ? videoRef : undefined}
-                    src={reelMedia.url}
-                    poster={reelMedia.thumbnail}
-                    className="w-full h-full object-cover"
-                    loop
-                    playsInline
-                    muted={muted}
-                    autoPlay={i === index}
-                  />
-                ) : (
-                  <Image src={reelMedia.url} alt="" fill className="object-cover" priority={i === index} unoptimized />
-                )}
-              </div>
-            );
-          })}
-        </div>
+        {items.map((reelItem, i) => {
+          const reelMedia = reelItem.media;
+          const reelIsVideo = reelMedia.type === "video";
+          const reelPost = reelItem.post;
+          const isActive = i === index;
 
-        {isVideo && paused && !fullscreen && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-            <button
-              onClick={(e) => { e.stopPropagation(); setMuted(!muted); }}
-              className="mb-4 p-2 rounded-full bg-black/40 pointer-events-auto"
-              data-reel-ui
+          return (
+            <div
+              key={`${reelItem.post.id}-${reelItem.mediaIndex}`}
+              className="relative w-full h-dvh snap-start snap-always shrink-0"
             >
-              {muted ? <VolumeX className="w-5 h-5 text-white" /> : <Volume2 className="w-5 h-5 text-white" />}
-            </button>
-            <Play className="w-16 h-16 text-white fill-white opacity-80" />
-          </div>
-        )}
+              {reelIsVideo ? (
+                <video
+                  ref={isActive ? videoRef : undefined}
+                  src={reelMedia.url}
+                  poster={reelMedia.thumbnail}
+                  className="w-full h-full object-cover"
+                  loop
+                  playsInline
+                  muted={muted}
+                  autoPlay={isActive}
+                />
+              ) : (
+                <Image src={reelMedia.url} alt="" fill className="object-cover" priority={isActive} unoptimized />
+              )}
 
-        {showHeart && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30">
-            <Heart className="w-24 h-24 text-like fill-like animate-[heart-burst_0.6s_ease-out]" />
-          </div>
-        )}
+              {isActive && reelIsVideo && paused && !fullscreen && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setMuted(!muted); }}
+                    className="mb-4 p-2 rounded-full bg-black/40 pointer-events-auto"
+                    data-reel-ui
+                  >
+                    {muted ? <VolumeX className="w-5 h-5 text-white" /> : <Volume2 className="w-5 h-5 text-white" />}
+                  </button>
+                  <Play className="w-16 h-16 text-white fill-white opacity-80" />
+                </div>
+              )}
 
-        {speed2x && (
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 px-3 py-1 rounded-full bg-black/60 text-white text-sm font-medium z-30">
-            2x
-          </div>
-        )}
+              {isActive && showHeart && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30">
+                  <Heart className="w-24 h-24 text-like fill-like animate-[heart-burst_0.6s_ease-out]" />
+                </div>
+              )}
 
-        {!fullscreen && (
-          <>
-            <div className="absolute right-3 bottom-28 flex flex-col items-center gap-5 z-10" data-reel-ui>
-              <button onClick={(e) => { e.stopPropagation(); toggleLike(post.id); }} className="flex flex-col items-center gap-0.5">
-                <Heart className={cn("w-7 h-7", liked ? "text-like fill-like" : "text-white")} />
-                <span className="text-white text-xs font-medium">{formatCount(post.likes)}</span>
-              </button>
-              <div onClick={(e) => { e.stopPropagation(); setDonateOpen(true); }}>
-                <DonateButton total={donation.total} donated={donation.userDonated} onClick={() => setDonateOpen(true)} vertical size="sm" />
-              </div>
-              <button className="flex flex-col items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
-                <MessageCircle className="w-7 h-7 text-white" />
-                <span className="text-white text-xs font-medium">{formatCount(post.comments)}</span>
-              </button>
-              <button className="flex flex-col items-center gap-0.5" onClick={(e) => { e.stopPropagation(); setShareOpen(true); }}>
-                <Share2 className="w-7 h-7 text-white" />
-                <span className="text-white text-xs font-medium">{formatCount(post.shares)}</span>
-              </button>
-            </div>
+              {isActive && speed2x && (
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 px-3 py-1 rounded-full bg-black/60 text-white text-sm font-medium z-30">
+                  2x
+                </div>
+              )}
 
-            <div className="absolute bottom-20 left-4 right-16 z-10" data-reel-ui>
-              <div className="flex items-center gap-2 mb-2">
-                <Link href={`/profile/${post.author.username}/`} onClick={(e) => e.stopPropagation()}>
-                  <Avatar src={post.author.avatar} alt={post.author.displayName} size="sm" />
-                </Link>
-                <Link href={`/profile/${post.author.username}/`} onClick={(e) => e.stopPropagation()} className="min-w-0">
-                  <UserName user={post.author} nameClassName="text-white font-semibold text-sm" />
-                </Link>
-                {!following && <FollowButton userId={post.author.id} size="sm" />}
-              </div>
-              {post.content && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); setCaptionOpen(!captionOpen); }}
-                  className="text-white text-sm text-left line-clamp-2"
-                >
-                  {captionOpen ? post.content : post.content.slice(0, 80) + (post.content.length > 80 ? "..." : "")}
-                </button>
+              {isActive && !fullscreen && (
+                <>
+                  <div className="absolute right-3 bottom-28 flex flex-col items-center gap-5 z-10" data-reel-ui>
+                    <button onClick={(e) => { e.stopPropagation(); toggleLike(reelPost.id); }} className="flex flex-col items-center gap-0.5">
+                      <Heart className={cn("w-7 h-7", isLiked(reelPost.id) ? "text-like fill-like" : "text-white")} />
+                      <span className="text-white text-xs font-medium">{formatCount(reelPost.likes)}</span>
+                    </button>
+                    <div onClick={(e) => { e.stopPropagation(); setDonateOpen(true); }}>
+                      <DonateButton total={getDonation(reelPost.id, { total: reelPost.stars ?? 0, topDonators: reelPost.topDonators ?? [] }).total} donated={getDonation(reelPost.id).userDonated} onClick={() => setDonateOpen(true)} vertical size="sm" />
+                    </div>
+                    <button className="flex flex-col items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+                      <MessageCircle className="w-7 h-7 text-white" />
+                      <span className="text-white text-xs font-medium">{formatCount(reelPost.comments)}</span>
+                    </button>
+                    <button className="flex flex-col items-center gap-0.5" onClick={(e) => { e.stopPropagation(); setShareOpen(true); }}>
+                      <Share2 className="w-7 h-7 text-white" />
+                      <span className="text-white text-xs font-medium">{formatCount(reelPost.shares)}</span>
+                    </button>
+                  </div>
+
+                  <div className="absolute bottom-20 left-4 right-16 z-10" data-reel-ui>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Link href={`/profile/${reelPost.author.username || reelPost.author.id}/`} onClick={(e) => e.stopPropagation()}>
+                        <Avatar src={reelPost.author.avatar} alt={reelPost.author.displayName} size="sm" />
+                      </Link>
+                      <Link href={`/profile/${reelPost.author.username || reelPost.author.id}/`} onClick={(e) => e.stopPropagation()} className="min-w-0">
+                        <UserName user={reelPost.author} nameClassName="text-white font-semibold text-sm" />
+                      </Link>
+                      {!isFollowing(reelPost.author.id) && <FollowButton userId={reelPost.author.id} size="sm" />}
+                    </div>
+                    {reelPost.content && (
+                      <button onClick={(e) => { e.stopPropagation(); setCaptionOpen(!captionOpen); }} className="text-white text-sm text-left line-clamp-2">
+                        {captionOpen ? reelPost.content : reelPost.content.slice(0, 80) + (reelPost.content.length > 80 ? "..." : "")}
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {isActive && !fullscreen && reelIsVideo && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white/20 z-10 pointer-events-none">
+                  <div className="h-full bg-white/80 transition-[width] duration-100 ease-linear" style={{ width: `${progress}%` }} />
+                </div>
               )}
             </div>
-          </>
-        )}
-
-        {fullscreen && (
-          <button
-            onClick={() => setFullscreen(false)}
-            className="absolute bottom-6 right-4 z-20 p-2 rounded-full bg-black/50"
-            data-reel-ui
-            aria-label="Exit fullscreen"
-          >
-            <Minimize2 className="w-5 h-5 text-white" />
-          </button>
-        )}
-
-        {!fullscreen && isVideo && (
-          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white/20 z-10 pointer-events-none">
-            <div
-              className="h-full bg-white/80 transition-[width] duration-100 ease-linear"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-        )}
+          );
+        })}
       </div>
+
+      {fullscreen && (
+        <button onClick={() => setFullscreen(false)} className="absolute bottom-6 right-4 z-20 p-2 rounded-full bg-black/50" data-reel-ui aria-label="Exit fullscreen">
+          <Minimize2 className="w-5 h-5 text-white" />
+        </button>
+      )}
 
       <BottomSheet open={menuOpen} onClose={() => setMenuOpen(false)} title="More">
         <div className="pb-4">
@@ -335,12 +318,7 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
 
       <DonateModal open={donateOpen} onClose={() => setDonateOpen(false)} post={post} />
       <ReportModal open={reportOpen} onClose={() => setReportOpen(false)} />
-      <ShareChatPicker
-        open={shareOpen}
-        onClose={() => setShareOpen(false)}
-        title="Share to"
-        onSend={(ids) => showToast(`Shared to ${ids.length} chat${ids.length > 1 ? "s" : ""}`)}
-      />
+      <ShareChatPicker open={shareOpen} onClose={() => setShareOpen(false)} title="Share to" onSend={(ids) => showToast(`Shared to ${ids.length} chat${ids.length > 1 ? "s" : ""}`)} />
     </div>
   );
 }

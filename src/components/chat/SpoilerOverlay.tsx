@@ -1,6 +1,7 @@
 "use client";
 
 import { TelegramStarIcon } from "@/components/ui/TelegramStarIcon";
+import { SpoilerDots } from "@/components/ui/SpoilerDots";
 import { formatStars } from "@/lib/utils/format";
 import { useAssetPath } from "@/lib/hooks/useAssetPath";
 import { cn } from "@/lib/utils/cn";
@@ -26,7 +27,7 @@ export function SpoilerOverlay({ stars, label, variant = "default", onClick, cla
       aria-label={stars ? `Unlock for ${stars} stars` : isTemp ? "Tap to view temporary media" : label ?? "Tap to view"}
     >
       <div className="absolute inset-0 bg-black/25" aria-hidden />
-      <div className="spoiler-dots absolute inset-0" aria-hidden />
+      <SpoilerDots />
       {isTemp ? (
         <div className="relative z-[1] flex items-center justify-center w-14 h-14">
           <img
@@ -42,7 +43,7 @@ export function SpoilerOverlay({ stars, label, variant = "default", onClick, cla
         <div className={cn("relative z-[1] px-3 py-2 rounded-full glass-pill flex items-center gap-1.5", compact && "px-2 py-1")}>
           {stars !== undefined && (
             <>
-              <TelegramStarIcon variant="donate" size={compact ? 14 : 18} />
+              <TelegramStarIcon variant="post" size={compact ? 14 : 18} />
               <span className={cn("font-semibold text-white tabular-nums", compact ? "text-xs" : "text-sm")}>
                 {formatStars(stars)}
               </span>
@@ -60,7 +61,7 @@ export function SpoilerOverlay({ stars, label, variant = "default", onClick, cla
 export function PaidPriceBadge({ stars, className }: { stars: number; className?: string }) {
   return (
     <div className={cn("absolute top-1.5 right-1.5 z-[2] px-1.5 py-0.5 rounded-full glass-pill flex items-center gap-1", className)}>
-      <TelegramStarIcon variant="donate" size={12} />
+      <TelegramStarIcon variant="post" size={12} />
       <span className="text-[10px] font-semibold text-white tabular-nums">{formatStars(stars)}</span>
     </div>
   );

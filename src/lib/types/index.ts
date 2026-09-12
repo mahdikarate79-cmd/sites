@@ -10,7 +10,7 @@ export type Orientation =
 
 export interface User {
   id: string;
-  username: string;
+  username?: string;
   displayName: string;
   avatar: string;
   cover?: string;

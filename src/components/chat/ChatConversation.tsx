@@ -64,6 +64,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [viewerMsg, setViewerMsg] = useState<ChatMessage | null>(null);
+  const [viewerAlbumIndex, setViewerAlbumIndex] = useState(0);
   const [showUnlockAnim, setShowUnlockAnim] = useState(false);
   const [, setTimerTick] = useState(0);
   const [pinned, setPinned] = useState<PinnedMessageInfo | null>(INITIAL_PINNED[chatId] ?? null);
@@ -203,7 +204,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
       senderId: currentUser.id,
       type: "album",
       content: caption,
-      album: items.map((m) => ({ type: m.item.type, url: m.item.url, rotation: m.rotation })),
+      album: items.map((m) => ({ type: m.item.type, url: m.croppedUrl ?? m.item.url, rotation: m.rotation })),
       caption,
       paidStars: first?.paidStars,
       temporary: first?.temporary,
@@ -299,9 +300,22 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
   const isTempLocked = (msg: ChatMessage) =>
     !!msg.temporary && !isTempMediaViewed(chatId, msg.id) && !isTempMediaExpired(chatId, msg.id);
 
-  const openMediaViewer = (msg: ChatMessage, isMe: boolean) => {
-    const media = getViewerMedia(msg);
-    if (!media) return;
+  const getViewerAlbum = (msg: ChatMessage) => {
+    if (msg.type === "album" && msg.album) {
+      return msg.album.map((item) => ({
+        url: item.url,
+        type: item.type,
+        rotation: item.rotation,
+        mirrored: msg.mirrored,
+      }));
+    }
+    const single = getViewerMedia(msg);
+    return single ? [single] : [];
+  };
+
+  const openMediaViewer = (msg: ChatMessage, albumIndex = 0) => {
+    const album = getViewerAlbum(msg);
+    if (album.length === 0) return;
 
     if (isTempLocked(msg)) {
       markTempMediaViewed(chatId, msg.id);
@@ -310,6 +324,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
       }
     }
 
+    setViewerAlbumIndex(albumIndex);
     setViewerMsg(msg);
   };
 
@@ -319,6 +334,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
       removeMessage(viewerMsg.id);
     }
     setViewerMsg(null);
+    setViewerAlbumIndex(0);
     setShowUnlockAnim(false);
   };
 
@@ -365,24 +381,16 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
     const transform = mediaTransform(msg.rotation, msg.mirrored);
     const isMediaType = msg.type === "image" || msg.type === "gif" || msg.type === "video" || msg.type === "album";
 
-    const handleMediaClick = () => {
+    const handleMediaClick = (albumIndex = 0) => {
       if (!isMediaType) return;
-      if (paid && !isMe) {
-        openMediaViewer(msg, isMe);
-        return;
-      }
-      if (tempLocked) {
-        openMediaViewer(msg, isMe);
-        return;
-      }
-      openMediaViewer(msg, isMe);
+      openMediaViewer(msg, albumIndex);
     };
 
     const showPaidBadge = !!msg.paidStars && isMe;
 
     if (msg.type === "image" || msg.type === "gif") {
       return (
-        <div className={cn("relative w-48 h-36 rounded-xl overflow-hidden cursor-pointer", locked && "cursor-pointer")} onClick={handleMediaClick}>
+        <div className={cn("relative w-48 h-36 rounded-xl overflow-hidden cursor-pointer", locked && "cursor-pointer")} onClick={() => handleMediaClick(0)}>
           <Image
             src={msg.content}
             alt=""
@@ -395,8 +403,8 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
           />
           {locked && (
             paid
-              ? <SpoilerOverlay stars={msg.paidStars} onClick={handleMediaClick} />
-              : <SpoilerOverlay variant="temp" onClick={handleMediaClick} />
+              ? <SpoilerOverlay stars={msg.paidStars} onClick={() => handleMediaClick(0)} />
+              : <SpoilerOverlay variant="temp" onClick={() => handleMediaClick(0)} />
           )}
           {showPaidBadge && <PaidPriceBadge stars={msg.paidStars!} />}
         </div>
@@ -405,17 +413,17 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
 
     if (msg.type === "album" && msg.album) {
       return (
-        <div className={cn("relative rounded-xl overflow-hidden cursor-pointer", locked ? "w-48 h-36" : "grid gap-0.5", !locked && (msg.album.length === 1 ? "grid-cols-1" : "grid-cols-2"))} onClick={handleMediaClick}>
+        <div className={cn("relative rounded-xl overflow-hidden", locked ? "w-48 h-36 cursor-pointer" : "grid gap-0.5", !locked && (msg.album.length === 1 ? "grid-cols-1" : "grid-cols-2"))}>
           {locked ? (
-            <>
+            <div className="relative w-full h-full" onClick={() => handleMediaClick(0)}>
               <Image src={msg.album[0].url} alt="" fill className="object-cover blur-xl scale-110" unoptimized />
               {paid
-                ? <SpoilerOverlay stars={msg.paidStars} onClick={handleMediaClick} />
-                : <SpoilerOverlay variant="temp" onClick={handleMediaClick} />}
-            </>
+                ? <SpoilerOverlay stars={msg.paidStars} onClick={() => handleMediaClick(0)} />
+                : <SpoilerOverlay variant="temp" onClick={() => handleMediaClick(0)} />}
+            </div>
           ) : (
             msg.album.map((item, i) => (
-              <div key={i} className="relative w-24 h-24 bg-surface">
+              <div key={i} className="relative w-24 h-24 bg-surface cursor-pointer" onClick={() => handleMediaClick(i)}>
                 {item.type === "video" ? (
                   <video src={item.url} className="w-full h-full object-cover" muted playsInline />
                 ) : (
@@ -431,13 +439,13 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
 
     if (msg.type === "video") {
       return (
-        <div className={cn("relative w-48 h-36 rounded-xl overflow-hidden cursor-pointer")} onClick={handleMediaClick}>
+        <div className={cn("relative w-48 h-36 rounded-xl overflow-hidden cursor-pointer")} onClick={() => handleMediaClick(0)}>
           {locked ? (
             <>
               <div className="w-full h-full bg-surface" />
               {paid
-                ? <SpoilerOverlay stars={msg.paidStars} onClick={handleMediaClick} />
-                : <SpoilerOverlay variant="temp" onClick={handleMediaClick} />}
+                ? <SpoilerOverlay stars={msg.paidStars} onClick={() => handleMediaClick(0)} />
+                : <SpoilerOverlay variant="temp" onClick={() => handleMediaClick(0)} />}
             </>
           ) : (
             <video src={msg.content} className="w-full h-full object-cover rounded-xl" style={{ transform }} muted playsInline preload="metadata" />
@@ -450,7 +458,8 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
     return null;
   };
 
-  const viewerMedia = viewerMsg ? getViewerMedia(viewerMsg) : null;
+  const viewerAlbum = viewerMsg ? getViewerAlbum(viewerMsg) : [];
+  const viewerMedia = viewerAlbum[viewerAlbumIndex] ?? (viewerMsg ? getViewerMedia(viewerMsg) : null);
   const viewerIsMe = viewerMsg ? viewerMsg.senderId === currentUser.id : false;
   const viewerPaidLocked = viewerMsg ? isPaidLocked(viewerMsg, viewerIsMe) && !showUnlockAnim : false;
   const viewerTempRestricted = viewerMsg ? !!viewerMsg.temporary : false;
@@ -618,6 +627,9 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
           onPay={handlePayInViewer}
           showUnlockAnimation={showUnlockAnim}
           onUnlockAnimationComplete={() => setShowUnlockAnim(false)}
+          album={viewerAlbum.length > 1 ? viewerAlbum : undefined}
+          albumIndex={viewerAlbumIndex}
+          onAlbumIndexChange={setViewerAlbumIndex}
         />
       )}
     </div>

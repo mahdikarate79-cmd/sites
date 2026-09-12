@@ -50,9 +50,10 @@ export function CreatorStudioContent() {
   const available = state.earnings;
   const amount = Math.max(0, parseInt(amountInput, 10) || 0);
   const usd = starsToUsd(amount);
-  const canWithdraw = STARS_LAST_21_DAYS >= WITHDRAWAL_MIN_STARS;
+  const meetsMinimum = STARS_LAST_21_DAYS >= WITHDRAWAL_MIN_STARS;
   const walletValid = walletAddress.trim() ? isValidTonWallet(walletAddress) : false;
   const amountValid = amount >= 1 && amount <= available;
+  const canSubmitWithdraw = meetsMinimum && walletValid && amountValid;
 
   const handleAmountChange = (value: string) => {
     if (value === "") {
@@ -129,11 +130,11 @@ export function CreatorStudioContent() {
           </p>
           <button
             type="button"
-            disabled={!canWithdraw}
+            disabled={available <= 0}
             onClick={() => setWithdrawOpen(true)}
             className={cn(
               "flex items-center justify-center gap-2 w-full mt-4 py-2.5 rounded-xl text-sm font-semibold transition-opacity",
-              canWithdraw
+              available > 0
                 ? "bg-text text-bg hover:opacity-90"
                 : "bg-surface text-text-muted cursor-not-allowed opacity-60"
             )}
@@ -141,9 +142,9 @@ export function CreatorStudioContent() {
             <Wallet className="w-4 h-4" />
             Withdraw
           </button>
-          {!canWithdraw && (
+          {!meetsMinimum && (
             <p className="text-xs text-text-muted text-center mt-2">
-              Minimum {formatStars(WITHDRAWAL_MIN_STARS)} stars in 21 days required
+              Minimum {formatStars(WITHDRAWAL_MIN_STARS)} stars earned in the last 21 days required
             </p>
           )}
         </section>
@@ -216,7 +217,7 @@ export function CreatorStudioContent() {
           <div className="flex items-center justify-between text-sm">
             <span className="text-text-muted">Available</span>
             <span className="flex items-center gap-1 font-semibold tabular-nums">
-              <TelegramStarIcon variant="donate" size={16} />
+              <TelegramStarIcon variant="post" size={16} />
               {formatStars(available)}
             </span>
           </div>
@@ -275,7 +276,7 @@ export function CreatorStudioContent() {
           <button
             type="button"
             onClick={handleWithdraw}
-            disabled={!amountValid || !walletValid}
+            disabled={!canSubmitWithdraw}
             className="w-full py-2.5 rounded-xl bg-text text-bg text-sm font-semibold disabled:opacity-40"
           >
             Withdraw

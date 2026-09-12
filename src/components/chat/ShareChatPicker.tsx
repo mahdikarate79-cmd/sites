@@ -31,7 +31,7 @@ export function ShareChatPicker({ open, onClose, title = "Share to", onSend }: S
 
   const filtered = chats.filter((c) =>
     c.participant.displayName.toLowerCase().includes(query.toLowerCase()) ||
-    c.participant.username.toLowerCase().includes(query.toLowerCase())
+    (c.participant.username ?? "").toLowerCase().includes(query.toLowerCase())
   );
 
   const toggle = (id: string) => {

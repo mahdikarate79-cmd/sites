@@ -2,7 +2,7 @@ import { User } from "@/lib/types";
 
 export const currentUser: User = {
   id: "u1",
-  username: "sheytoni_user",
+  username: "",
   displayName: "Sheytoni User",
   avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=sheytoni",
   cover: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1200&h=400&fit=crop",

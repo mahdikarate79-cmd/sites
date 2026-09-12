@@ -37,17 +37,19 @@ export function ExploreContent() {
       if (q.startsWith("@")) {
         const username = q.slice(1);
         users = users
-          .filter((u) => u.username.includes(username))
+          .filter((u) => (u.username ?? "").includes(username))
           .sort((a, b) => {
-            if (a.username === username) return -1;
-            if (b.username === username) return 1;
-            return a.username.localeCompare(b.username);
+            const aName = a.username ?? "";
+            const bName = b.username ?? "";
+            if (aName === username) return -1;
+            if (bName === username) return 1;
+            return aName.localeCompare(bName);
           });
       } else {
         users = users.filter(
           (u) =>
             u.displayName.toLowerCase().includes(q) ||
-            u.username.toLowerCase().includes(q)
+            (u.username ?? "").toLowerCase().includes(q)
         );
       }
     }

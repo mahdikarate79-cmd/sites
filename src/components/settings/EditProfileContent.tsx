@@ -62,7 +62,7 @@ export function EditProfileContent() {
   const initialDob = defaultBirthDate(user.age);
   const { showToast } = useToast();
 
-  const initialUsername = user.username;
+  const initialUsername = user.username ?? "";
   const initialDisplayName = user.displayName;
   const initialBio = user.bio ?? "";
   const initialOrientation = user.orientation ?? "";
@@ -159,7 +159,7 @@ export function EditProfileContent() {
     const age = calculateAge(parseInt(day, 10), parseInt(month, 10), parseInt(year, 10));
     updateProfile({
       displayName: displayName.trim(),
-      username: username.trim().toLowerCase(),
+      username: username.trim().toLowerCase() || undefined,
       bio: bio.trim() || undefined,
       orientation: orientation || undefined,
       age,
@@ -192,7 +192,7 @@ export function EditProfileContent() {
   const inputClass =
     "w-full px-3 py-2.5 rounded-xl bg-surface border border-border text-sm outline-none focus:border-text-muted transition-colors";
 
-  const showUsernameStatus = username.length > 0;
+  const showUsernameStatus = username.length > 0 || initialUsername.length > 0;
 
   return (
     <div className="min-h-dvh pb-8">
@@ -287,10 +287,10 @@ export function EditProfileContent() {
                 </span>
               )}
             </div>
+            {usernameError && <p className="text-xs text-like mt-1.5">{usernameError}</p>}
             <p className="text-xs text-text-muted mt-1.5 leading-relaxed">
-              شما میتوانید از کارکتر های 0 - 9 ، a - z و زیرخط استفاده کنید. حداقل طول مجاز 4 کارکتر هست.
+              You can use characters 0-9, a-z, and underscore. Minimum length is 4 characters. Leave empty if you prefer no username.
             </p>
-            {usernameError && <p className="text-xs text-like mt-1">{usernameError}</p>}
           </div>
 
           <div>

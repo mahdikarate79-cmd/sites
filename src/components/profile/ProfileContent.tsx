@@ -121,7 +121,7 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
         <h1 className="text-xl font-bold mb-0.5">
           <UserName user={user} nameClassName="text-xl font-bold" />
         </h1>
-        <p className="text-text-muted text-sm mb-1">@{user.username}</p>
+        {user.username && <p className="text-text-muted text-sm mb-1">@{user.username}</p>}
 
         {(user.age || user.orientation) && (
           <div className="flex items-center gap-2 mb-2 text-sm text-text-muted">
