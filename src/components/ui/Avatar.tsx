@@ -28,6 +28,7 @@ export function Avatar({ src, alt, size = "md", className }: AvatarProps) {
         className="object-cover"
         loading="lazy"
         sizes={size === "xl" ? "80px" : size === "lg" ? "56px" : "40px"}
+        unoptimized={src.startsWith("data:")}
       />
     </div>
   );

@@ -1,13 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowLeft, Camera } from "lucide-react";
+import { ArrowLeft, Camera, Check, X } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { Orientation } from "@/lib/types";
 import { useToast } from "@/components/ui/ToastProvider";
 import { usePrototype } from "@/lib/hooks/usePrototype";
+import { validateUsername } from "@/lib/utils/username";
 import { cn } from "@/lib/utils/cn";
 
 const ORIENTATIONS: { value: Orientation; label: string }[] = [
@@ -47,20 +48,40 @@ function calculateAge(day: number, month: number, year: number): number {
   return age;
 }
 
+function readImageFile(file: File, onLoad: (dataUrl: string) => void) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    if (typeof reader.result === "string") onLoad(reader.result);
+  };
+  reader.readAsDataURL(file);
+}
+
 export function EditProfileContent() {
   const { getCurrentUser, updateProfile } = usePrototype();
   const user = getCurrentUser();
   const initialDob = defaultBirthDate(user.age);
   const { showToast } = useToast();
 
-  const [displayName, setDisplayName] = useState(user.displayName);
-  const [username, setUsername] = useState(user.username);
-  const [bio, setBio] = useState(user.bio ?? "");
-  const [orientation, setOrientation] = useState<Orientation | "">(user.orientation ?? "");
+  const initialUsername = user.username;
+  const initialDisplayName = user.displayName;
+  const initialBio = user.bio ?? "";
+  const initialOrientation = user.orientation ?? "";
+  const initialAvatar = user.avatar;
+  const initialCover = user.cover ?? "";
+
+  const [displayName, setDisplayName] = useState(initialDisplayName);
+  const [username, setUsername] = useState(initialUsername);
+  const [bio, setBio] = useState(initialBio);
+  const [orientation, setOrientation] = useState<Orientation | "">(initialOrientation);
+  const [avatar, setAvatar] = useState(initialAvatar);
+  const [cover, setCover] = useState(initialCover);
   const [day, setDay] = useState(initialDob.day);
   const [month, setMonth] = useState(initialDob.month);
   const [year, setYear] = useState(initialDob.year);
   const [dobError, setDobError] = useState("");
+
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const coverInputRef = useRef<HTMLInputElement>(null);
 
   const years = useMemo(() => {
     const currentYear = new Date().getFullYear();
@@ -73,6 +94,14 @@ export function EditProfileContent() {
     if (!m || !y) return 31;
     return getDaysInMonth(m, y);
   }, [month, year]);
+
+  const usernameValidation = useMemo(
+    () => validateUsername(username, initialUsername),
+    [username, initialUsername]
+  );
+
+  const usernameValid = usernameValidation.valid;
+  const usernameError = !usernameValidation.valid ? usernameValidation.error : "";
 
   const validateDob = (d: string, m: string, y: string): boolean => {
     const dayNum = parseInt(d, 10);
@@ -94,13 +123,35 @@ export function EditProfileContent() {
     return true;
   };
 
+  const hasChanges = useMemo(() => {
+    const age = calculateAge(parseInt(day, 10), parseInt(month, 10), parseInt(year, 10));
+    const initialAge = user.age ?? calculateAge(
+      parseInt(initialDob.day, 10),
+      parseInt(initialDob.month, 10),
+      parseInt(initialDob.year, 10)
+    );
+
+    return (
+      displayName.trim() !== initialDisplayName ||
+      username.trim().toLowerCase() !== initialUsername.toLowerCase() ||
+      bio.trim() !== initialBio ||
+      (orientation || "") !== initialOrientation ||
+      avatar !== initialAvatar ||
+      cover !== initialCover ||
+      age !== initialAge
+    );
+  }, [
+    displayName, username, bio, orientation, avatar, cover, day, month, year,
+    initialDisplayName, initialUsername, initialBio, initialOrientation, initialAvatar, initialCover,
+    user.age, initialDob,
+  ]);
+
+  const canSave = hasChanges && usernameValid && !dobError && displayName.trim().length > 0;
+
   const handleSave = () => {
+    if (!canSave) return;
     if (!displayName.trim()) {
       showToast("Display name is required");
-      return;
-    }
-    if (!username.trim()) {
-      showToast("Username is required");
       return;
     }
     if (!validateDob(day, month, year)) return;
@@ -108,16 +159,40 @@ export function EditProfileContent() {
     const age = calculateAge(parseInt(day, 10), parseInt(month, 10), parseInt(year, 10));
     updateProfile({
       displayName: displayName.trim(),
-      username: username.trim(),
+      username: username.trim().toLowerCase(),
       bio: bio.trim() || undefined,
       orientation: orientation || undefined,
       age,
+      avatar,
+      cover: cover || undefined,
     });
     showToast("Profile updated");
   };
 
+  const handleAvatarPick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !file.type.startsWith("image/")) {
+      showToast("Please select an image file");
+      return;
+    }
+    readImageFile(file, setAvatar);
+    e.target.value = "";
+  };
+
+  const handleCoverPick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !file.type.startsWith("image/")) {
+      showToast("Please select an image file");
+      return;
+    }
+    readImageFile(file, setCover);
+    e.target.value = "";
+  };
+
   const inputClass =
     "w-full px-3 py-2.5 rounded-xl bg-surface border border-border text-sm outline-none focus:border-text-muted transition-colors";
+
+  const showUsernameStatus = username.length > 0;
 
   return (
     <div className="min-h-dvh pb-8">
@@ -132,22 +207,29 @@ export function EditProfileContent() {
           <button
             type="button"
             onClick={handleSave}
-            className="px-4 py-1.5 rounded-full bg-text text-bg text-sm font-semibold"
+            disabled={!canSave}
+            className={cn(
+              "px-4 py-1.5 rounded-full text-sm font-semibold transition-opacity",
+              canSave ? "bg-text text-bg" : "bg-surface text-text-muted opacity-50 cursor-not-allowed"
+            )}
           >
             Save
           </button>
         </div>
       </div>
 
+      <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarPick} />
+      <input ref={coverInputRef} type="file" accept="image/*" className="hidden" onChange={handleCoverPick} />
+
       <div className="max-w-2xl mx-auto">
         <div className="relative h-32 sm:h-40 bg-surface">
-          {user.cover && (
-            <Image src={user.cover} alt="Cover" fill className="object-cover" sizes="100vw" />
+          {cover && (
+            <Image src={cover} alt="Cover" fill className="object-cover" sizes="100vw" unoptimized={cover.startsWith("data:")} />
           )}
           <button
             type="button"
             className="absolute bottom-3 right-3 flex items-center gap-1.5 px-3 py-1.5 rounded-full glass-nav text-xs font-medium"
-            onClick={() => showToast("Cover photo updated")}
+            onClick={() => coverInputRef.current?.click()}
           >
             <Camera className="w-4 h-4" />
             Change cover
@@ -156,11 +238,11 @@ export function EditProfileContent() {
 
         <div className="px-4 -mt-10 mb-6">
           <div className="relative inline-block">
-            <Avatar src={user.avatar} alt={displayName} size="xl" className="border-4 border-bg" />
+            <Avatar src={avatar} alt={displayName} size="xl" className="border-4 border-bg" />
             <button
               type="button"
               className="absolute bottom-1 right-1 p-1.5 rounded-full glass-nav"
-              onClick={() => showToast("Profile photo updated")}
+              onClick={() => avatarInputRef.current?.click()}
               aria-label="Change profile photo"
             >
               <Camera className="w-4 h-4" />
@@ -191,11 +273,24 @@ export function EditProfileContent() {
               <input
                 id="username"
                 value={username}
-                onChange={(e) => setUsername(e.target.value.replace(/\s/g, ""))}
-                className={cn(inputClass, "pl-7")}
-                maxLength={30}
+                onChange={(e) => setUsername(e.target.value.replace(/\s/g, "").toLowerCase())}
+                className={cn(inputClass, "pl-7 pr-10")}
+                maxLength={32}
               />
+              {showUsernameStatus && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2">
+                  {usernameValid ? (
+                    <Check className="w-4 h-4 text-emerald-500" />
+                  ) : (
+                    <X className="w-4 h-4 text-like" />
+                  )}
+                </span>
+              )}
             </div>
+            <p className="text-xs text-text-muted mt-1.5 leading-relaxed">
+              شما میتوانید از کارکتر های 0 - 9 ، a - z و زیرخط استفاده کنید. حداقل طول مجاز 4 کارکتر هست.
+            </p>
+            {usernameError && <p className="text-xs text-like mt-1">{usernameError}</p>}
           </div>
 
           <div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { Flame } from "lucide-react";
 import { TelegramStarIcon } from "@/components/ui/TelegramStarIcon";
 import { formatStars } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
@@ -7,22 +8,29 @@ import { cn } from "@/lib/utils/cn";
 interface SpoilerOverlayProps {
   stars?: number;
   label?: string;
+  variant?: "default" | "temp";
   onClick?: () => void;
   className?: string;
   compact?: boolean;
 }
 
-export function SpoilerOverlay({ stars, label, onClick, className, compact }: SpoilerOverlayProps) {
+export function SpoilerOverlay({ stars, label, variant = "default", onClick, className, compact }: SpoilerOverlayProps) {
+  const isTemp = variant === "temp";
+
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn("absolute inset-0 flex items-center justify-center overflow-hidden", className)}
-      aria-label={stars ? `Unlock for ${stars} stars` : label ?? "Tap to view"}
+      aria-label={stars ? `Unlock for ${stars} stars` : isTemp ? "Tap to view temporary media" : label ?? "Tap to view"}
     >
       <div className="absolute inset-0 bg-black/25" aria-hidden />
       <div className="spoiler-dots absolute inset-0" aria-hidden />
-      {(stars !== undefined || label) && (
+      {isTemp ? (
+        <div className="relative z-[1] flex items-center justify-center w-12 h-12 rounded-full bg-black/40">
+          <Flame className="w-7 h-7 text-orange-400 flame-live" fill="currentColor" />
+        </div>
+      ) : (stars !== undefined || label) ? (
         <div className={cn("relative z-[1] px-3 py-2 rounded-full glass-pill flex items-center gap-1.5", compact && "px-2 py-1")}>
           {stars !== undefined && (
             <>
@@ -36,7 +44,7 @@ export function SpoilerOverlay({ stars, label, onClick, className, compact }: Sp
             <span className={cn("text-white/90 font-medium", compact ? "text-[10px]" : "text-xs")}>{label}</span>
           )}
         </div>
-      )}
+      ) : null}
     </button>
   );
 }

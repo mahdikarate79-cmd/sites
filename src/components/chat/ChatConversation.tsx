@@ -296,14 +296,14 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
   const isPaidLocked = (msg: ChatMessage, isMe: boolean) =>
     !!msg.paidStars && !isMe && !isPaidMediaUnlocked(chatId, msg.id) && !msg.paidUnlocked;
 
-  const isTempLocked = (msg: ChatMessage, isMe: boolean) =>
-    !!msg.temporary && !isMe && !isTempMediaViewed(chatId, msg.id) && !isTempMediaExpired(chatId, msg.id);
+  const isTempLocked = (msg: ChatMessage) =>
+    !!msg.temporary && !isTempMediaViewed(chatId, msg.id) && !isTempMediaExpired(chatId, msg.id);
 
   const openMediaViewer = (msg: ChatMessage, isMe: boolean) => {
     const media = getViewerMedia(msg);
     if (!media) return;
 
-    if (isTempLocked(msg, isMe)) {
+    if (isTempLocked(msg)) {
       markTempMediaViewed(chatId, msg.id);
       if (msg.temporary && msg.temporary !== "view_once") {
         startTempMediaTimer(chatId, msg.id);
@@ -314,12 +314,9 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
   };
 
   const closeMediaViewer = () => {
-    if (viewerMsg) {
-      const isMe = viewerMsg.senderId === currentUser.id;
-      if (viewerMsg.temporary === "view_once" && !isMe) {
-        expireTempMedia(chatId, viewerMsg.id);
-        removeMessage(viewerMsg.id);
-      }
+    if (viewerMsg?.temporary === "view_once") {
+      expireTempMedia(chatId, viewerMsg.id);
+      removeMessage(viewerMsg.id);
     }
     setViewerMsg(null);
     setShowUnlockAnim(false);
@@ -363,7 +360,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
 
   const renderMedia = (msg: ChatMessage, isMe: boolean) => {
     const paid = isPaidLocked(msg, isMe);
-    const tempLocked = isTempLocked(msg, isMe);
+    const tempLocked = isTempLocked(msg);
     const locked = paid || tempLocked;
     const transform = mediaTransform(msg.rotation, msg.mirrored);
     const isMediaType = msg.type === "image" || msg.type === "gif" || msg.type === "video" || msg.type === "album";
@@ -399,7 +396,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
           {locked && (
             paid
               ? <SpoilerOverlay stars={msg.paidStars} onClick={handleMediaClick} />
-              : <SpoilerOverlay label="Tap to view" onClick={handleMediaClick} />
+              : <SpoilerOverlay variant="temp" onClick={handleMediaClick} />
           )}
           {showPaidBadge && <PaidPriceBadge stars={msg.paidStars!} />}
         </div>
@@ -414,7 +411,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
               <Image src={msg.album[0].url} alt="" fill className="object-cover blur-xl scale-110" unoptimized />
               {paid
                 ? <SpoilerOverlay stars={msg.paidStars} onClick={handleMediaClick} />
-                : <SpoilerOverlay label="Tap to view" onClick={handleMediaClick} />}
+                : <SpoilerOverlay variant="temp" onClick={handleMediaClick} />}
             </>
           ) : (
             msg.album.map((item, i) => (
@@ -440,7 +437,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
               <div className="w-full h-full bg-surface" />
               {paid
                 ? <SpoilerOverlay stars={msg.paidStars} onClick={handleMediaClick} />
-                : <SpoilerOverlay label="Tap to view" onClick={handleMediaClick} />}
+                : <SpoilerOverlay variant="temp" onClick={handleMediaClick} />}
             </>
           ) : (
             <video src={msg.content} className="w-full h-full object-cover rounded-xl" style={{ transform }} muted playsInline preload="metadata" />
@@ -456,7 +453,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
   const viewerMedia = viewerMsg ? getViewerMedia(viewerMsg) : null;
   const viewerIsMe = viewerMsg ? viewerMsg.senderId === currentUser.id : false;
   const viewerPaidLocked = viewerMsg ? isPaidLocked(viewerMsg, viewerIsMe) && !showUnlockAnim : false;
-  const viewerTempRestricted = viewerMsg ? !!viewerMsg.temporary && !viewerIsMe : false;
+  const viewerTempRestricted = viewerMsg ? !!viewerMsg.temporary : false;
   const viewerTimerRemaining = viewerMsg?.temporary && viewerMsg.temporary !== "view_once"
     ? getTempMediaRemaining(chatId, viewerMsg.id, viewerMsg.temporary)
     : null;

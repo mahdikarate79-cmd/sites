@@ -1,14 +1,11 @@
 import Image from "next/image";
 import { cn } from "@/lib/utils/cn";
-import { PremiumParticles } from "./PremiumParticles";
-
-const OFFICIAL_BADGE = "/badges/official.png";
-const PREMIUM_BADGE = "/badges/premium.png";
+import { assetPath } from "@/lib/utils/assets";
 
 export function OfficialVerificationBadge({ className }: { className?: string }) {
   return (
     <Image
-      src={OFFICIAL_BADGE}
+      src={assetPath("/badges/official.png")}
       alt="Verified"
       width={20}
       height={20}
@@ -21,7 +18,7 @@ export function OfficialVerificationBadge({ className }: { className?: string })
 export function PremiumVerificationBadge({ className }: { className?: string }) {
   return (
     <Image
-      src={PREMIUM_BADGE}
+      src={assetPath("/badges/premium.png")}
       alt="Premium"
       width={20}
       height={20}
@@ -45,19 +42,10 @@ export function VerificationBadge({
   const size = className ?? "w-3.5 h-3.5";
 
   if (verified) {
-    return (
-      <span className={cn("relative inline-flex shrink-0", size)}>
-        {premium && <PremiumParticles count={3} centered animated />}
-        <OfficialVerificationBadge className={cn(size, "relative z-[1]")} />
-      </span>
-    );
+    return <OfficialVerificationBadge className={size} />;
   }
 
-  return (
-    <span className={cn("relative inline-flex shrink-0", size)}>
-      <PremiumVerificationBadge className={cn(size, "relative z-[1]")} />
-    </span>
-  );
+  return <PremiumVerificationBadge className={size} />;
 }
 
 /** @deprecated Use OfficialVerificationBadge */
