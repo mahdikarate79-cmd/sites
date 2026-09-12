@@ -11,6 +11,7 @@ import {
   deleteAccount,
   publicUser,
   touchUserActivity,
+  usernameAvailable,
 } from "./db.mjs";
 import {
   ensureAdminSettings,
@@ -25,7 +26,10 @@ import { uploadToB2, isB2Configured } from "./b2.mjs";
 import { createStarsInvoice, answerPreCheckoutQuery, verifyWebhookSecret, isBotConfigured } from "./telegramBot.mjs";
 import { createNotification, getUserNotifications } from "./notifications.mjs";
 import { startCleanupScheduler } from "./mediaCleanup.mjs";
-const PORT = Number(process.env.AUTH_PORT ?? 8787);
+import { serveStatic, staticDirExists } from "./static.mjs";
+
+const PORT = Number(process.env.PORT ?? process.env.AUTH_PORT ?? 3000);
+const HOST = process.env.HOST ?? "0.0.0.0";
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? "";
 const DEV_AUTH = process.env.AUTH_DEV_MODE === "true";
 const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET ?? "";
@@ -147,13 +151,7 @@ async function handleTelegramAuth(req, res, secure) {
     user = createUserFromTelegram(db, tgUser);
     db.users[user.id] = user;
   } else {
-    const prevUsername = user.username;
-    user.displayName = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(" ") || user.displayName;
     if (tgUser.photo_url) user.avatar = tgUser.photo_url;
-    if (tgUser.username) user.username = String(tgUser.username).toLowerCase();
-    if (prevUsername && tgUser.username && prevUsername !== user.username) {
-      user.verified = false;
-    }
     touchUserActivity(db, user.id);
   }
 
@@ -214,6 +212,7 @@ async function handleVerificationRequest(req, res) {
   const user = requireUser(req, db);
   if (!user) return json(res, 401, { error: "Unauthorized" }, corsHeaders(req.headers.origin));
 
+  if (!user.username?.trim()) return json(res, 400, { error: "Set a username first" }, corsHeaders(req.headers.origin));
   if (user.verified) return json(res, 400, { error: "Already verified" }, corsHeaders(req.headers.origin));
   if (user.verificationRequestPending) return json(res, 400, { error: "Request pending" }, corsHeaders(req.headers.origin));
 
@@ -290,8 +289,7 @@ async function handleCreateInvoice(req, res) {
   saveDb(db);
 
   if (!isBotConfigured()) {
-    if (!DEV_AUTH) return json(res, 503, { error: "Payments not configured" }, corsHeaders(req.headers.origin));
-    return json(res, 200, { invoiceUrl: null, intentId, dev: true, stars }, corsHeaders(req.headers.origin));
+    return json(res, 503, { error: "Payments not configured" }, corsHeaders(req.headers.origin));
   }
 
   const invoiceUrl = await createStarsInvoice({ title, description, payload: intentId, amount: stars });
@@ -353,33 +351,6 @@ async function handleTelegramWebhook(req, res) {
   return json(res, 200, { ok: true });
 }
 
-async function handleConfirmDevPayment(req, res) {
-  if (!DEV_AUTH) return json(res, 403, { error: "Forbidden" }, corsHeaders(req.headers.origin));
-  const db = loadDb();
-  const user = requireUser(req, db);
-  if (!user) return json(res, 401, { error: "Unauthorized" }, corsHeaders(req.headers.origin));
-
-  const raw = await readBody(req);
-  let body = {};
-  try { body = JSON.parse(raw || "{}"); } catch { /* */ }
-  const intent = db.paymentIntents[body.intentId];
-  if (!intent || intent.userId !== user.id || intent.status !== "pending") {
-    return json(res, 400, { error: "Invalid intent" }, corsHeaders(req.headers.origin));
-  }
-  intent.status = "completed";
-  if (intent.meta?.type === "premium") {
-    const plan = PLANS[intent.meta.planId] ?? PLANS["6m"];
-    user.premium = true;
-    const exp = new Date();
-    exp.setMonth(exp.getMonth() + plan.months);
-    user.premiumExpiresAt = exp.toISOString();
-  } else {
-    user.starBalance = (user.starBalance ?? 0) + intent.stars;
-  }
-  saveDb(db);
-  return json(res, 200, { user: publicUser(user) }, corsHeaders(req.headers.origin));
-}
-
 async function handleStorageUpload(req, res) {
   const db = loadDb();
   const user = requireUser(req, db);
@@ -405,6 +376,46 @@ async function handleStorageUpload(req, res) {
   db.mediaObjects[objectKey] = { ...uploaded, userId: user.id, createdAt: new Date().toISOString() };
   saveDb(db);
   return json(res, 200, { objectKey, url: uploaded.url, size: uploaded.size }, corsHeaders(req.headers.origin));
+}
+
+async function handleProfileUpdate(req, res) {
+  const db = loadDb();
+  const user = requireUser(req, db);
+  if (!user) return json(res, 401, { error: "Unauthorized" }, corsHeaders(req.headers.origin));
+
+  const raw = await readBody(req);
+  let body = {};
+  try { body = JSON.parse(raw || "{}"); } catch {
+    return json(res, 400, { error: "Invalid body" }, corsHeaders(req.headers.origin));
+  }
+
+  if (body.displayName !== undefined) {
+    const nextName = String(body.displayName).trim();
+    if (nextName && nextName !== user.displayName) {
+      if (user.verified) user.verified = false;
+      user.displayName = nextName;
+    }
+  }
+
+  if (body.bio !== undefined) user.bio = String(body.bio).slice(0, 500);
+  if (body.avatar) user.avatar = String(body.avatar);
+  if (body.cover !== undefined) user.cover = body.cover ? String(body.cover) : undefined;
+
+  if (body.username !== undefined) {
+    const nextUsername = String(body.username).trim().toLowerCase();
+    if (!user.usernameSet && nextUsername) {
+      if (!usernameAvailable(db, nextUsername)) {
+        return json(res, 409, { error: "Username taken" }, corsHeaders(req.headers.origin));
+      }
+      user.username = nextUsername;
+      user.usernameSet = true;
+    } else if (user.usernameSet && nextUsername && nextUsername !== user.username) {
+      return json(res, 400, { error: "Username already set" }, corsHeaders(req.headers.origin));
+    }
+  }
+
+  saveDb(db);
+  return json(res, 200, { user: publicUser(user) }, corsHeaders(req.headers.origin));
 }
 
 async function handleWithdrawalRequest(req, res) {
@@ -469,7 +480,7 @@ const server = http.createServer(async (req, res) => {
     if (url === "/api/verification/request" && req.method === "POST") return handleVerificationRequest(req, res);
     if (url === "/api/notifications" && req.method === "GET") return handleNotifications(req, res);
     if (url === "/api/payments/invoice" && req.method === "POST") return handleCreateInvoice(req, res);
-    if (url === "/api/payments/confirm-dev" && req.method === "POST") return handleConfirmDevPayment(req, res);
+    if (url === "/api/profile/update" && req.method === "POST") return handleProfileUpdate(req, res);
     if (url === "/api/telegram/webhook" && req.method === "POST") return handleTelegramWebhook(req, res);
     if (url === "/api/storage/upload" && req.method === "POST") return handleStorageUpload(req, res);
     if (url === "/api/withdrawals/request" && req.method === "POST") return handleWithdrawalRequest(req, res);
@@ -500,6 +511,8 @@ const server = http.createServer(async (req, res) => {
       return handleAdminAction(req, res, db, json, corsHeaders);
     }
 
+    if (serveStatic(req, res)) return;
+
     return json(res, 404, { error: "Not found" }, corsHeaders(origin));
   } catch (e) {
     console.error(e);
@@ -515,9 +528,9 @@ const dbRef = () => {
 
 startCleanupScheduler(dbRef, saveDb);
 
-server.listen(PORT, () => {
+server.listen(PORT, HOST, () => {
   const db = loadDb();
   ensureAdminSettings(db);
   saveDb(db);
-  console.log(`Sheytoni backend on :${PORT} (dev=${DEV_AUTH}, token=${BOT_TOKEN ? "set" : "missing"}, b2=${isB2Configured()})`);
+  console.log(`Sheytoni running on http://${HOST}:${PORT} (static=${staticDirExists()}, token=${BOT_TOKEN ? "set" : "missing"}, b2=${isB2Configured()})`);
 });

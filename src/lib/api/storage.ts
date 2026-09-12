@@ -1,6 +1,6 @@
 import { MediaObject, UploadValidation } from "@/lib/types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8787";
+import { getApiBase } from "./base";
 
 export const UPLOAD_VALIDATION: UploadValidation = {
   maxSizeBytes: 50 * 1024 * 1024,
@@ -47,7 +47,7 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 export async function getSignedMediaUrl(objectKey: string): Promise<string> {
-  return `${API_BASE}/api/media/${objectKey}`;
+  return `${getApiBase()}/api/media/${objectKey}`;
 }
 
 export interface UploadResult {
@@ -64,7 +64,7 @@ export async function uploadMedia(
   if (!validation.valid) throw new Error(validation.error);
 
   const data = await fileToBase64(file);
-  const res = await fetch(`${API_BASE}/api/storage/upload`, {
+  const res = await fetch(`${getApiBase()}/api/storage/upload`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },

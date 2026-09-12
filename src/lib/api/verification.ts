@@ -1,7 +1,7 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8787";
+import { getApiBase } from "./base";
 
 export async function submitVerificationRequest(): Promise<{ ok: boolean }> {
-  const res = await fetch(`${API_BASE}/api/verification/request`, {
+  const res = await fetch(`${getApiBase()}/api/verification/request`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },

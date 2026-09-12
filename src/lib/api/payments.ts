@@ -1,9 +1,7 @@
-import { AuthUser } from "@/lib/auth/types";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8787";
+import { getApiBase } from "./base";
 
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${getApiBase()}${path}`, {
     ...options,
     credentials: "include",
     headers: { "Content-Type": "application/json", ...(options.headers ?? {}) },
@@ -25,13 +23,6 @@ export async function createPremiumInvoice(planId: string): Promise<InvoiceRespo
   return apiFetch("/api/payments/invoice", {
     method: "POST",
     body: JSON.stringify({ type: "premium", planId }),
-  });
-}
-
-export async function confirmDevPayment(intentId: string): Promise<{ user: AuthUser }> {
-  return apiFetch("/api/payments/confirm-dev", {
-    method: "POST",
-    body: JSON.stringify({ intentId }),
   });
 }
 

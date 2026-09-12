@@ -6,7 +6,7 @@ import { ArrowLeft, BadgeCheck, Upload, Users, Sparkles } from "lucide-react";
 import { TelegramStarIcon } from "@/components/ui/TelegramStarIcon";
 import { PremiumCelebration } from "@/components/premium/PremiumCelebration";
 import { useAuth } from "@/lib/hooks/useAuth";
-import { confirmDevPayment, createPremiumInvoice, openTelegramInvoice } from "@/lib/api/payments";
+import { createPremiumInvoice, openTelegramInvoice } from "@/lib/api/payments";
 import { useTelegramGate } from "@/lib/hooks/useTelegramGate";
 import { useToast } from "@/components/ui/ToastProvider";
 import { formatStars } from "@/lib/utils/format";
@@ -42,11 +42,8 @@ export function PremiumContent() {
     }
     try {
       const invoice = await createPremiumInvoice(plan.id);
-      if (invoice.dev || !invoice.invoiceUrl) {
-        await confirmDevPayment(invoice.intentId);
-        await refresh();
-        setCelebrating(true);
-        showToast(`Premium activated — ${plan.label}`);
+      if (!invoice.invoiceUrl) {
+        showToast("Payment unavailable");
         return;
       }
       const opened = openTelegramInvoice(invoice.invoiceUrl, async (status) => {

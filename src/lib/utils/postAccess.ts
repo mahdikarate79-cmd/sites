@@ -22,8 +22,12 @@ export function isPostRestricted(post: Post): boolean {
   return isPostPaid(post) || isPostPrivate(post);
 }
 
+export function authorNeedsUsernamePrivacy(author: Post["author"]): boolean {
+  return !author.username?.trim();
+}
+
 export function shouldExcludeFromPublicDiscovery(post: Post): boolean {
-  return isPostRestricted(post);
+  return isPostRestricted(post) || authorNeedsUsernamePrivacy(post.author);
 }
 
 export function authorFollowsViewer(authorId: string, viewerId: string): boolean {
@@ -50,6 +54,7 @@ export function hasPrivateAccess(post: Post, ctx: PostAccessContext): boolean {
 
 export function shouldShowInFeed(post: Post, ctx: PostAccessContext): boolean {
   if (post.author.id === ctx.viewerId) return true;
+  if (authorNeedsUsernamePrivacy(post.author)) return false;
   if (!isPostRestricted(post)) return true;
   if (isPostPrivate(post) && !hasPrivateAccess(post, ctx)) return false;
   if (isPostRestricted(post)) return ctx.isFollowing(post.author.id) || hasPrivateAccess(post, ctx);

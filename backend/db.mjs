@@ -54,7 +54,7 @@ export function findUserById(db, id) {
   return user;
 }
 
-function usernameAvailable(db, username) {
+export function usernameAvailable(db, username) {
   const lower = username.toLowerCase();
   if (db.reservedUsernames.includes(lower)) return false;
   return !Object.values(db.users).some((u) => u.username?.toLowerCase() === lower && !u.deleted);
@@ -62,13 +62,12 @@ function usernameAvailable(db, username) {
 
 export function createUserFromTelegram(db, tgUser) {
   const id = `tg_${tgUser.id}`;
-  const baseUsername = tgUser.username ? String(tgUser.username).toLowerCase() : `user${tgUser.id}`;
-  const username = usernameAvailable(db, baseUsername) ? baseUsername : `user${tgUser.id}`;
+  const displayName = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(" ") || "User";
   return {
     id,
     telegramId: tgUser.id,
-    username,
-    displayName: [tgUser.first_name, tgUser.last_name].filter(Boolean).join(" ") || username,
+    username: null,
+    displayName,
     avatar: tgUser.photo_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${tgUser.id}`,
     verified: false,
     premium: false,
@@ -83,7 +82,12 @@ export function createUserFromTelegram(db, tgUser) {
     lastActiveAt: new Date().toISOString(),
     deleted: false,
     verificationRequestPending: false,
+    usernameSet: false,
   };
+}
+
+export function userHasUsername(user) {
+  return !!(user?.username && String(user.username).trim());
 }
 
 export function touchUserActivity(db, userId) {
@@ -135,8 +139,9 @@ export function publicUser(user) {
   const premiumActive = user.premium && (!user.premiumExpiresAt || new Date(user.premiumExpiresAt) > new Date());
   return {
     id: user.id,
-    username: user.username,
+    username: user.username ?? null,
     displayName: user.displayName,
+    usernameSet: !!user.usernameSet,
     avatar: user.avatar,
     cover: user.cover,
     bio: user.bio,

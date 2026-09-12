@@ -5,11 +5,11 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:prod": "next build",
     "build:gh-pages": "GITHUB_PAGES=true NEXT_PUBLIC_BASE_PATH=/sites next build",
-    "start": "next start",
-    "lint": "eslint",
-    "auth:server": "AUTH_DEV_MODE=true node backend/server.mjs",
-    "auth:test": "AUTH_DEV_MODE=true node backend/auth.test.mjs"
+    "start": "node backend/server.mjs",
+    "package": "bash scripts/package-deploy.sh",
+    "lint": "eslint"
   },
   "dependencies": {
     "lucide-react": "^1.44.0",

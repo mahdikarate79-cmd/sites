@@ -8,6 +8,8 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Orientation } from "@/lib/types";
 import { useToast } from "@/components/ui/ToastProvider";
 import { usePrototype } from "@/lib/hooks/usePrototype";
+import { useAuth } from "@/lib/hooks/useAuth";
+import { updateProfile as updateProfileApi } from "@/lib/auth/client";
 import { validateUsername } from "@/lib/utils/username";
 import { cn } from "@/lib/utils/cn";
 
@@ -58,6 +60,7 @@ function readImageFile(file: File, onLoad: (dataUrl: string) => void) {
 
 export function EditProfileContent() {
   const { getCurrentUser, updateProfile } = usePrototype();
+  const { isAuthenticated, refresh } = useAuth();
   const user = getCurrentUser();
   const initialDob = defaultBirthDate(user.age);
   const { showToast } = useToast();
@@ -148,7 +151,7 @@ export function EditProfileContent() {
 
   const canSave = hasChanges && usernameValid && !dobError && displayName.trim().length > 0;
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!canSave) return;
     if (!displayName.trim()) {
       showToast("Display name is required");
@@ -157,7 +160,7 @@ export function EditProfileContent() {
     if (!validateDob(day, month, year)) return;
 
     const age = calculateAge(parseInt(day, 10), parseInt(month, 10), parseInt(year, 10));
-    updateProfile({
+    const payload = {
       displayName: displayName.trim(),
       username: username.trim().toLowerCase() || undefined,
       bio: bio.trim() || undefined,
@@ -165,7 +168,24 @@ export function EditProfileContent() {
       age,
       avatar,
       cover: cover || undefined,
-    });
+    };
+    updateProfile(payload);
+
+    if (isAuthenticated) {
+      try {
+        await updateProfileApi({
+          displayName: payload.displayName,
+          username: payload.username,
+          bio: payload.bio,
+          avatar: payload.avatar,
+          cover: payload.cover,
+        });
+        await refresh();
+      } catch (e) {
+        showToast(e instanceof Error ? e.message : "Could not save to server");
+        return;
+      }
+    }
     showToast("Profile updated");
   };
 

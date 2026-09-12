@@ -34,6 +34,7 @@ export default function NewPostPage() {
 
   const user = getCurrentUser();
   const uploadLimit = getUploadLimitBytes(!!user.premium);
+  const noUsername = !user.username?.trim();
 
   const [content, setContent] = useState("");
   const [media, setMedia] = useState<PostMedia | null>(null);
@@ -96,8 +97,8 @@ export default function NewPostPage() {
       media: media ? [media] : undefined,
       tags,
       paidStars: paidEnabled && media ? paidStars : undefined,
-      privacy: privacyEnabled
-        ? { enabled: true, followersOnly, followingOnly }
+      privacy: noUsername || privacyEnabled
+        ? { enabled: true, followersOnly: noUsername ? true : followersOnly, followingOnly: noUsername ? true : followingOnly }
         : undefined,
       createdAt: new Date().toISOString(),
       likes: 0,
