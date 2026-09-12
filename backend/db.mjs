@@ -1,0 +1,127 @@
+import fs from "fs";
+import path from "path";
+import crypto from "crypto";
+
+const DATA_DIR = path.join(process.cwd(), "backend", "data");
+const DB_FILE = path.join(DATA_DIR, "store.json");
+
+const DEFAULT_DB = {
+  users: {},
+  sessions: {},
+  reservedUsernames: [],
+  deletedUserIds: [],
+};
+
+function ensureDb() {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+  if (!fs.existsSync(DB_FILE)) {
+    fs.writeFileSync(DB_FILE, JSON.stringify(DEFAULT_DB, null, 2));
+  }
+}
+
+export function loadDb() {
+  ensureDb();
+  return JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+}
+
+export function saveDb(db) {
+  ensureDb();
+  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+}
+
+export function findUserByTelegramId(db, telegramId) {
+  return Object.values(db.users).find((u) => u.telegramId === telegramId && !u.deleted);
+}
+
+export function findUserById(db, id) {
+  const user = db.users[id];
+  if (!user || user.deleted) return null;
+  return user;
+}
+
+function usernameAvailable(db, username) {
+  const lower = username.toLowerCase();
+  if (db.reservedUsernames.includes(lower)) return false;
+  return !Object.values(db.users).some((u) => u.username?.toLowerCase() === lower && !u.deleted);
+}
+
+export function createUserFromTelegram(db, tgUser) {
+  const id = `tg_${tgUser.id}`;
+  const baseUsername = tgUser.username ? String(tgUser.username).toLowerCase() : `user${tgUser.id}`;
+  const username = usernameAvailable(db, baseUsername) ? baseUsername : `user${tgUser.id}`;
+  return {
+    id,
+    telegramId: tgUser.id,
+    username,
+    displayName: [tgUser.first_name, tgUser.last_name].filter(Boolean).join(" ") || username,
+    avatar: tgUser.photo_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${tgUser.id}`,
+    verified: false,
+    premium: false,
+    starBalance: 999_999,
+    followers: 0,
+    following: 0,
+    postsCount: 0,
+    loginMethod: "telegram",
+    createdAt: new Date().toISOString(),
+    deleted: false,
+  };
+}
+
+export function createSession(userId, telegramId) {
+  return {
+    id: crypto.randomBytes(32).toString("hex"),
+    userId,
+    telegramId,
+    createdAt: Date.now(),
+    expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
+  };
+}
+
+export function deleteSessionsForUser(db, userId) {
+  for (const [sid, session] of Object.entries(db.sessions)) {
+    if (session.userId === userId) delete db.sessions[sid];
+  }
+}
+
+export function deleteSessionsExcept(db, keepSessionId) {
+  for (const sid of Object.keys(db.sessions)) {
+    if (sid !== keepSessionId) delete db.sessions[sid];
+  }
+}
+
+export function deleteAccount(db, userId) {
+  const user = db.users[userId];
+  if (!user) return false;
+
+  user.deleted = true;
+  user.deletedAt = new Date().toISOString();
+  if (user.username) db.reservedUsernames.push(user.username.toLowerCase());
+  if (!db.deletedUserIds.includes(userId)) db.deletedUserIds.push(userId);
+
+  deleteSessionsForUser(db, userId);
+  return true;
+}
+
+export function isDeletedUserId(db, userId) {
+  return db.deletedUserIds.includes(userId);
+}
+
+export function publicUser(user) {
+  if (!user) return null;
+  const premiumActive = user.premium && (!user.premiumExpiresAt || new Date(user.premiumExpiresAt) > new Date());
+  return {
+    id: user.id,
+    username: user.username,
+    displayName: user.displayName,
+    avatar: user.avatar,
+    cover: user.cover,
+    bio: user.bio,
+    verified: user.verified,
+    premium: premiumActive,
+    starBalance: user.starBalance ?? 0,
+    followers: user.followers ?? 0,
+    following: user.following ?? 0,
+    postsCount: user.postsCount ?? 0,
+    loginMethod: user.loginMethod ?? "telegram",
+  };
+}

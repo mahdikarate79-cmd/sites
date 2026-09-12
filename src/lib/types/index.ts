@@ -17,6 +17,8 @@ export interface User {
   bio?: string;
   verified?: boolean;
   premium?: boolean;
+  deleted?: boolean;
+  loginMethod?: "telegram" | "guest";
   followers: number;
   following: number;
   postsCount: number;

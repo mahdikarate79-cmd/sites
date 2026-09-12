@@ -1,8 +1,8 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useCallback, useContext, useState, ReactNode } from "react";
 import { TelegramGateModal } from "@/components/telegram/TelegramGateModal";
-import { isTelegramMiniApp } from "@/lib/telegram/miniApp";
+import { useAuth } from "@/lib/hooks/useAuth";
 
 interface TelegramGateContextValue {
   isMiniApp: boolean;
@@ -12,21 +12,18 @@ interface TelegramGateContextValue {
 const TelegramGateContext = createContext<TelegramGateContextValue | null>(null);
 
 export function TelegramGateProvider({ children }: { children: ReactNode }) {
-  const [isMiniApp, setIsMiniApp] = useState(false);
+  const { isAuthenticated, loading } = useAuth();
   const [modalOpen, setModalOpen] = useState(false);
 
-  useEffect(() => {
-    setIsMiniApp(isTelegramMiniApp());
-  }, []);
-
   const requireMiniApp = useCallback(() => {
-    if (isMiniApp) return true;
+    if (loading) return false;
+    if (isAuthenticated) return true;
     setModalOpen(true);
     return false;
-  }, [isMiniApp]);
+  }, [isAuthenticated, loading]);
 
   return (
-    <TelegramGateContext.Provider value={{ isMiniApp, requireMiniApp }}>
+    <TelegramGateContext.Provider value={{ isMiniApp: isAuthenticated, requireMiniApp }}>
       {children}
       <TelegramGateModal open={modalOpen} onClose={() => setModalOpen(false)} />
     </TelegramGateContext.Provider>

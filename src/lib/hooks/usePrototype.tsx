@@ -6,6 +6,7 @@ import { canViewPostMedia, PostAccessContext, shouldShowInFeed } from "@/lib/uti
 import { assertValidStarSpend, assertValidUnlock, sanitizePostContent, sanitizeTags } from "@/lib/security/validate";
 import { loadState, saveState, getPostDonation, ensureStarBalance, createTransaction } from "@/lib/store/prototypeStore";
 import { currentUser as baseCurrentUser } from "@/data/mock/users";
+import { useAuth } from "@/lib/hooks/useAuth";
 
 interface PrototypeContextValue {
   state: PrototypeState;
@@ -58,6 +59,7 @@ interface PrototypeContextValue {
 const PrototypeContext = createContext<PrototypeContextValue | null>(null);
 
 export function PrototypeProvider({ children }: { children: ReactNode }) {
+  const { user: authUser } = useAuth();
   const [state, setState] = useState<PrototypeState>(() =>
     typeof window !== "undefined" ? loadState() : DEFAULT_LOAD
   );
@@ -126,10 +128,15 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
     [state]
   );
 
+  const resolveUser = useCallback((): User => {
+    if (authUser) return { ...authUser, ...state.profileEdits, premium: authUser.premium };
+    return { ...baseCurrentUser, ...state.profileEdits };
+  }, [authUser, state.profileEdits]);
+
   const donate = useCallback((postId: string, stars: number, anonymous: boolean, authorId: string) => {
     update((s) => {
       const existing = getPostDonation(s, postId);
-      const user = { ...baseCurrentUser, ...s.profileEdits };
+      const user = authUser ? { ...authUser, ...s.profileEdits, premium: authUser.premium } : { ...baseCurrentUser, ...s.profileEdits };
       const prevUser = existing.topDonators.find((d) => d.user.id === user.id);
       const newDonator: Donator = {
         rank: 0,
@@ -165,7 +172,7 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
         transactions: [tx, ...s.transactions].slice(0, 100),
       };
     });
-  }, [update]);
+  }, [update, authUser]);
 
   const toggleLike = useCallback((postId: string): boolean => {
     const current = state.likes[postId];
@@ -247,10 +254,7 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
     [state.bookmarks]
   );
 
-  const getCurrentUser = useCallback(
-    (): User => ({ ...baseCurrentUser, ...state.profileEdits }),
-    [state.profileEdits]
-  );
+  const getCurrentUser = useCallback((): User => resolveUser(), [resolveUser]);
 
   const updateProfile = useCallback((edits: Partial<User>) => {
     update((s) => ({ ...s, profileEdits: { ...s.profileEdits, ...edits } }));
@@ -344,7 +348,7 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
   );
 
   const addComment = useCallback((postId: string, content: string): Comment => {
-    const user = { ...baseCurrentUser, ...state.profileEdits };
+    const user = authUser ? { ...authUser, ...state.profileEdits, premium: authUser.premium } : { ...baseCurrentUser, ...state.profileEdits };
     const comment: Comment = {
       id: `cmt_${Date.now()}`,
       postId,
@@ -369,7 +373,7 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
       },
     }));
     return comment;
-  }, [update, state.profileEdits]);
+  }, [update, state.profileEdits, authUser]);
 
   const filterPosts = useCallback(
     (posts: Post[]) =>
@@ -429,9 +433,9 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
   const getUserPosts = useCallback(() => state.userPosts, [state.userPosts]);
 
   const accessCtx = useCallback((): PostAccessContext => {
-    const user = { ...baseCurrentUser, ...state.profileEdits };
+    const user = authUser ? { ...authUser, ...state.profileEdits, premium: authUser.premium } : { ...baseCurrentUser, ...state.profileEdits };
     return { viewerId: user.id, isFollowing, isUnlocked: isPaidPostUnlocked };
-  }, [state.profileEdits, isFollowing, isPaidPostUnlocked]);
+  }, [state.profileEdits, authUser, isFollowing, isPaidPostUnlocked]);
 
   const canViewPostFn = useCallback(
     (post: Post) => canViewPostMedia(post, accessCtx()),

@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import { Inter } from "next/font/google";
 import { ThemeProvider } from "@/lib/hooks/useTheme";
+import { AuthProvider } from "@/lib/hooks/useAuth";
 import { PrototypeProvider } from "@/lib/hooks/usePrototype";
 import { TelegramGateProvider } from "@/lib/hooks/useTelegramGate";
 import { ToastProvider } from "@/components/ui/ToastProvider";
@@ -38,12 +40,15 @@ export default function RootLayout({
   return (
     <html lang="en" data-theme="dark" suppressHydrationWarning>
       <body className={`${inter.variable} font-sans antialiased`}>
+        <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
         <ThemeProvider>
-          <PrototypeProvider>
-            <TelegramGateProvider>
-              <ToastProvider>{children}</ToastProvider>
-            </TelegramGateProvider>
-          </PrototypeProvider>
+          <AuthProvider>
+            <PrototypeProvider>
+              <TelegramGateProvider>
+                <ToastProvider>{children}</ToastProvider>
+              </TelegramGateProvider>
+            </PrototypeProvider>
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

@@ -21,6 +21,7 @@ import { usePrototype } from "@/lib/hooks/usePrototype";
 import { useToast } from "@/components/ui/ToastProvider";
 import { Settings } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
+import { isDeletedUser, DELETED_USER } from "@/lib/auth/deletedUser";
 
 type ProfileTab = "videos" | "photos" | "posts";
 
@@ -42,7 +43,19 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
     getPostsByUser(user.id).then(setPosts);
   }, [user.id]);
 
+  const deleted = isDeletedUser(user.id);
+  const displayUser = deleted ? DELETED_USER : user;
   const blocked = !isOwnProfile && isBlocked(user.id);
+
+  if (deleted) {
+    return (
+      <div className="min-h-[50dvh] flex flex-col items-center justify-center px-6 text-center">
+        <p className="text-lg font-semibold mb-2">Deleted Account</p>
+        <p className="text-sm text-text-muted">This profile is no longer available.</p>
+        <Link href="/" className="mt-6 px-5 py-2.5 rounded-full glass-nav text-sm">Back to home</Link>
+      </div>
+    );
+  }
 
   const filtered = posts.filter((p) => {
     if (tab === "videos") return p.media?.some((m) => m.type === "video" || m.type === "gif");
@@ -65,7 +78,7 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
   return (
     <div>
       <div className="relative h-36 sm:h-44 bg-surface">
-        {user.cover && <Image src={user.cover} alt="Cover" fill className="object-cover" priority sizes="100vw" />}
+        {displayUser.cover && <Image src={displayUser.cover} alt="Cover" fill className="object-cover" priority sizes="100vw" />}
         <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3">
           <Link href="/" className="p-2.5 rounded-full bg-black/30 backdrop-blur-sm mt-1">
             <ArrowLeft className="w-5 h-5 text-white" />

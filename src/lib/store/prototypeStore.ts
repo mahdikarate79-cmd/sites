@@ -1,5 +1,4 @@
-import { Donator, PostDonationState, PrototypeState, TransactionRecord } from "@/lib/types";
-import { currentUser } from "@/data/mock/users";
+import { Donator, PostDonationState, PrototypeState, TransactionRecord, User } from "@/lib/types";
 
 const STORAGE_KEY = "sheytoni-prototype";
 
@@ -118,7 +117,8 @@ export function getPostDonation(state: PrototypeState, postId: string, initial?:
 export function computeDonationRank(
   amount: number,
   topDonators: Donator[],
-  anonymous: boolean
+  anonymous: boolean,
+  currentUser: User
 ): { rank: number; preview: Donator[] } {
   const withoutCurrent = topDonators.filter((d) => d.user.id !== currentUser.id);
   const prevUser = topDonators.find((d) => d.user.id === currentUser.id);

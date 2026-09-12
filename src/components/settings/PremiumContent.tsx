@@ -5,7 +5,8 @@ import Link from "next/link";
 import { ArrowLeft, BadgeCheck, Upload, Users, Sparkles } from "lucide-react";
 import { TelegramStarIcon } from "@/components/ui/TelegramStarIcon";
 import { PremiumCelebration } from "@/components/premium/PremiumCelebration";
-import { usePrototype } from "@/lib/hooks/usePrototype";
+import { useAuth } from "@/lib/hooks/useAuth";
+import { purchasePremium } from "@/lib/auth/client";
 import { useTelegramGate } from "@/lib/hooks/useTelegramGate";
 import { useToast } from "@/components/ui/ToastProvider";
 import { formatStars } from "@/lib/utils/format";
@@ -24,26 +25,28 @@ const FEATURES = [
 ];
 
 export function PremiumContent() {
-  const { getCurrentUser, spendStars, updateProfile } = usePrototype();
+  const { user, refresh, isAuthenticated } = useAuth();
   const { requireMiniApp } = useTelegramGate();
   const { showToast } = useToast();
-  const user = getCurrentUser();
   const [selected, setSelected] = useState<string>("6m");
   const [celebrating, setCelebrating] = useState(false);
 
   const plan = PLANS.find((p) => p.id === selected) ?? PLANS[1];
 
-  const handlePurchase = () => {
+  const handlePurchase = async () => {
     if (!requireMiniApp()) return;
+    if (!isAuthenticated || !user) return;
     if (user.premium) {
       showToast("You already have Premium");
       return;
     }
-    if (!spendStars(plan.stars, `Premium ${plan.label}`, "premium")) {
+    try {
+      await purchasePremium(plan.id);
+    } catch {
       showToast("Not enough Stars");
       return;
     }
-    updateProfile({ premium: true });
+    await refresh();
     setCelebrating(true);
     showToast(`Premium activated — ${plan.label}`);
   };
@@ -74,7 +77,7 @@ export function PremiumContent() {
             <p className="text-sm text-text-muted mt-1.5 leading-relaxed">
               Unlock exclusive tools and stand out as a creator.
             </p>
-            {user.premium && (
+            {user?.premium && (
               <span className="inline-block mt-3 px-3 py-1 rounded-full text-xs font-medium premium-badge-active">
                 Active
               </span>
@@ -139,10 +142,10 @@ export function PremiumContent() {
         <button
           type="button"
           onClick={handlePurchase}
-          disabled={user.premium}
+          disabled={!!user?.premium}
           className="w-full py-3.5 rounded-full font-semibold text-sm text-white premium-cta disabled:opacity-50"
         >
-          {user.premium ? "Premium active" : `Get Premium · ${formatStars(plan.stars)} Stars`}
+          {user?.premium ? "Premium active" : `Get Premium · ${formatStars(plan.stars)} Stars`}
         </button>
       </div>
     </div>

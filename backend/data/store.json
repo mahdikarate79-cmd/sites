@@ -1,0 +1,77 @@
+{
+  "users": {
+    "tg_1001": {
+      "id": "tg_1001",
+      "telegramId": 1001,
+      "username": "user_b",
+      "displayName": "Test",
+      "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=1001",
+      "verified": false,
+      "premium": false,
+      "starBalance": 999999,
+      "followers": 0,
+      "following": 0,
+      "postsCount": 0,
+      "loginMethod": "telegram",
+      "createdAt": "2026-09-12T18:48:12.115Z",
+      "deleted": false
+    },
+    "tg_2002": {
+      "id": "tg_2002",
+      "telegramId": 2002,
+      "username": "premium_user",
+      "displayName": "Test",
+      "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=2002",
+      "verified": false,
+      "premium": false,
+      "starBalance": 999999,
+      "followers": 0,
+      "following": 0,
+      "postsCount": 0,
+      "loginMethod": "telegram",
+      "createdAt": "2026-09-12T18:48:12.119Z",
+      "deleted": false
+    },
+    "tg_3003": {
+      "id": "tg_3003",
+      "telegramId": 3003,
+      "username": "other_user",
+      "displayName": "Test",
+      "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=3003",
+      "verified": false,
+      "premium": false,
+      "starBalance": 999999,
+      "followers": 0,
+      "following": 0,
+      "postsCount": 0,
+      "loginMethod": "telegram",
+      "createdAt": "2026-09-12T18:48:12.123Z",
+      "deleted": false
+    }
+  },
+  "sessions": {
+    "72654154d4129784cd67af74236f858f19e63e0f9c9433540ab3277b732423b5": {
+      "id": "72654154d4129784cd67af74236f858f19e63e0f9c9433540ab3277b732423b5",
+      "userId": "tg_2002",
+      "telegramId": 2002,
+      "createdAt": 1789238892119,
+      "expiresAt": 1791830892119
+    },
+    "9687d625e98a67a54315f6e010754e0fa99542cea1948fd536fff3a51f49f414": {
+      "id": "9687d625e98a67a54315f6e010754e0fa99542cea1948fd536fff3a51f49f414",
+      "userId": "tg_3003",
+      "telegramId": 3003,
+      "createdAt": 1789238892123,
+      "expiresAt": 1791830892123
+    },
+    "d195f57b9626580a099221c1c1d687c28a7eec50b0fd0fc2fea4df1547e41fa1": {
+      "id": "d195f57b9626580a099221c1c1d687c28a7eec50b0fd0fc2fea4df1547e41fa1",
+      "userId": "tg_3003",
+      "telegramId": 3003,
+      "createdAt": 1789238892124,
+      "expiresAt": 1791830892124
+    }
+  },
+  "reservedUsernames": [],
+  "deletedUserIds": []
+}

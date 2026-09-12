@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { Post } from "@/lib/types";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { Avatar } from "@/components/ui/Avatar";
@@ -24,8 +25,9 @@ export function DonateModal({ open, onClose, post }: DonateModalProps) {
   const [stars, setStars] = useState(64);
   const [showInTop, setShowInTop] = useState(true);
   const [donating, setDonating] = useState(false);
-  const { getDonation, donate } = usePrototype();
+  const { getDonation, donate, getCurrentUser } = usePrototype();
   const { showToast } = useToast();
+  const me = getCurrentUser();
 
   const donation = getDonation(post.id, {
     total: post.stars ?? 0,
@@ -36,8 +38,8 @@ export function DonateModal({ open, onClose, post }: DonateModalProps) {
   const topThreshold = donation.topDonators[0]?.stars ?? 0;
 
   const { preview } = useMemo(
-    () => computeDonationRank(stars, donation.topDonators, anonymous),
-    [stars, donation.topDonators, anonymous]
+    () => computeDonationRank(stars, donation.topDonators, anonymous, me),
+    [stars, donation.topDonators, anonymous, me]
   );
 
   const handleDonate = () => {
@@ -56,7 +58,10 @@ export function DonateModal({ open, onClose, post }: DonateModalProps) {
 
         <p className="text-xs text-text-muted text-center leading-relaxed mt-2 mb-3 px-1">
           Choose how many Stars you want to send to{" "}
-          <span className="text-text font-medium">{post.author.displayName}</span> to support this post.
+          <Link href={`/profile/${post.author.username || post.author.id}/`} className="text-text font-medium hover:underline">
+            {post.author.displayName}
+          </Link>{" "}
+          to support this post.
         </p>
 
         <div className="relative flex items-center justify-center mb-3">
@@ -70,24 +75,35 @@ export function DonateModal({ open, onClose, post }: DonateModalProps) {
 
         <div className="flex justify-center gap-6 mb-3 min-h-[88px]">
           {preview.length > 0 ? (
-            preview.slice(0, 2).map((d) => (
-              <div key={`${d.user.id}-${d.rank}`} className="flex flex-col items-center gap-1">
-                {d.anonymous ? (
-                  <div className="w-12 h-12 rounded-full bg-surface border border-border flex items-center justify-center">
-                    <Glasses className="w-5 h-5 text-text-muted" />
-                  </div>
-                ) : (
-                  <Avatar src={d.user.avatar} alt={d.user.displayName} size="lg" />
-                )}
-                <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-gold text-[10px] font-medium text-white tabular-nums">
-                  <TelegramStarIcon variant="donate" size={11} />
-                  {formatStars(d.stars)}
-                </span>
-                <span className="text-[10px] text-text-muted truncate max-w-[72px] text-center">
-                  {d.anonymous ? "Anonymous" : <UserName user={d.user} nameClassName="text-[10px]" />}
-                </span>
-              </div>
-            ))
+            preview.slice(0, 2).map((d) => {
+              const profileHref = `/profile/${d.user.username || d.user.id}/`;
+              return (
+                <div key={`${d.user.id}-${d.rank}`} className="flex flex-col items-center gap-1">
+                  {d.anonymous ? (
+                    <div className="w-12 h-12 rounded-full bg-surface border border-border flex items-center justify-center">
+                      <Glasses className="w-5 h-5 text-text-muted" />
+                    </div>
+                  ) : (
+                    <Link href={profileHref} onClick={(e) => e.stopPropagation()}>
+                      <Avatar src={d.user.avatar} alt={d.user.displayName} size="lg" />
+                    </Link>
+                  )}
+                  <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-gold text-[10px] font-medium text-white tabular-nums">
+                    <TelegramStarIcon variant="donate" size={11} />
+                    {formatStars(d.stars)}
+                  </span>
+                  <span className="text-[10px] text-text-muted truncate max-w-[72px] text-center">
+                    {d.anonymous ? (
+                      "Anonymous"
+                    ) : (
+                      <Link href={profileHref} onClick={(e) => e.stopPropagation()} className="hover:underline">
+                        <UserName user={d.user} nameClassName="text-[10px]" />
+                      </Link>
+                    )}
+                  </span>
+                </div>
+              );
+            })
           ) : (
             <p className="text-xs text-text-muted self-center">Be the first to send Stars</p>
           )}
