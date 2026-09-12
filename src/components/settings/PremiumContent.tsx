@@ -6,7 +6,7 @@ import { ArrowLeft, BadgeCheck, Upload, Users, Sparkles } from "lucide-react";
 import { TelegramStarIcon } from "@/components/ui/TelegramStarIcon";
 import { PremiumCelebration } from "@/components/premium/PremiumCelebration";
 import { useAuth } from "@/lib/hooks/useAuth";
-import { purchasePremium } from "@/lib/auth/client";
+import { confirmDevPayment, createPremiumInvoice, openTelegramInvoice } from "@/lib/api/payments";
 import { useTelegramGate } from "@/lib/hooks/useTelegramGate";
 import { useToast } from "@/components/ui/ToastProvider";
 import { formatStars } from "@/lib/utils/format";
@@ -41,14 +41,27 @@ export function PremiumContent() {
       return;
     }
     try {
-      await purchasePremium(plan.id);
+      const invoice = await createPremiumInvoice(plan.id);
+      if (invoice.dev || !invoice.invoiceUrl) {
+        await confirmDevPayment(invoice.intentId);
+        await refresh();
+        setCelebrating(true);
+        showToast(`Premium activated — ${plan.label}`);
+        return;
+      }
+      const opened = openTelegramInvoice(invoice.invoiceUrl, async (status) => {
+        if (status === "paid") {
+          await refresh();
+          setCelebrating(true);
+          showToast(`Premium activated — ${plan.label}`);
+        } else if (status === "failed") {
+          showToast("Payment failed");
+        }
+      });
+      if (!opened) showToast("Open in Telegram to pay with Stars");
     } catch {
-      showToast("Not enough Stars");
-      return;
+      showToast("Payment failed");
     }
-    await refresh();
-    setCelebrating(true);
-    showToast(`Premium activated — ${plan.label}`);
   };
 
   return (

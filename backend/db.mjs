@@ -10,6 +10,16 @@ const DEFAULT_DB = {
   sessions: {},
   reservedUsernames: [],
   deletedUserIds: [],
+  posts: {},
+  notifications: {},
+  verificationRequests: [],
+  withdrawalRequests: [],
+  bannedUsers: {},
+  mediaObjects: {},
+  paymentIntents: {},
+  chats: {},
+  adminSessions: {},
+  settings: { verificationMinFollowers: 10000 },
 };
 
 function ensureDb() {
@@ -31,6 +41,11 @@ export function saveDb(db) {
 
 export function findUserByTelegramId(db, telegramId) {
   return Object.values(db.users).find((u) => u.telegramId === telegramId && !u.deleted);
+}
+
+export function findUserByUsername(db, username) {
+  const lower = String(username).toLowerCase();
+  return Object.values(db.users).find((u) => u.username?.toLowerCase() === lower && !u.deleted);
 }
 
 export function findUserById(db, id) {
@@ -57,14 +72,23 @@ export function createUserFromTelegram(db, tgUser) {
     avatar: tgUser.photo_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${tgUser.id}`,
     verified: false,
     premium: false,
-    starBalance: 999_999,
+    banned: false,
+    starBalance: 0,
+    earnings: 0,
     followers: 0,
     following: 0,
     postsCount: 0,
     loginMethod: "telegram",
     createdAt: new Date().toISOString(),
+    lastActiveAt: new Date().toISOString(),
     deleted: false,
+    verificationRequestPending: false,
   };
+}
+
+export function touchUserActivity(db, userId) {
+  const user = db.users[userId];
+  if (user) user.lastActiveAt = new Date().toISOString();
 }
 
 export function createSession(userId, telegramId) {
@@ -118,10 +142,14 @@ export function publicUser(user) {
     bio: user.bio,
     verified: user.verified,
     premium: premiumActive,
+    banned: !!user.banned,
     starBalance: user.starBalance ?? 0,
+    earnings: user.earnings ?? 0,
     followers: user.followers ?? 0,
     following: user.following ?? 0,
     postsCount: user.postsCount ?? 0,
     loginMethod: user.loginMethod ?? "telegram",
+    verificationRequestPending: !!user.verificationRequestPending,
+    telegramId: user.telegramId,
   };
 }

@@ -10,6 +10,7 @@ import {
   Sun,
   Moon,
   Crown,
+  BadgeCheck,
   Bookmark,
   Clapperboard,
   HelpCircle,
@@ -35,6 +36,7 @@ const THEME_OPTIONS: { value: Theme; label: string; icon: typeof Monitor }[] = [
 
 const LINK_ITEMS = [
   { href: "/settings/premium/", label: "Premium", icon: Crown, description: "Unlock exclusive features" },
+  { href: "/settings/verification/", label: "Verification", icon: BadgeCheck, description: "Request official verification badge" },
   { href: "/settings/bookmarks/", label: "Bookmarks", icon: Bookmark, description: "Saved posts and reels" },
   { href: "/creator-studio/", label: "Creator Studio", icon: Clapperboard, description: "Earnings and analytics" },
   { href: "/settings/help/", label: "Help", icon: HelpCircle, description: "Support and FAQ" },

@@ -15,6 +15,7 @@ import { isTelegramMiniApp } from "@/lib/telegram/miniApp";
 interface AuthContextValue {
   user: AuthUser | null;
   loginMethod: LoginMethod;
+  verificationMinFollowers: number;
   isAuthenticated: boolean;
   isGuest: boolean;
   loading: boolean;
@@ -28,12 +29,14 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loginMethod, setLoginMethod] = useState<LoginMethod>("guest");
+  const [verificationMinFollowers, setVerificationMinFollowers] = useState(10000);
   const [loading, setLoading] = useState(true);
   const lastTelegramId = useRef<number | null>(null);
 
-  const applyMe = useCallback((data: { user: AuthUser | null; loginMethod: LoginMethod }) => {
+  const applyMe = useCallback((data: { user: AuthUser | null; loginMethod: LoginMethod; verificationMinFollowers?: number }) => {
     setUser(data.user);
     setLoginMethod(data.loginMethod);
+    if (data.verificationMinFollowers) setVerificationMinFollowers(data.verificationMinFollowers);
   }, []);
 
   const authenticateTelegram = useCallback(async () => {
@@ -148,6 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         user,
         loginMethod,
+        verificationMinFollowers,
         isAuthenticated: loginMethod === "telegram" && !!user,
         isGuest: loginMethod === "guest" || !user,
         loading,
