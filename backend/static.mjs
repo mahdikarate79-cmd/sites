@@ -1,7 +1,11 @@
 import fs from "fs";
 import path from "path";
 
-const STATIC_DIR = process.env.STATIC_DIR ?? path.join(process.cwd(), "out");
+import { config } from "./config.mjs";
+
+const STATIC_DIR = path.isAbsolute(config.staticDir)
+  ? config.staticDir
+  : path.join(process.cwd(), config.staticDir);
 
 const MIME = {
   ".html": "text/html; charset=utf-8",

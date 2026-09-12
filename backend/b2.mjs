@@ -28,19 +28,22 @@ async function getUploadUrl() {
   const bucketId = process.env.B2_BUCKET_ID;
   if (!bucketName && !bucketId) throw new Error("B2_BUCKET_NAME or B2_BUCKET_ID required");
 
-  const listRes = await fetch(`${auth.apiUrl}/b2api/v2/b2_list_buckets`, {
-    method: "POST",
-    headers: { Authorization: auth.authorizationToken, "Content-Type": "application/json" },
-    body: JSON.stringify({ accountId: auth.accountId, bucketName }),
-  });
-  const list = await listRes.json();
-  const bucket = list.buckets?.[0];
-  if (!bucket) throw new Error("B2 bucket not found");
+  let resolvedBucketId = bucketId;
+  if (!resolvedBucketId) {
+    const listRes = await fetch(`${auth.apiUrl}/b2api/v2/b2_list_buckets`, {
+      method: "POST",
+      headers: { Authorization: auth.authorizationToken, "Content-Type": "application/json" },
+      body: JSON.stringify({ accountId: auth.accountId, bucketName }),
+    });
+    const list = await listRes.json();
+    resolvedBucketId = list.buckets?.[0]?.bucketId;
+  }
+  if (!resolvedBucketId) throw new Error("B2 bucket not found");
 
   const upRes = await fetch(`${auth.apiUrl}/b2api/v2/b2_get_upload_url`, {
     method: "POST",
     headers: { Authorization: auth.authorizationToken, "Content-Type": "application/json" },
-    body: JSON.stringify({ bucketId: bucket.bucketId }),
+    body: JSON.stringify({ bucketId: resolvedBucketId }),
   });
   if (!upRes.ok) throw new Error(`B2 upload URL failed: ${upRes.status}`);
   return { ...(await upRes.json()), auth };

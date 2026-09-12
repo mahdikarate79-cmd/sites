@@ -18,7 +18,7 @@ zip -r "$ZIP_NAME" \
   start.sh \
   .env \
   DEPLOY.md \
-  -x "backend/data/store.json" "*/node_modules/*" "*/.git/*"
+  -x "backend/data/store.json" "backend/data/sheytoni.db*" "*/node_modules/*" "*/.git/*"
 
 echo "Done: $ZIP_NAME"
 echo "Upload to your host, extract into x.venify.xyz folder, then run: chmod +x start.sh && ./start.sh"

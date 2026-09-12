@@ -1,63 +1,30 @@
-import fs from "fs";
-import path from "path";
 import crypto from "crypto";
+import { loadDb, saveDb } from "./database/store.mjs";
+import { getDatabase } from "./database/init.mjs";
 
-const DATA_DIR = path.join(process.cwd(), "backend", "data");
-const DB_FILE = path.join(DATA_DIR, "store.json");
-
-const DEFAULT_DB = {
-  users: {},
-  sessions: {},
-  reservedUsernames: [],
-  deletedUserIds: [],
-  posts: {},
-  notifications: {},
-  verificationRequests: [],
-  withdrawalRequests: [],
-  bannedUsers: {},
-  mediaObjects: {},
-  paymentIntents: {},
-  chats: {},
-  adminSessions: {},
-  settings: { verificationMinFollowers: 10000 },
-};
-
-function ensureDb() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(DB_FILE)) {
-    fs.writeFileSync(DB_FILE, JSON.stringify(DEFAULT_DB, null, 2));
-  }
-}
-
-export function loadDb() {
-  ensureDb();
-  return JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
-}
-
-export function saveDb(db) {
-  ensureDb();
-  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
-}
+export { loadDb, saveDb };
 
 export function findUserByTelegramId(db, telegramId) {
-  return Object.values(db.users).find((u) => u.telegramId === telegramId && !u.deleted);
+  const r = getDatabase().prepare("SELECT * FROM users WHERE telegram_id = ? AND deleted = 0").get(telegramId);
+  return r ? rowToUser(r) : null;
 }
 
 export function findUserByUsername(db, username) {
   const lower = String(username).toLowerCase();
-  return Object.values(db.users).find((u) => u.username?.toLowerCase() === lower && !u.deleted);
+  const r = getDatabase().prepare("SELECT * FROM users WHERE lower(username) = ? AND deleted = 0").get(lower);
+  return r ? rowToUser(r) : null;
 }
 
 export function findUserById(db, id) {
-  const user = db.users[id];
-  if (!user || user.deleted) return null;
-  return user;
+  const r = getDatabase().prepare("SELECT * FROM users WHERE id = ? AND deleted = 0").get(id);
+  return r ? rowToUser(r) : null;
 }
 
 export function usernameAvailable(db, username) {
   const lower = username.toLowerCase();
-  if (db.reservedUsernames.includes(lower)) return false;
-  return !Object.values(db.users).some((u) => u.username?.toLowerCase() === lower && !u.deleted);
+  const sqlite = getDatabase();
+  if (sqlite.prepare("SELECT 1 FROM reserved_usernames WHERE username = ?").get(lower)) return false;
+  return !sqlite.prepare("SELECT 1 FROM users WHERE lower(username) = ? AND deleted = 0").get(lower);
 }
 
 export function createUserFromTelegram(db, tgUser) {
@@ -91,7 +58,8 @@ export function userHasUsername(user) {
 }
 
 export function touchUserActivity(db, userId) {
-  const user = db.users[userId];
+  getDatabase().prepare("UPDATE users SET last_active_at = ? WHERE id = ?").run(new Date().toISOString(), userId);
+  const user = db.users?.[userId];
   if (user) user.lastActiveAt = new Date().toISOString();
 }
 
@@ -106,13 +74,15 @@ export function createSession(userId, telegramId) {
 }
 
 export function deleteSessionsForUser(db, userId) {
-  for (const [sid, session] of Object.entries(db.sessions)) {
-    if (session.userId === userId) delete db.sessions[sid];
+  getDatabase().prepare("DELETE FROM sessions WHERE user_id = ?").run(userId);
+  for (const sid of Object.keys(db.sessions ?? {})) {
+    if (db.sessions[sid].userId === userId) delete db.sessions[sid];
   }
 }
 
 export function deleteSessionsExcept(db, keepSessionId) {
-  for (const sid of Object.keys(db.sessions)) {
+  getDatabase().prepare("DELETE FROM sessions WHERE id != ?").run(keepSessionId);
+  for (const sid of Object.keys(db.sessions ?? {})) {
     if (sid !== keepSessionId) delete db.sessions[sid];
   }
 }
@@ -120,12 +90,10 @@ export function deleteSessionsExcept(db, keepSessionId) {
 export function deleteAccount(db, userId) {
   const user = db.users[userId];
   if (!user) return false;
-
   user.deleted = true;
   user.deletedAt = new Date().toISOString();
   if (user.username) db.reservedUsernames.push(user.username.toLowerCase());
   if (!db.deletedUserIds.includes(userId)) db.deletedUserIds.push(userId);
-
   deleteSessionsForUser(db, userId);
   return true;
 }
@@ -156,5 +124,34 @@ export function publicUser(user) {
     loginMethod: user.loginMethod ?? "telegram",
     verificationRequestPending: !!user.verificationRequestPending,
     telegramId: user.telegramId,
+  };
+}
+
+function rowToUser(r) {
+  return {
+    id: r.id,
+    telegramId: r.telegram_id,
+    username: r.username,
+    displayName: r.display_name,
+    avatar: r.avatar,
+    cover: r.cover,
+    bio: r.bio,
+    verified: !!r.verified,
+    premium: !!r.premium,
+    premiumExpiresAt: r.premium_expires_at,
+    banned: !!r.banned,
+    bannedAt: r.banned_at,
+    starBalance: r.star_balance,
+    earnings: r.earnings,
+    followers: r.followers,
+    following: r.following,
+    postsCount: r.posts_count,
+    loginMethod: r.login_method,
+    createdAt: r.created_at,
+    lastActiveAt: r.last_active_at,
+    deleted: !!r.deleted,
+    deletedAt: r.deleted_at,
+    verificationRequestPending: !!r.verification_request_pending,
+    usernameSet: !!r.username_set,
   };
 }

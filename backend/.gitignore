@@ -1,1 +1,4 @@
 data/store.json
+data/sheytoni.db
+data/sheytoni.db-wal
+data/sheytoni.db-shm

@@ -27,15 +27,16 @@ import { createStarsInvoice, answerPreCheckoutQuery, verifyWebhookSecret, isBotC
 import { createNotification, getUserNotifications } from "./notifications.mjs";
 import { startCleanupScheduler } from "./mediaCleanup.mjs";
 import { serveStatic, staticDirExists } from "./static.mjs";
+import { config } from "./config.mjs";
+import { getDatabase } from "./database/init.mjs";
 
-const PORT = Number(process.env.PORT ?? process.env.AUTH_PORT ?? 3000);
-const HOST = process.env.HOST ?? "0.0.0.0";
+const PORT = config.port;
+const HOST = config.host;
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? "";
 const DEV_AUTH = process.env.AUTH_DEV_MODE === "true";
 const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET ?? "";
 const COOKIE_NAME = "sheytoni_session";
-const ORIGINS = (process.env.CORS_ORIGINS ??
-  "http://localhost:3000,https://mahdikarate79-cmd.github.io,https://x.verify.xyz,http://x.verify.xyz").split(",");
+const ORIGINS = config.corsOrigins;
 
 const PLANS = { "1m": { months: 1, stars: 100 }, "6m": { months: 6, stars: 300 }, "1y": { months: 12, stars: 500 } };
 
@@ -389,6 +390,7 @@ async function handleProfileUpdate(req, res) {
     return json(res, 400, { error: "Invalid body" }, corsHeaders(req.headers.origin));
   }
 
+  // Sheytoni profile only — Telegram name/username changes do not affect verification
   if (body.displayName !== undefined) {
     const nextName = String(body.displayName).trim();
     if (nextName && nextName !== user.displayName) {
@@ -403,14 +405,14 @@ async function handleProfileUpdate(req, res) {
 
   if (body.username !== undefined) {
     const nextUsername = String(body.username).trim().toLowerCase();
-    if (!user.usernameSet && nextUsername) {
+    const currentUsername = (user.username ?? "").toLowerCase();
+    if (nextUsername && nextUsername !== currentUsername) {
       if (!usernameAvailable(db, nextUsername)) {
         return json(res, 409, { error: "Username taken" }, corsHeaders(req.headers.origin));
       }
+      if (user.verified) user.verified = false;
       user.username = nextUsername;
       user.usernameSet = true;
-    } else if (user.usernameSet && nextUsername && nextUsername !== user.username) {
-      return json(res, 400, { error: "Username already set" }, corsHeaders(req.headers.origin));
     }
   }
 
@@ -529,8 +531,9 @@ const dbRef = () => {
 startCleanupScheduler(dbRef, saveDb);
 
 server.listen(PORT, HOST, () => {
+  getDatabase();
   const db = loadDb();
   ensureAdminSettings(db);
   saveDb(db);
-  console.log(`Sheytoni running on http://${HOST}:${PORT} (static=${staticDirExists()}, token=${BOT_TOKEN ? "set" : "missing"}, b2=${isB2Configured()})`);
+  console.log(`Sheytoni running on http://${HOST}:${PORT} (db=sqlite, static=${staticDirExists()}, site=${config.siteUrl})`);
 });

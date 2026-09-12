@@ -82,7 +82,7 @@ export function VerificationContent() {
             </li>
           </ul>
           <p className="text-xs text-text-muted pt-1">
-            If you change your display name after verification, your official badge will be removed and you must request again.
+            If you change your Sheytoni display name or username after verification, your official badge will be removed and you must request again. Telegram profile changes do not affect this.
           </p>
         </section>
 
