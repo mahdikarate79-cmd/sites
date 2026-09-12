@@ -1,6 +1,12 @@
 import { ChatMessage } from "@/lib/types";
 
 const STORAGE_KEY = "sheytoni-chat-messages";
+const MAX_MESSAGES_PER_CHAT = 100;
+
+function trimMessages(messages: ChatMessage[]): ChatMessage[] {
+  if (messages.length <= MAX_MESSAGES_PER_CHAT) return messages;
+  return messages.slice(-MAX_MESSAGES_PER_CHAT);
+}
 
 function readAll(): Record<string, ChatMessage[]> {
   if (typeof window === "undefined") return {};
@@ -26,7 +32,7 @@ export function loadChatMessages(chatId: string, fallback: ChatMessage[]): ChatM
 export function persistChatMessages(chatId: string, messages: ChatMessage[]): void {
   if (typeof window === "undefined") return;
   const all = readAll();
-  all[chatId] = messages;
+  all[chatId] = trimMessages(messages);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
 }
 

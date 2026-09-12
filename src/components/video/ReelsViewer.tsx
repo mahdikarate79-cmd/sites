@@ -34,7 +34,7 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
   const [paused, setPaused] = useState(false);
   const [muted, setMuted] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
-  const [captionOpen, setCaptionOpen] = useState(false);
+  const [captionExpanded, setCaptionExpanded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [donateOpen, setDonateOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
@@ -61,9 +61,14 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
     setIndex(initialIndex);
     setPaused(false);
     setProgress(0);
+    setCaptionExpanded(false);
     lockScroll();
     return () => unlockScroll();
   }, [open, initialIndex]);
+
+  useEffect(() => {
+    setCaptionExpanded(false);
+  }, [index]);
 
   useEffect(() => {
     if (!open || !scrollRef.current) return;
@@ -208,21 +213,28 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
           return (
             <div
               key={`${reelItem.post.id}-${reelItem.mediaIndex}`}
-              className="relative w-full h-dvh snap-start snap-always shrink-0"
+              className="relative w-full h-dvh snap-start snap-always shrink-0 bg-black"
             >
               {reelIsVideo ? (
                 <video
                   ref={isActive ? videoRef : undefined}
                   src={reelMedia.url}
-                  poster={reelMedia.thumbnail}
-                  className="w-full h-full object-cover"
+                  poster={reelMedia.thumbnail ?? reelMedia.url}
+                  className="w-full h-full object-contain bg-black"
                   loop
                   playsInline
                   muted={muted}
                   autoPlay={isActive}
                 />
               ) : (
-                <Image src={reelMedia.url} alt="" fill className="object-cover" priority={isActive} unoptimized />
+                <Image
+                  src={reelMedia.url}
+                  alt=""
+                  fill
+                  className="object-contain bg-black"
+                  priority={isActive}
+                  unoptimized
+                />
               )}
 
               {isActive && reelIsVideo && paused && !fullscreen && (
@@ -252,37 +264,47 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
 
               {isActive && !fullscreen && (
                 <>
-                  <div className="absolute right-3 bottom-28 flex flex-col items-center gap-5 z-10" data-reel-ui>
+                  <div
+                    className="absolute right-3 flex flex-col items-center gap-5 z-10 bottom-[max(5.5rem,calc(env(safe-area-inset-bottom)+4.5rem))]"
+                    data-reel-ui
+                  >
                     <button onClick={(e) => { e.stopPropagation(); toggleLike(reelPost.id); }} className="flex flex-col items-center gap-0.5">
-                      <Heart className={cn("w-7 h-7", isLiked(reelPost.id) ? "text-like fill-like" : "text-white")} />
-                      <span className="text-white text-xs font-medium">{formatCount(reelPost.likes)}</span>
+                      <Heart className={cn("w-7 h-7 drop-shadow", isLiked(reelPost.id) ? "text-like fill-like" : "text-white")} />
+                      <span className="text-white text-xs font-medium drop-shadow">{formatCount(reelPost.likes)}</span>
                     </button>
                     <div onClick={(e) => { e.stopPropagation(); setDonateOpen(true); }}>
                       <DonateButton total={getDonation(reelPost.id, { total: reelPost.stars ?? 0, topDonators: reelPost.topDonators ?? [] }).total} donated={getDonation(reelPost.id).userDonated} onClick={() => setDonateOpen(true)} vertical size="sm" />
                     </div>
                     <button className="flex flex-col items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
-                      <MessageCircle className="w-7 h-7 text-white" />
-                      <span className="text-white text-xs font-medium">{formatCount(reelPost.comments)}</span>
+                      <MessageCircle className="w-7 h-7 text-white drop-shadow" />
+                      <span className="text-white text-xs font-medium drop-shadow">{formatCount(reelPost.comments)}</span>
                     </button>
                     <button className="flex flex-col items-center gap-0.5" onClick={(e) => { e.stopPropagation(); setShareOpen(true); }}>
-                      <Share2 className="w-7 h-7 text-white" />
-                      <span className="text-white text-xs font-medium">{formatCount(reelPost.shares)}</span>
+                      <Share2 className="w-7 h-7 text-white drop-shadow" />
+                      <span className="text-white text-xs font-medium drop-shadow">{formatCount(reelPost.shares)}</span>
                     </button>
                   </div>
 
-                  <div className="absolute bottom-20 left-4 right-16 z-10" data-reel-ui>
-                    <div className="flex items-center gap-2 mb-2">
+                  <div
+                    className="absolute left-4 right-16 z-10 bottom-[max(1.25rem,calc(env(safe-area-inset-bottom)+0.75rem))]"
+                    data-reel-ui
+                  >
+                    <div className="flex items-center gap-2 mb-1.5">
                       <Link href={`/profile/${reelPost.author.username || reelPost.author.id}/`} onClick={(e) => e.stopPropagation()}>
                         <Avatar src={reelPost.author.avatar} alt={reelPost.author.displayName} size="sm" />
                       </Link>
                       <Link href={`/profile/${reelPost.author.username || reelPost.author.id}/`} onClick={(e) => e.stopPropagation()} className="min-w-0">
-                        <UserName user={reelPost.author} nameClassName="text-white font-semibold text-sm" />
+                        <UserName user={reelPost.author} nameClassName="text-white font-semibold text-sm drop-shadow" />
                       </Link>
                       {!isFollowing(reelPost.author.id) && <FollowButton userId={reelPost.author.id} size="sm" />}
                     </div>
                     {reelPost.content && (
-                      <button onClick={(e) => { e.stopPropagation(); setCaptionOpen(!captionOpen); }} className="text-white text-sm text-left line-clamp-2">
-                        {captionOpen ? reelPost.content : reelPost.content.slice(0, 80) + (reelPost.content.length > 80 ? "..." : "")}
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setCaptionExpanded(true); }}
+                        className="text-white text-sm text-left line-clamp-1 drop-shadow w-full"
+                      >
+                        {reelPost.content}
                       </button>
                     )}
                   </div>
@@ -315,6 +337,24 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
           ))}
         </div>
       </BottomSheet>
+
+      {captionExpanded && post.content && (
+        <div className="absolute inset-x-0 bottom-0 z-30 px-4 pb-[max(1rem,env(safe-area-inset-bottom))]" data-reel-ui>
+          <button
+            type="button"
+            className="absolute inset-0 -top-[100dvh] bg-black/40"
+            onClick={() => setCaptionExpanded(false)}
+            aria-label="Close caption"
+          />
+          <div className="relative glass-nav rounded-2xl px-4 py-3.5 max-h-[40dvh] overflow-y-auto">
+            <div className="flex items-center gap-2 mb-2">
+              <Avatar src={post.author.avatar} alt="" size="sm" />
+              <UserName user={post.author} nameClassName="text-sm font-semibold" />
+            </div>
+            <p className="text-sm leading-relaxed whitespace-pre-wrap">{post.content}</p>
+          </div>
+        </div>
+      )}
 
       <DonateModal open={donateOpen} onClose={() => setDonateOpen(false)} post={post} />
       <ReportModal open={reportOpen} onClose={() => setReportOpen(false)} />

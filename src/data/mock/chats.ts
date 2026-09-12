@@ -107,6 +107,9 @@ export const mockMessages: Record<string, ChatMessage[]> = {
     { id: "c1m3", chatId: "c1", senderId: mockUsers[1].id, type: "text", content: "Awesome! The design looks really clean.", createdAt: new Date(now - 6800000).toISOString(), read: true },
     { id: "c1m4", chatId: "c1", senderId: "u1", type: "text", content: "Thanks! We focused on minimal and fast.", createdAt: new Date(now - 6600000).toISOString(), read: true },
     { id: "c1m5", chatId: "c1", senderId: mockUsers[1].id, type: "image", content: IMG.portrait, paidStars: 50, caption: "Exclusive shot — 50 Stars to unlock", createdAt: new Date(now - 600000).toISOString(), read: false },
+    { id: "c1m5b", chatId: "c1", senderId: mockUsers[1].id, type: "image", content: IMG.neon, paidStars: 120, caption: "Neon set — 120 Stars", createdAt: new Date(now - 550000).toISOString(), read: false },
+    { id: "c1m5c", chatId: "c1", senderId: mockUsers[1].id, type: "image", content: IMG.beach, temporary: "10s", caption: "10 second beach snap", createdAt: new Date(now - 500000).toISOString(), read: false },
+    { id: "c1m5d", chatId: "c1", senderId: mockUsers[1].id, type: "image", content: IMG.mountains, paidStars: 200, temporary: "30s", caption: "Paid + temporary combo", createdAt: new Date(now - 450000).toISOString(), read: false },
     { id: "c1m6", chatId: "c1", senderId: mockUsers[1].id, type: "text", content: "Hey! Did you see the new Stars feature?", createdAt: new Date(now - 300000).toISOString(), read: false },
   ],
   c2: [
@@ -130,6 +133,8 @@ export const mockMessages: Record<string, ChatMessage[]> = {
     { id: "c5m1", chatId: "c5", senderId: mockUsers[5].id, type: "text", content: "Love your latest reel!", createdAt: new Date(now - 3600000).toISOString(), read: true },
     { id: "c5m2", chatId: "c5", senderId: "u1", type: "text", content: "Thanks Amir! Glad you enjoyed it.", createdAt: new Date(now - 1800000).toISOString(), read: true },
     { id: "c5m3", chatId: "c5", senderId: mockUsers[5].id, type: "image", content: IMG.portrait, temporary: "view_once", createdAt: new Date(now - 900000).toISOString(), read: false },
+    { id: "c5m3b", chatId: "c5", senderId: mockUsers[5].id, type: "image", content: IMG.neon, paidStars: 40, caption: "Quick paid preview — 40 Stars", createdAt: new Date(now - 850000).toISOString(), read: false },
+    { id: "c5m3c", chatId: "c5", senderId: mockUsers[5].id, type: "image", content: IMG.sunset, temporary: "3s", createdAt: new Date(now - 800000).toISOString(), read: false },
     { id: "c5m4", chatId: "c5", senderId: mockUsers[5].id, type: "text", content: "Sent you 100 Stars for the last post!", createdAt: new Date(now - 120000).toISOString(), read: false },
   ],
   c6: [

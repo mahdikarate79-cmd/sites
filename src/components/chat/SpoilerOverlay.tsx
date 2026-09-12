@@ -26,7 +26,7 @@ export function SpoilerOverlay({ stars, label, variant = "default", onClick, cla
       className={cn("absolute inset-0 flex items-center justify-center overflow-hidden", className)}
       aria-label={stars ? `Unlock for ${stars} stars` : isTemp ? "Tap to view temporary media" : label ?? "Tap to view"}
     >
-      <div className="absolute inset-0 bg-black/25" aria-hidden />
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-xl" aria-hidden />
       <SpoilerDots />
       {isTemp ? (
         <div className="relative z-[1] flex items-center justify-center w-14 h-14">

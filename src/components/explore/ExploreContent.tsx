@@ -1,15 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Search, Filter, Video, ImageIcon, Film } from "lucide-react";
+import { Post } from "@/lib/types";
 import { mockPosts } from "@/data/mock/posts";
 import { mockUsers } from "@/data/mock/users";
+import { getFeedPosts } from "@/lib/api/posts";
 import { Avatar } from "@/components/ui/Avatar";
 import { UserName } from "@/components/ui/UserName";
 import { ReelsViewer } from "@/components/video/ReelsViewer";
-import { buildReelItems, findReelIndex } from "@/lib/utils/reels";
+import { buildReelItems } from "@/lib/utils/reels";
 import { shouldExcludeFromPublicDiscovery } from "@/lib/utils/postAccess";
 import { formatCount } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
@@ -21,6 +23,16 @@ function accountScore(user: typeof mockUsers[0]): number {
   return (user.verified ? 1000 : 0) + (user.premium ? 500 : 0) + user.followers;
 }
 
+function postMatchesQuery(post: Post, q: string): boolean {
+  if (!q) return true;
+  const tagQ = q.replace(/^#/, "");
+  return (
+    post.content.toLowerCase().includes(q) ||
+    !!post.tags?.some((t) => t.includes(tagQ)) ||
+    (post.category?.toLowerCase().includes(q) ?? false)
+  );
+}
+
 export function ExploreContent() {
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<SearchTab>("accounts");
@@ -28,11 +40,18 @@ export function ExploreContent() {
   const [showFilters, setShowFilters] = useState(false);
   const [reelsOpen, setReelsOpen] = useState(false);
   const [reelIndex, setReelIndex] = useState(0);
+  const [allPosts, setAllPosts] = useState<Post[]>(mockPosts);
 
-  const reelItems = useMemo(
-    () => buildReelItems(mockPosts.filter((p) => !shouldExcludeFromPublicDiscovery(p))),
-    []
+  useEffect(() => {
+    getFeedPosts().then(setAllPosts);
+  }, []);
+
+  const publicPosts = useMemo(
+    () => allPosts.filter((p) => !shouldExcludeFromPublicDiscovery(p)),
+    [allPosts]
   );
+
+  const reelItems = useMemo(() => buildReelItems(publicPosts), [publicPosts]);
 
   const accounts = useMemo(() => {
     let users = mockUsers.filter((u) => u.id !== "u1");
@@ -64,11 +83,7 @@ export function ExploreContent() {
     let items = [...reelItems];
     const q = query.trim().toLowerCase();
     if (q) {
-      items = items.filter(
-        (item) =>
-          item.post.content.toLowerCase().includes(q) ||
-          item.post.content.toLowerCase().includes(`#${q}`)
-      );
+      items = items.filter((item) => postMatchesQuery(item.post, q));
     }
     return items.sort((a, b) => {
       const pa = a.post;
@@ -94,8 +109,8 @@ export function ExploreContent() {
 
   return (
     <div>
-      <div className="px-5 py-4 sticky top-0 z-30 bg-bg/90 backdrop-blur-sm safe-top">
-        <div className="relative mx-1">
+      <div className="px-5 pt-5 pb-4 sticky top-0 z-30 bg-bg/90 backdrop-blur-sm safe-top">
+        <div className="relative mx-1 mt-1">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
           <input
             type="search"
@@ -178,7 +193,7 @@ export function ExploreContent() {
                 key={`${item.post.id}-${item.mediaIndex}`}
                 type="button"
                 onClick={() => openReel(i)}
-                className="relative aspect-[3/4] bg-surface overflow-hidden"
+                className="relative aspect-[3/4] bg-black overflow-hidden"
               >
                 <Image src={thumb} alt="" fill className="object-cover" sizes="33vw" unoptimized />
                 <Icon className="absolute top-1.5 right-1.5 w-3.5 h-3.5 text-white drop-shadow" />

@@ -10,11 +10,14 @@ interface LazyVideoProps {
   thumbnail?: string;
   className?: string;
   onPlay?: () => void;
+  blurred?: boolean;
 }
 
-export function LazyVideo({ src, thumbnail, className, onPlay }: LazyVideoProps) {
+export function LazyVideo({ src, thumbnail, className, onPlay, blurred }: LazyVideoProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
+  const [thumbError, setThumbError] = useState(false);
+  const poster = thumbnail && !thumbError ? thumbnail : undefined;
 
   const handleClick = () => {
     if (onPlay) {
@@ -28,24 +31,41 @@ export function LazyVideo({ src, thumbnail, className, onPlay }: LazyVideoProps)
   };
 
   return (
-    <div className={cn("relative overflow-hidden bg-surface cursor-pointer", className)} onClick={handleClick}>
-      {!playing && thumbnail && (
+    <div className={cn("relative overflow-hidden bg-black cursor-pointer", className)} onClick={handleClick}>
+      {!playing && poster && (
         <>
-          <Image src={thumbnail} alt="Video thumbnail" fill className="object-cover" loading="lazy" sizes="100vw" />
-          <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-            <div className="w-12 h-12 rounded-full bg-black/50 flex items-center justify-center">
-              <Play className="w-6 h-6 text-white fill-white ml-0.5" />
+          <Image
+            src={poster}
+            alt="Video thumbnail"
+            fill
+            className={cn("object-cover", blurred && "blur-xl scale-110")}
+            loading="lazy"
+            sizes="100vw"
+            unoptimized
+            onError={() => setThumbError(true)}
+          />
+          {!blurred && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+              <div className="w-12 h-12 rounded-full bg-black/50 flex items-center justify-center">
+                <Play className="w-6 h-6 text-white fill-white ml-0.5" />
+              </div>
             </div>
-          </div>
+          )}
         </>
+      )}
+      {!playing && !poster && (
+        <div className="absolute inset-0 flex items-center justify-center bg-surface">
+          <Play className="w-10 h-10 text-text-muted" />
+        </div>
       )}
       <video
         ref={videoRef}
         src={playing ? src : undefined}
-        className={cn("w-full h-full object-cover", !playing && "hidden")}
+        poster={poster}
+        className={cn("w-full h-full object-contain bg-black", !playing && "hidden")}
         controls={playing}
         playsInline
-        preload="none"
+        preload="metadata"
         onPlay={() => setPlaying(true)}
       />
     </div>

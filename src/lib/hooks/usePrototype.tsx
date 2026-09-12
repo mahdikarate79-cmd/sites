@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useState, ReactNode } from "react";
 import { Comment, Donator, Post, PostDonationState, PrototypeState, User } from "@/lib/types";
 import { canViewPostMedia, PostAccessContext, shouldShowInFeed } from "@/lib/utils/postAccess";
+import { assertValidStarSpend, assertValidUnlock, sanitizePostContent, sanitizeTags } from "@/lib/security/validate";
 import { loadState, saveState, getPostDonation, ensureStarBalance, createTransaction } from "@/lib/store/prototypeStore";
 import { currentUser as baseCurrentUser } from "@/data/mock/users";
 
@@ -216,7 +217,7 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
   }, [update]);
 
   const spendStars = useCallback((stars: number, label: string, type: "paid_media" | "premium" = "paid_media"): boolean => {
-    if (stars <= 0) return false;
+    if (!assertValidStarSpend(stars, state.starBalance, `spend:${type}`)) return false;
     const tx = createTransaction({ type, amount: -stars, label });
     update((s) => ({
       ...s,
@@ -402,7 +403,7 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
   );
 
   const unlockPaidPost = useCallback((postId: string, stars: number): boolean => {
-    if (stars <= 0 || state.starBalance < stars) return false;
+    if (!assertValidUnlock(postId, stars, state.starBalance, state.unlockedPaidPosts.includes(postId))) return false;
     const tx = createTransaction({ type: "paid_media", amount: -stars, label: "Paid post unlock", postId });
     update((s) => ({
       ...s,
@@ -414,7 +415,15 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
   }, [update, state.starBalance]);
 
   const addPost = useCallback((post: Post) => {
-    update((s) => ({ ...s, userPosts: [post, ...s.userPosts] }));
+    const safe: Post = {
+      ...post,
+      content: sanitizePostContent(post.content),
+      tags: sanitizeTags(post.tags ?? []),
+    };
+    update((s) => ({
+      ...s,
+      userPosts: [safe, ...s.userPosts].slice(0, 50),
+    }));
   }, [update]);
 
   const getUserPosts = useCallback(() => state.userPosts, [state.userPosts]);

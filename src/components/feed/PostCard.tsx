@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils/cn";
 import { usePrototype } from "@/lib/hooks/usePrototype";
 import { useToast } from "@/components/ui/ToastProvider";
 import { mockPosts } from "@/data/mock/posts";
-import { buildReelItems, findReelIndex } from "@/lib/utils/reels";
+import { buildAccessibleReelItems, findReelIndex } from "@/lib/utils/reels";
 import { hasPrivateAccess, isPostPaid, isPostPrivate, PostAccessContext } from "@/lib/utils/postAccess";
 
 interface PostCardProps {
@@ -51,8 +51,8 @@ export function PostCard({ post, onHide, allPosts }: PostCardProps) {
 
   const reelSource = allPosts ?? mockPosts;
   const reelItems = useMemo(
-    () => buildReelItems(reelSource.filter((p) => p.author.id === user.id || (!isPostPaid(p) && !isPostPrivate(p)))),
-    [reelSource, user.id]
+    () => buildAccessibleReelItems(reelSource, accessCtx),
+    [reelSource, user.id, isFollowing, isPaidPostUnlocked]
   );
   const hasReelMedia = post.media?.some((m) => m.type === "video" || m.type === "image" || m.type === "gif");
   const profileHref = `/profile/${post.author.username}/`;
@@ -112,9 +112,10 @@ export function PostCard({ post, onHide, allPosts }: PostCardProps) {
                   <div key={i} className="relative">
                     {m.type === "video" ? (
                       <LazyVideo
-                        src={showMediaOverlay ? (m.thumbnail ?? m.url) : m.url}
-                        thumbnail={m.thumbnail}
+                        src={m.url}
+                        thumbnail={m.thumbnail ?? m.url}
                         className="aspect-[9/16] max-h-[480px] cursor-pointer"
+                        blurred={showMediaOverlay}
                         onPlay={() => (showMediaOverlay ? handleMediaClick() : openReels(i))}
                       />
                     ) : (
@@ -123,7 +124,13 @@ export function PostCard({ post, onHide, allPosts }: PostCardProps) {
                         onClick={() => (showMediaOverlay ? handleMediaClick() : openReels(i))}
                         className="block w-full cursor-pointer relative"
                       >
-                        <LazyImage src={m.url} thumbnail={m.thumbnail} alt="Post image" className="aspect-[4/3]" />
+                        <LazyImage
+                          src={m.url}
+                          thumbnail={m.thumbnail ?? m.url}
+                          alt="Post image"
+                          className="aspect-[4/3]"
+                          blurred={showMediaOverlay}
+                        />
                       </button>
                     )}
                     {showMediaOverlay && i === 0 && (
@@ -135,7 +142,7 @@ export function PostCard({ post, onHide, allPosts }: PostCardProps) {
                           onClick={handleMediaClick}
                           className="absolute inset-0 flex items-center justify-center overflow-hidden"
                         >
-                          <div className="absolute inset-0 bg-black/25" aria-hidden />
+                          <div className="absolute inset-0 bg-black/30 backdrop-blur-xl" aria-hidden />
                           <div className="relative z-[1] px-4 py-3 rounded-2xl glass-pill flex items-center gap-2">
                             <Lock className="w-5 h-5 text-white/90" />
                             <span className="text-xs text-white/90 font-medium">Private</span>
