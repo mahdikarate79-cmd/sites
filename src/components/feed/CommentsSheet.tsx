@@ -9,7 +9,6 @@ import { usePrototype } from "@/lib/hooks/usePrototype";
 import { useTelegramGate } from "@/lib/hooks/useTelegramGate";
 import { formatTimeAgo } from "@/lib/utils/format";
 import { Comment } from "@/lib/types";
-import { currentUser } from "@/data/mock/users";
 
 interface CommentsSheetProps {
   open: boolean;
@@ -102,7 +101,7 @@ export function CommentsSheet({ open, onClose, postId, initialCount, onCountChan
         </div>
 
         <div className="shrink-0 border-t border-border px-4 py-3 flex items-center gap-2">
-          <Avatar src={currentUser.avatar} alt="" size="sm" className="shrink-0" />
+          <Avatar src={user.avatar} alt="" size="sm" className="shrink-0" />
           <input
             value={text}
             onChange={(e) => setText(e.target.value)}

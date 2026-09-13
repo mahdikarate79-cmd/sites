@@ -16,12 +16,14 @@ import { PostCard } from "@/components/feed/PostCard";
 import { ReportModal } from "@/components/feed/ReportModal";
 import { formatCount } from "@/lib/utils/format";
 import { getPostsByUser } from "@/lib/api/posts";
-import { currentUser } from "@/data/mock/users";
+import { startChatWithUser } from "@/lib/api/chat";
 import { usePrototype } from "@/lib/hooks/usePrototype";
+import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/ToastProvider";
 import { Settings } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { isDeletedUser, DELETED_USER } from "@/lib/auth/deletedUser";
+import { DeletedAccountCooldown } from "@/components/auth/DeletedAccountCooldown";
 
 type ProfileTab = "videos" | "photos" | "posts";
 
@@ -38,6 +40,7 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
   const [reportOpen, setReportOpen] = useState(false);
   const { isBlocked } = usePrototype();
   const { showToast } = useToast();
+  const router = useRouter();
 
   useEffect(() => {
     getPostsByUser(user.id).then(setPosts);
@@ -70,7 +73,8 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
   ];
 
   const copyProfileLink = async () => {
-    await navigator.clipboard.writeText(`https://sheytoni.app/@${user.username}`);
+    const { getSiteUrl } = await import("@/lib/utils/siteUrl");
+    await navigator.clipboard.writeText(`${getSiteUrl()}/profile/${user.username || user.id}/`);
     showToast("Profile link copied");
     setMenuOpen(false);
   };
@@ -117,16 +121,25 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
             ) : (
               <>
                 <FollowButton userId={user.id} />
-                <Link
-                  href={`/chat/c1/`}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (blocked) return;
+                    try {
+                      const chat = await startChatWithUser(user.id);
+                      router.push(`/chat/${chat.id}/`);
+                    } catch {
+                      showToast("Could not start chat");
+                    }
+                  }}
                   className={cn(
                     "px-4 py-1.5 rounded-full border border-border text-sm font-medium glass-nav",
                     blocked && "pointer-events-none opacity-40"
                   )}
-                  aria-disabled={blocked}
+                  disabled={blocked}
                 >
                   Message
-                </Link>
+                </button>
               </>
             )}
           </div>
@@ -226,5 +239,10 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
 
 export function OwnProfile() {
   const { getCurrentUser } = usePrototype();
-  return <ProfileContent user={getCurrentUser()} isOwnProfile />;
+  return (
+    <>
+      <DeletedAccountCooldown />
+      <ProfileContent user={getCurrentUser()} isOwnProfile />
+    </>
+  );
 }

@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils/cn";
 import { usePrototype } from "@/lib/hooks/usePrototype";
 import { useTelegramGate } from "@/lib/hooks/useTelegramGate";
 import { useToast } from "@/components/ui/ToastProvider";
+import { toggleLikeApi } from "@/lib/api/social";
 
 interface PostActionsProps {
   post: Post;
@@ -33,12 +34,19 @@ export function PostActions({ post, onDonate }: PostActionsProps) {
   const [shareOpen, setShareOpen] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(false);
 
-  const handleLike = () => {
+  const handleLike = async () => {
     if (!requireMiniApp()) return;
     setAnimating(true);
     setTimeout(() => setAnimating(false), 200);
     const nowLiked = toggleLike(post.id);
     setLikes(nowLiked ? likes + 1 : likes - 1);
+    try {
+      const result = await toggleLikeApi(post.id);
+      setLikes(result.likes);
+    } catch {
+      toggleLike(post.id);
+      setLikes(likes);
+    }
   };
 
   const handleShare = (chatIds: string[]) => {

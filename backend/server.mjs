@@ -5,8 +5,13 @@ import {
   loadDb,
   saveDb,
   findUserByTelegramId,
+  findUserByTelegramIdIncludingDeleted,
   findUserById,
+  getDeletionCooldown,
+  purgeDeletedUser,
   createUserFromTelegram,
+  isPostUnlocked,
+  unlockPost,
   createSession,
   deleteAccount,
   publicUser,
@@ -22,16 +27,45 @@ import {
   handleAdminAction,
   getAdminSession,
 } from "./admin.mjs";
-import { uploadToB2, isB2Configured } from "./b2.mjs";
+import { uploadToB2, isB2Configured, downloadFromB2 } from "./b2.mjs";
 import { createStarsInvoice, answerPreCheckoutQuery, verifyWebhookSecret, isBotConfigured } from "./telegramBot.mjs";
 import { createNotification, getUserNotifications } from "./notifications.mjs";
 import { startCleanupScheduler } from "./mediaCleanup.mjs";
 import { serveStatic, staticDirExists } from "./static.mjs";
 import { config } from "./config.mjs";
 import { getDatabase } from "./database/init.mjs";
-
-const PORT = config.port;
-const HOST = config.host;
+import { startHttpServer } from "./listen.mjs";
+import {
+  addEarningsCredit,
+  consumeWithdrawable,
+  getWalletInfo,
+  getWithdrawableStars,
+  MIN_STARS_21_DAYS,
+} from "./wallet.mjs";
+import {
+  createPost,
+  followUser,
+  unfollowUser,
+  getFeedPosts,
+  getPostById,
+  getPostsByAuthor,
+  getFollowersList,
+  getFollowingList,
+  togglePostLike,
+  resolveProfileUser,
+  isFollowing,
+  ensureSocial,
+  recordDonation,
+  searchUsers,
+} from "./social.mjs";
+import {
+  listChats,
+  getChat,
+  getChatMessages,
+  sendChatMessage,
+  startChat,
+  ensureChats,
+} from "./chat.mjs";
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? "";
 const DEV_AUTH = process.env.AUTH_DEV_MODE === "true";
 const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET ?? "";
@@ -51,10 +85,13 @@ function parseCookies(header) {
 }
 
 function corsHeaders(origin) {
-  const allowed = ORIGINS.some((o) => origin?.startsWith(o.replace(/\/$/, "")));
-  const o = allowed ? origin : ORIGINS[0];
+  const normalized = (origin ?? "").replace(/\/$/, "");
+  const allowed = ORIGINS.some((o) => normalized === o.replace(/\/$/, "") || normalized.startsWith(o.replace(/\/$/, "")));
+  if (!allowed) {
+    return { Vary: "Origin" };
+  }
   return {
-    "Access-Control-Allow-Origin": o,
+    "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Credentials": "true",
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
@@ -67,13 +104,28 @@ function json(res, status, body, extraHeaders = {}) {
   res.end(JSON.stringify(body));
 }
 
-function readBody(req) {
+function readBody(req, maxBytes = 64 * 1024 * 1024) {
   return new Promise((resolve, reject) => {
     const chunks = [];
-    req.on("data", (c) => chunks.push(c));
+    let size = 0;
+    req.on("data", (c) => {
+      size += c.length;
+      if (size > maxBytes) {
+        reject(new Error("Body too large"));
+        req.destroy();
+        return;
+      }
+      chunks.push(c);
+    });
     req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     req.on("error", reject);
   });
+}
+
+function isSecureRequest(req) {
+  return config.isProduction
+    || req.headers["x-forwarded-proto"] === "https"
+    || process.env.NODE_ENV === "production";
 }
 
 function sessionCookie(sessionId, secure) {
@@ -84,12 +136,21 @@ function sessionCookie(sessionId, secure) {
     "Max-Age=2592000",
     secure ? "Secure" : "",
     secure ? "SameSite=None" : "SameSite=Lax",
+    config.cookieDomain ? `Domain=${config.cookieDomain}` : "",
   ].filter(Boolean);
   return parts.join("; ");
 }
 
 function clearCookie(secure) {
-  const parts = [`${COOKIE_NAME}=`, "HttpOnly", "Path=/", "Max-Age=0", secure ? "Secure" : "", secure ? "SameSite=None" : "SameSite=Lax"].filter(Boolean);
+  const parts = [
+    `${COOKIE_NAME}=`,
+    "HttpOnly",
+    "Path=/",
+    "Max-Age=0",
+    secure ? "Secure" : "",
+    secure ? "SameSite=None" : "SameSite=Lax",
+    config.cookieDomain ? `Domain=${config.cookieDomain}` : "",
+  ].filter(Boolean);
   return parts.join("; ");
 }
 
@@ -149,10 +210,24 @@ async function handleTelegramAuth(req, res, secure) {
 
   let user = findUserByTelegramId(db, tgUser.id);
   if (!user) {
+    const deletedUser = findUserByTelegramIdIncludingDeleted(db, tgUser.id);
+    if (deletedUser?.deleted) {
+      const cooldown = getDeletionCooldown(deletedUser);
+      if (cooldown) {
+        return json(res, 403, {
+          error: "account_deleted",
+          canRecreateAt: cooldown.canRecreateAt,
+          remainingMs: cooldown.remainingMs,
+        }, {
+          ...corsHeaders(req.headers.origin),
+          "Set-Cookie": clearCookie(secure),
+        });
+      }
+      purgeDeletedUser(db, deletedUser.id);
+    }
     user = createUserFromTelegram(db, tgUser);
     db.users[user.id] = user;
   } else {
-    if (tgUser.photo_url) user.avatar = tgUser.photo_url;
     touchUserActivity(db, user.id);
   }
 
@@ -246,6 +321,15 @@ function handleNotifications(req, res) {
   return json(res, 200, { notifications: getUserNotifications(db, user.id) }, corsHeaders(req.headers.origin));
 }
 
+function handleUserUnlocks(req, res) {
+  const db = loadDb();
+  ensureAdminSettings(db);
+  const user = requireUser(req, db);
+  if (!user) return json(res, 401, { error: "Unauthorized" }, corsHeaders(req.headers.origin));
+  const postIds = Object.keys(db.unlockedPosts?.[user.id] ?? {});
+  return json(res, 200, { postIds }, corsHeaders(req.headers.origin));
+}
+
 async function handleCreateInvoice(req, res) {
   const db = loadDb();
   const user = requireUser(req, db);
@@ -273,6 +357,32 @@ async function handleCreateInvoice(req, res) {
     title = "Sheytoni Stars";
     description = `Purchase ${stars} Stars`;
     meta = { type: "stars", amount: stars };
+  } else if (type === "post_unlock") {
+    stars = Math.max(1, Math.min(25000, Number(body.stars) || 0));
+    const postId = String(body.postId ?? "");
+    if (!postId) return json(res, 400, { error: "postId required" }, corsHeaders(req.headers.origin));
+    title = "Sheytoni — Unlock post";
+    description = `Unlock paid content`;
+    meta = { type: "post_unlock", postId, stars };
+  } else if (type === "donation") {
+    stars = Math.max(1, Math.min(25000, Number(body.stars) || 0));
+    const postId = String(body.postId ?? "");
+    const recipientId = String(body.recipientId ?? "");
+    if (!postId || !recipientId) return json(res, 400, { error: "postId and recipientId required" }, corsHeaders(req.headers.origin));
+    title = "Sheytoni — Star donation";
+    description = `Send ${stars} Stars`;
+    meta = { type: "donation", postId, recipientId, stars, anonymous: !!body.anonymous };
+  } else if (type === "paid_media") {
+    stars = Math.max(1, Math.min(25000, Number(body.stars) || 0));
+    const chatId = String(body.chatId ?? "");
+    const messageId = String(body.messageId ?? "");
+    const recipientId = String(body.recipientId ?? "");
+    if (!chatId || !messageId || !recipientId) {
+      return json(res, 400, { error: "chatId, messageId, recipientId required" }, corsHeaders(req.headers.origin));
+    }
+    title = "Sheytoni — Unlock media";
+    description = `Unlock paid media (${stars} Stars)`;
+    meta = { type: "paid_media", chatId, messageId, recipientId, stars };
   } else {
     return json(res, 400, { error: "Invalid type" }, corsHeaders(req.headers.origin));
   }
@@ -338,6 +448,29 @@ async function handleTelegramWebhook(req, res) {
           const exp = new Date();
           exp.setMonth(exp.getMonth() + plan.months);
           user.premiumExpiresAt = exp.toISOString();
+        } else if (intent.meta?.type === "post_unlock") {
+          unlockPost(db, user.id, intent.meta.postId);
+          const post = db.posts?.[intent.meta.postId];
+          const author = post ? findUserById(db, post.authorId) : null;
+          if (author) addEarningsCredit(db, author.id, intent.stars, "post_unlock", { postId: intent.meta.postId });
+        } else if (intent.meta?.type === "donation") {
+          const recipient = findUserById(db, intent.meta.recipientId);
+          if (recipient) {
+            addEarningsCredit(db, recipient.id, intent.stars, "donation", { postId: intent.meta.postId });
+            recordDonation(db, intent.meta.postId, user.id, intent.stars, intent.meta.anonymous, user);
+          }
+        } else if (intent.meta?.type === "paid_media") {
+          if (!db.unlockedPaidMedia) db.unlockedPaidMedia = {};
+          if (!db.unlockedPaidMedia[user.id]) db.unlockedPaidMedia[user.id] = {};
+          const key = `${intent.meta.chatId}:${intent.meta.messageId}`;
+          db.unlockedPaidMedia[user.id][key] = { unlockedAt: new Date().toISOString() };
+          const recipient = findUserById(db, intent.meta.recipientId);
+          if (recipient) {
+            addEarningsCredit(db, recipient.id, intent.stars, "paid_media", {
+              chatId: intent.meta.chatId,
+              messageId: intent.meta.messageId,
+            });
+          }
         } else {
           user.starBalance = (user.starBalance ?? 0) + intent.stars;
         }
@@ -374,9 +507,25 @@ async function handleStorageUpload(req, res) {
   const ext = contentType.includes("video") ? ".mp4" : contentType.includes("gif") ? ".gif" : ".jpg";
   const objectKey = `${category ?? "post"}/${user.id}/${crypto.randomBytes(16).toString("hex")}${ext}`;
   const uploaded = await uploadToB2(objectKey, buffer, contentType);
-  db.mediaObjects[objectKey] = { ...uploaded, userId: user.id, createdAt: new Date().toISOString() };
+  const proxyUrl = `${config.apiUrl}/api/media/${encodeURIComponent(objectKey)}`;
+  db.mediaObjects[objectKey] = { ...uploaded, userId: user.id, createdAt: new Date().toISOString(), url: proxyUrl };
   saveDb(db);
-  return json(res, 200, { objectKey, url: uploaded.url, size: uploaded.size }, corsHeaders(req.headers.origin));
+  return json(res, 200, { objectKey, url: proxyUrl, size: uploaded.size }, corsHeaders(req.headers.origin));
+}
+
+async function handleMediaProxy(req, res, objectKey) {
+  const origin = req.headers.origin;
+  const extra = { "Cache-Control": "public, max-age=86400" };
+  try {
+    if (isB2Configured()) {
+      const { buffer, contentType } = await downloadFromB2(objectKey);
+      res.writeHead(200, { "Content-Type": contentType, ...extra, ...corsHeaders(origin) });
+      return res.end(buffer);
+    }
+  } catch (e) {
+    console.error("Media proxy error", objectKey, e.message);
+  }
+  return json(res, 404, { error: "Not found" }, corsHeaders(origin));
 }
 
 async function handleProfileUpdate(req, res) {
@@ -400,8 +549,20 @@ async function handleProfileUpdate(req, res) {
   }
 
   if (body.bio !== undefined) user.bio = String(body.bio).slice(0, 500);
-  if (body.avatar) user.avatar = String(body.avatar);
-  if (body.cover !== undefined) user.cover = body.cover ? String(body.cover) : undefined;
+  if (body.avatar) {
+    const av = String(body.avatar);
+    if (av.startsWith("blob:") || av.startsWith("data:")) {
+      return json(res, 400, { error: "Upload avatar via storage API" }, corsHeaders(req.headers.origin));
+    }
+    user.avatar = av;
+  }
+  if (body.cover !== undefined) {
+    const cv = body.cover ? String(body.cover) : "";
+    if (cv && (cv.startsWith("blob:") || cv.startsWith("data:"))) {
+      return json(res, 400, { error: "Upload cover via storage API" }, corsHeaders(req.headers.origin));
+    }
+    user.cover = cv || undefined;
+  }
 
   if (body.username !== undefined) {
     const nextUsername = String(body.username).trim().toLowerCase();
@@ -420,6 +581,15 @@ async function handleProfileUpdate(req, res) {
   return json(res, 200, { user: publicUser(user) }, corsHeaders(req.headers.origin));
 }
 
+function handleWallet(req, res) {
+  const db = loadDb();
+  ensureSocial(db);
+  const user = requireUser(req, db);
+  if (!user) return json(res, 401, { error: "Unauthorized" }, corsHeaders(req.headers.origin));
+  const wallet = getWalletInfo(db, user.id);
+  return json(res, 200, wallet, corsHeaders(req.headers.origin));
+}
+
 async function handleWithdrawalRequest(req, res) {
   const db = loadDb();
   const user = requireUser(req, db);
@@ -432,9 +602,29 @@ async function handleWithdrawalRequest(req, res) {
   const stars = Math.max(1, Number(body.stars) || 0);
   const wallet = String(body.wallet ?? "").trim();
   if (!wallet) return json(res, 400, { error: "Wallet required" }, corsHeaders(req.headers.origin));
-  if ((user.earnings ?? 0) < stars) return json(res, 402, { error: "Insufficient earnings" }, corsHeaders(req.headers.origin));
+  if (!/^(UQ|EQ)[A-Za-z0-9_-]{46,48}$/.test(wallet)) {
+    return json(res, 400, { error: "Invalid TON wallet" }, corsHeaders(req.headers.origin));
+  }
 
-  user.earnings = (user.earnings ?? 0) - stars;
+  const info = getWalletInfo(db, user.id);
+  if (!info.meetsMinimum) {
+    return json(res, 403, {
+      error: "minimum_not_met",
+      message: `Minimum ${MIN_STARS_21_DAYS} stars earned in the last 21 days required`,
+      starsLast21Days: info.starsLast21Days,
+    }, corsHeaders(req.headers.origin));
+  }
+  if (stars > info.withdrawable) {
+    return json(res, 402, { error: "Insufficient withdrawable balance", withdrawable: info.withdrawable }, corsHeaders(req.headers.origin));
+  }
+
+  try {
+    consumeWithdrawable(db, user.id, stars);
+  } catch {
+    return json(res, 402, { error: "Insufficient withdrawable balance" }, corsHeaders(req.headers.origin));
+  }
+
+  user.earnings = Math.max(0, (user.earnings ?? 0) - stars);
   const usd = (stars * 0.013).toFixed(2);
   const id = `wd_${crypto.randomBytes(8).toString("hex")}`;
   db.withdrawalRequests.push({
@@ -445,11 +635,160 @@ async function handleWithdrawalRequest(req, res) {
     usd,
     wallet,
     balanceAfter: user.earnings,
+    withdrawableAfter: getWithdrawableStars(db, user.id),
     status: "pending",
     createdAt: new Date().toISOString(),
   });
   saveDb(db);
   return json(res, 200, { ok: true, id }, corsHeaders(req.headers.origin));
+}
+
+async function handleSocial(req, res, url) {
+  const db = loadDb();
+  ensureSocial(db);
+  const user = requireUser(req, db);
+  const origin = req.headers.origin;
+
+  if (url === "/api/users/search" && req.method === "GET") {
+    const q = new URL(req.url ?? "", "http://localhost").searchParams.get("q") ?? "";
+    json(res, 200, { users: searchUsers(db, q) }, corsHeaders(origin));
+    return true;
+  }
+
+  if (url === "/api/feed" && req.method === "GET") {
+    json(res, 200, { posts: getFeedPosts(db, user?.id ?? null) }, corsHeaders(origin));
+    return true;
+  }
+
+  const postMatch = url.match(/^\/api\/posts\/([^/]+)$/);
+  if (postMatch && req.method === "GET") {
+    const post = getPostById(db, postMatch[1], user?.id ?? null);
+    json(res, post ? 200 : 404, post ? { post } : { error: "Not found" }, corsHeaders(origin));
+    return true;
+  }
+
+  if (url === "/api/posts/create" && req.method === "POST") {
+    if (!user) { json(res, 401, { error: "Unauthorized" }, corsHeaders(origin)); return true; }
+    const raw = await readBody(req);
+    let body = {};
+    try { body = JSON.parse(raw || "{}"); } catch { /* */ }
+    const result = createPost(db, user.id, body);
+    if (!result.ok) json(res, 400, { error: result.error }, corsHeaders(origin));
+    else { saveDb(db); json(res, 200, { post: result.post }, corsHeaders(origin)); }
+    return true;
+  }
+
+  const likeMatch = url.match(/^\/api\/posts\/([^/]+)\/like$/);
+  if (likeMatch && req.method === "POST") {
+    if (!user) { json(res, 401, { error: "Unauthorized" }, corsHeaders(origin)); return true; }
+    const result = togglePostLike(db, user.id, likeMatch[1]);
+    if (!result.ok) json(res, 404, { error: result.error }, corsHeaders(origin));
+    else { saveDb(db); json(res, 200, result, corsHeaders(origin)); }
+    return true;
+  }
+
+  const profileMatch = url.match(/^\/api\/users\/([^/]+)$/);
+  if (profileMatch && req.method === "GET") {
+    const profile = resolveProfileUser(db, profileMatch[1]);
+    if (!profile) json(res, 404, { error: "Not found" }, corsHeaders(origin));
+    else {
+      json(res, 200, {
+        user: publicUser(profile),
+        posts: getPostsByAuthor(db, profile.id, user?.id ?? null),
+        following: user ? isFollowing(db, user.id, profile.id) : false,
+      }, corsHeaders(origin));
+    }
+    return true;
+  }
+
+  const followersMatch = url.match(/^\/api\/users\/([^/]+)\/followers$/);
+  if (followersMatch && req.method === "GET") {
+    const profile = resolveProfileUser(db, followersMatch[1]);
+    if (!profile) json(res, 404, { error: "Not found" }, corsHeaders(origin));
+    else json(res, 200, { users: getFollowersList(db, profile.id) }, corsHeaders(origin));
+    return true;
+  }
+
+  const followingMatch = url.match(/^\/api\/users\/([^/]+)\/following$/);
+  if (followingMatch && req.method === "GET") {
+    const profile = resolveProfileUser(db, followingMatch[1]);
+    if (!profile) json(res, 404, { error: "Not found" }, corsHeaders(origin));
+    else json(res, 200, { users: getFollowingList(db, profile.id) }, corsHeaders(origin));
+    return true;
+  }
+
+  if (url === "/api/social/follow" && req.method === "POST") {
+    if (!user) { json(res, 401, { error: "Unauthorized" }, corsHeaders(origin)); return true; }
+    const raw = await readBody(req);
+    let body = {};
+    try { body = JSON.parse(raw || "{}"); } catch { /* */ }
+    const targetId = String(body.userId ?? "");
+    const result = body.unfollow ? unfollowUser(db, user.id, targetId) : followUser(db, user.id, targetId);
+    if (!result.ok) json(res, 400, { error: result.error }, corsHeaders(origin));
+    else { saveDb(db); json(res, 200, { ok: true, following: !body.unfollow }, corsHeaders(origin)); }
+    return true;
+  }
+
+  if (url === "/api/user/paid-media-unlocks" && req.method === "GET") {
+    if (!user) { json(res, 401, { error: "Unauthorized" }, corsHeaders(origin)); return true; }
+    json(res, 200, { unlocks: Object.keys(db.unlockedPaidMedia?.[user.id] ?? {}) }, corsHeaders(origin));
+    return true;
+  }
+
+  return false;
+}
+
+async function handleChat(req, res, url) {
+  const db = loadDb();
+  ensureChats(db);
+  const user = requireUser(req, db);
+  const origin = req.headers.origin;
+  if (!user) {
+    json(res, 401, { error: "Unauthorized" }, corsHeaders(origin));
+    return true;
+  }
+
+  if (url === "/api/chats" && req.method === "GET") {
+    json(res, 200, { chats: listChats(db, user.id) }, corsHeaders(origin));
+    return true;
+  }
+
+  if (url === "/api/chats/start" && req.method === "POST") {
+    const raw = await readBody(req);
+    let body = {};
+    try { body = JSON.parse(raw || "{}"); } catch { /* */ }
+    const result = startChat(db, user.id, String(body.userId ?? ""));
+    if (!result.ok) json(res, 400, { error: result.error }, corsHeaders(origin));
+    else { saveDb(db); json(res, 200, { chat: result.chat }, corsHeaders(origin)); }
+    return true;
+  }
+
+  const messagesMatch = url.match(/^\/api\/chats\/([^/]+)\/messages$/);
+  if (messagesMatch && req.method === "GET") {
+    const messages = getChatMessages(db, messagesMatch[1], user.id);
+    if (!messages) json(res, 404, { error: "Not found" }, corsHeaders(origin));
+    else json(res, 200, { messages }, corsHeaders(origin));
+    return true;
+  }
+
+  if (messagesMatch && req.method === "POST") {
+    const raw = await readBody(req);
+    let body = {};
+    try { body = JSON.parse(raw || "{}"); } catch { /* */ }
+    const result = sendChatMessage(db, messagesMatch[1], user.id, body);
+    if (!result.ok) json(res, 400, { error: result.error }, corsHeaders(origin));
+    else { saveDb(db); json(res, 200, { message: result.message }, corsHeaders(origin)); }
+    return true;
+  }
+
+  const chatMatch = url.match(/^\/api\/chats\/([^/]+)$/);
+  if (chatMatch && req.method === "GET") {
+    const chat = getChat(db, chatMatch[1], user.id);
+    json(res, chat ? 200 : 404, chat ? { chat } : { error: "Not found" }, corsHeaders(origin));
+    return true;
+  }
+
+  return false;
 }
 
 function handleAdminMe(req, res) {
@@ -461,7 +800,7 @@ function handleAdminMe(req, res) {
 }
 
 const server = http.createServer(async (req, res) => {
-  const secure = req.headers["x-forwarded-proto"] === "https" || process.env.NODE_ENV === "production";
+  const secure = isSecureRequest(req);
   const origin = req.headers.origin;
 
   if (req.method === "OPTIONS") {
@@ -482,10 +821,21 @@ const server = http.createServer(async (req, res) => {
     if (url === "/api/verification/request" && req.method === "POST") return handleVerificationRequest(req, res);
     if (url === "/api/notifications" && req.method === "GET") return handleNotifications(req, res);
     if (url === "/api/payments/invoice" && req.method === "POST") return handleCreateInvoice(req, res);
+    if (url === "/api/user/unlocks" && req.method === "GET") return handleUserUnlocks(req, res);
     if (url === "/api/profile/update" && req.method === "POST") return handleProfileUpdate(req, res);
     if (url === "/api/telegram/webhook" && req.method === "POST") return handleTelegramWebhook(req, res);
     if (url === "/api/storage/upload" && req.method === "POST") return handleStorageUpload(req, res);
+    if (url === "/api/wallet" && req.method === "GET") return handleWallet(req, res);
     if (url === "/api/withdrawals/request" && req.method === "POST") return handleWithdrawalRequest(req, res);
+
+    if (await handleSocial(req, res, url)) return;
+
+    const mediaMatch = url?.match(/^\/api\/media\/(.+)$/);
+    if (mediaMatch && req.method === "GET") {
+      return handleMediaProxy(req, res, decodeURIComponent(mediaMatch[1]));
+    }
+
+    if (await handleChat(req, res, url)) return;
 
     if (url === "/api/admin/login" && req.method === "POST") {
       const db = loadDb();
@@ -513,7 +863,7 @@ const server = http.createServer(async (req, res) => {
       return handleAdminAction(req, res, db, json, corsHeaders);
     }
 
-    if (serveStatic(req, res)) return;
+    if (config.serveStatic && serveStatic(req, res)) return;
 
     return json(res, 404, { error: "Not found" }, corsHeaders(origin));
   } catch (e) {
@@ -530,10 +880,12 @@ const dbRef = () => {
 
 startCleanupScheduler(dbRef, saveDb);
 
-server.listen(PORT, HOST, () => {
+startHttpServer(server, () => {
   getDatabase();
   const db = loadDb();
   ensureAdminSettings(db);
   saveDb(db);
-  console.log(`Sheytoni running on http://${HOST}:${PORT} (db=sqlite, static=${staticDirExists()}, site=${config.siteUrl})`);
+  console.log(
+    `Sheytoni API ready (env=${config.nodeEnv}, cwd=${process.cwd()}, cors=${ORIGINS.join(",")})`,
+  );
 });
