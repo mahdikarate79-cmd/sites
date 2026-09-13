@@ -22,6 +22,7 @@ import { useToast } from "@/components/ui/ToastProvider";
 import { Settings } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { isDeletedUser, DELETED_USER } from "@/lib/auth/deletedUser";
+import { DeletedAccountCooldown } from "@/components/auth/DeletedAccountCooldown";
 
 type ProfileTab = "videos" | "photos" | "posts";
 
@@ -70,7 +71,8 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
   ];
 
   const copyProfileLink = async () => {
-    await navigator.clipboard.writeText(`https://sheytoni.app/@${user.username}`);
+    const { getSiteUrl } = await import("@/lib/utils/siteUrl");
+    await navigator.clipboard.writeText(`${getSiteUrl()}/profile/${user.username}/`);
     showToast("Profile link copied");
     setMenuOpen(false);
   };
@@ -226,5 +228,10 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
 
 export function OwnProfile() {
   const { getCurrentUser } = usePrototype();
-  return <ProfileContent user={getCurrentUser()} isOwnProfile />;
+  return (
+    <>
+      <DeletedAccountCooldown />
+      <ProfileContent user={getCurrentUser()} isOwnProfile />
+    </>
+  );
 }

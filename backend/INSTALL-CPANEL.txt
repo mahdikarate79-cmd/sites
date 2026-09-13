@@ -1,0 +1,38 @@
+Sheytoni Backend — نصب روی cPanel / CloudLinux
+==============================================
+
+روی cPanel، npm و node در SSH معمولی در PATH نیستند.
+این طبیعی است — باید از virtualenv اپلیکیشن استفاده کنید.
+
+روش ۱ (ساده‌تر — از cPanel UI)
+-------------------------------
+1. cPanel → Setup Node.js App
+2. اپلیکیشن api.venify.xyz را باز کنید
+3. روی «Run NPM Install» کلیک کنید
+4. Environment Variables را تنظیم کنید
+5. Restart
+
+روش ۲ (از SSH / Terminal)
+-------------------------
+1. cPanel → Setup Node.js App → اپلیکیشن را باز کنید
+2. دستور «Enter to virtual environment» را کپی کنید.
+   معمولاً شبیه این است:
+
+   source /home/venifybo/nodevenv/api.venify.xyz/20/bin/activate && cd /home/venifybo/api.venify.xyz
+
+3. در Terminal cPanel همان دستور را paste و Enter بزنید
+4. سپس:
+
+   npm install --production
+   npm rebuild better-sqlite3
+
+5. برگردید به cPanel → Restart اپلیکیشن
+
+اگر مسیر nodevenv را نمی‌دانید:
+   ls ~/nodevenv/
+
+تست:
+   curl https://api.venify.xyz/api/health
+
+Startup file: server.mjs
+Application root: /home/venifybo/api.venify.xyz

@@ -171,7 +171,8 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
   const following = isFollowing(post.author.id);
 
   const copyLink = async () => {
-    await navigator.clipboard.writeText(`https://sheytoni.app/post/${post.id}`);
+    const { getPostShareUrl } = await import("@/lib/utils/siteUrl");
+    await navigator.clipboard.writeText(getPostShareUrl(post.id));
     showToast("Link copied");
     setMenuOpen(false);
   };
