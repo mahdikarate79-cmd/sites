@@ -250,9 +250,27 @@ export async function handleAdminAction(req, res, db, json, corsHeaders) {
     case "add_fake_followers": {
       const user = resolveUser(db, body);
       if (!user) return json(res, 404, { error: "User not found" }, corsHeaders(req.headers.origin));
-      user.followers = (user.followers ?? 0) + Math.max(0, Number(body.count) || 0);
+      user.fakeFollowers = (user.fakeFollowers ?? 0) + Math.max(0, Number(body.count) || 0);
       saveDb(db);
-      return json(res, 200, { ok: true, followers: user.followers }, corsHeaders(req.headers.origin));
+      return json(res, 200, {
+        ok: true,
+        realFollowers: user.followers ?? 0,
+        fakeFollowers: user.fakeFollowers,
+        displayFollowers: (user.followers ?? 0) + user.fakeFollowers,
+      }, corsHeaders(req.headers.origin));
+    }
+
+    case "add_fake_likes": {
+      const post = db.posts[body.postId];
+      if (!post) return json(res, 404, { error: "Post not found" }, corsHeaders(req.headers.origin));
+      post.fakeLikes = (post.fakeLikes ?? 0) + Math.max(0, Number(body.count) || 0);
+      saveDb(db);
+      return json(res, 200, {
+        ok: true,
+        realLikes: post.likes ?? 0,
+        fakeLikes: post.fakeLikes,
+        displayLikes: (post.likes ?? 0) + post.fakeLikes,
+      }, corsHeaders(req.headers.origin));
     }
 
     case "adjust_stars": {
@@ -361,8 +379,8 @@ export async function handleAdminAction(req, res, db, json, corsHeaders) {
     case "reject_withdrawal": {
       const w = db.withdrawalRequests.find((r) => r.id === body.requestId);
       if (!w) return json(res, 404, { error: "Not found" }, corsHeaders(req.headers.origin));
-      const user = findUserById(db, w.userId);
-      if (user) user.starBalance = (user.starBalance ?? 0) + w.stars;
+      const { refundWithdrawal } = await import("./wallet.mjs");
+      refundWithdrawal(db, w.userId, w.stars);
       w.status = "rejected";
       w.rejectedAt = new Date().toISOString();
       saveDb(db);

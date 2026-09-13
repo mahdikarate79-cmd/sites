@@ -297,9 +297,9 @@ function UserActions({ users, onAct }: { users: Array<{ username: string | null;
         <button type="button" onClick={() => onAct("set_premium", q({ premium: true, months: 6 }))} className="px-3 py-1.5 rounded-full bg-surface text-xs">Give premium</button>
         <button type="button" onClick={() => onAct("set_premium", q({ premium: false }))} className="px-3 py-1.5 rounded-full bg-surface text-xs">Remove premium</button>
       </div>
-      <div className="flex gap-2 items-center">
+      <div className="flex gap-2 items-center flex-wrap">
         <input value={count} onChange={(e) => setCount(e.target.value)} className="w-24 px-2 py-1.5 rounded-lg bg-surface border border-border text-sm" />
-        <button type="button" onClick={() => onAct("add_fake_followers", q({ count: Number(count) }))} className="px-3 py-1.5 rounded-full bg-surface text-xs">Add fake followers</button>
+        <button type="button" onClick={() => onAct("add_fake_followers", q({ count: Number(count) }))} className="px-3 py-1.5 rounded-full bg-surface text-xs">Add fake followers (stats only)</button>
       </div>
       <div className="flex gap-2 items-center">
         <input value={stars} onChange={(e) => setStars(e.target.value)} className="w-24 px-2 py-1.5 rounded-lg bg-surface border border-border text-sm" />
@@ -320,8 +320,9 @@ function UserActions({ users, onAct }: { users: Array<{ username: string | null;
   );
 }
 
-function PostActions({ posts, onAct }: { posts: Array<{ id: string; authorId: string; content: string; mediaExpired?: boolean }>; onAct: (a: string, d?: Record<string, unknown>) => Promise<void> }) {
+function PostActions({ posts, onAct }: { posts: Array<{ id: string; authorId: string; content: string; mediaExpired?: boolean; likes?: number; fakeLikes?: number }>; onAct: (a: string, d?: Record<string, unknown>) => Promise<void> }) {
   const [postId, setPostId] = useState("");
+  const [likeCount, setLikeCount] = useState("100");
   const [notify, setNotify] = useState(true);
   const [ban, setBan] = useState(false);
   const [filter, setFilter] = useState("");
@@ -341,6 +342,10 @@ function PostActions({ posts, onAct }: { posts: Array<{ id: string; authorId: st
         <button type="button" onClick={() => onAct("delete_post", { postId, notify, banAuthor: ban })} className="px-3 py-1.5 rounded-full bg-like/20 text-like text-xs">Delete post</button>
         <button type="button" onClick={() => onAct("strip_post_media", { postId, notify })} className="px-3 py-1.5 rounded-full bg-surface text-xs">Strip media only</button>
       </div>
+      <div className="flex gap-2 items-center flex-wrap">
+        <input value={likeCount} onChange={(e) => setLikeCount(e.target.value)} className="w-24 px-2 py-1.5 rounded-lg bg-surface border border-border text-sm" />
+        <button type="button" onClick={() => onAct("add_fake_likes", { postId, count: Number(likeCount) })} className="px-3 py-1.5 rounded-full bg-surface text-xs">Add fake likes</button>
+      </div>
       <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter posts by ID, author, caption…" className="w-full px-3 py-2 rounded-xl bg-surface border border-border text-sm" />
       <div className="space-y-1 max-h-64 overflow-y-auto">
         {filtered.slice(0, 50).map((p) => (
@@ -351,7 +356,7 @@ function PostActions({ posts, onAct }: { posts: Array<{ id: string; authorId: st
           </button>
         ))}
       </div>
-      <p className="text-xs text-text-muted">{posts.length} posts in DB · mock feed IDs like p1, p12 work in frontend</p>
+      <p className="text-xs text-text-muted">{posts.length} posts in DB</p>
     </div>
   );
 }

@@ -14,51 +14,12 @@ const DEFAULT_STATE: PrototypeState = {
   likes: {},
   bookmarks: {},
   savedReels: [],
-  chatUnread: 3,
-  notificationUnread: 10,
+  chatUnread: 0,
+  notificationUnread: 0,
   deletedChats: [],
-  earnings: 2500,
-  starBalance: 999_999,
-  transactions: [
-    {
-      id: "t1",
-      type: "donation",
-      amount: 150,
-      label: "Donation from @alex",
-      date: "2026-09-10T14:30:00Z",
-      from: "u2",
-      status: "completed",
-      hash: "0xa1b2c3d4",
-    },
-    {
-      id: "t2",
-      type: "donation",
-      amount: 75,
-      label: "Donation from @sara",
-      date: "2026-09-09T09:15:00Z",
-      from: "u3",
-      status: "completed",
-      hash: "0xe5f6a7b8",
-    },
-    {
-      id: "t3",
-      type: "withdrawal",
-      amount: -500,
-      label: "Withdrawal to TON wallet",
-      date: "2026-09-05T18:00:00Z",
-      status: "completed",
-      hash: "0xc9d0e1f2",
-    },
-    {
-      id: "t5",
-      type: "premium",
-      amount: -25,
-      label: "Premium subscription",
-      date: "2026-09-01T08:00:00Z",
-      status: "completed",
-      hash: "0xf3a4b5c6",
-    },
-  ],
+  earnings: 0,
+  starBalance: 0,
+  transactions: [],
   unlockedPaidMedia: {},
   expiredTempMedia: {},
   viewedTempMedia: {},
@@ -70,10 +31,8 @@ const DEFAULT_STATE: PrototypeState = {
   unlockedPaidPosts: [],
 };
 
-export const UNLIMITED_STAR_REFILL = 999_999;
-
 export function ensureStarBalance(balance: number): number {
-  return balance < 100_000 ? UNLIMITED_STAR_REFILL : balance;
+  return Math.max(0, balance);
 }
 
 export function createTransaction(

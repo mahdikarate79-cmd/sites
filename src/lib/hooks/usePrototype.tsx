@@ -5,7 +5,6 @@ import { Comment, Donator, Post, PostDonationState, PrototypeState, User } from 
 import { canViewPostMedia, PostAccessContext, shouldShowInFeed } from "@/lib/utils/postAccess";
 import { assertValidStarSpend, assertValidUnlock, sanitizePostContent, sanitizeTags } from "@/lib/security/validate";
 import { loadState, saveState, getPostDonation, ensureStarBalance, createTransaction } from "@/lib/store/prototypeStore";
-import { currentUser as baseCurrentUser } from "@/data/mock/users";
 import { useAuth } from "@/lib/hooks/useAuth";
 
 interface PrototypeContextValue {
@@ -130,13 +129,13 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
 
   const resolveUser = useCallback((): User => {
     if (authUser) return { ...authUser, ...state.profileEdits, premium: authUser.premium };
-    return { ...baseCurrentUser, ...state.profileEdits };
+    return { ...GUEST_USER, ...state.profileEdits };
   }, [authUser, state.profileEdits]);
 
   const donate = useCallback((postId: string, stars: number, anonymous: boolean, authorId: string) => {
     update((s) => {
       const existing = getPostDonation(s, postId);
-      const user = authUser ? { ...authUser, ...s.profileEdits, premium: authUser.premium } : { ...baseCurrentUser, ...s.profileEdits };
+      const user = authUser ? { ...authUser, ...s.profileEdits, premium: authUser.premium } : { ...GUEST_USER, ...s.profileEdits };
       const prevUser = existing.topDonators.find((d) => d.user.id === user.id);
       const newDonator: Donator = {
         rank: 0,
@@ -348,7 +347,7 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
   );
 
   const addComment = useCallback((postId: string, content: string): Comment => {
-    const user = authUser ? { ...authUser, ...state.profileEdits, premium: authUser.premium } : { ...baseCurrentUser, ...state.profileEdits };
+    const user = authUser ? { ...authUser, ...state.profileEdits, premium: authUser.premium } : { ...GUEST_USER, ...state.profileEdits };
     const comment: Comment = {
       id: `cmt_${Date.now()}`,
       postId,
@@ -433,7 +432,7 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
   const getUserPosts = useCallback(() => state.userPosts, [state.userPosts]);
 
   const accessCtx = useCallback((): PostAccessContext => {
-    const user = authUser ? { ...authUser, ...state.profileEdits, premium: authUser.premium } : { ...baseCurrentUser, ...state.profileEdits };
+    const user = authUser ? { ...authUser, ...state.profileEdits, premium: authUser.premium } : { ...GUEST_USER, ...state.profileEdits };
     return { viewerId: user.id, isFollowing, isUnlocked: isPaidPostUnlocked };
   }, [state.profileEdits, authUser, isFollowing, isPaidPostUnlocked]);
 
@@ -502,6 +501,18 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
   );
 }
 
+const GUEST_USER: User = {
+  id: "guest",
+  username: "",
+  displayName: "Guest",
+  avatar: "",
+  verified: false,
+  premium: false,
+  followers: 0,
+  following: 0,
+  postsCount: 0,
+};
+
 const DEFAULT_LOAD: PrototypeState = {
   following: [],
   blocked: [],
@@ -514,23 +525,12 @@ const DEFAULT_LOAD: PrototypeState = {
   likes: {},
   bookmarks: {},
   savedReels: [],
-  chatUnread: 3,
-  notificationUnread: 10,
+  chatUnread: 0,
+  notificationUnread: 0,
   deletedChats: [],
-  earnings: 2500,
-  starBalance: 999_999,
-  transactions: [
-    {
-      id: "t1",
-      type: "donation",
-      amount: 150,
-      label: "Donation from @alex",
-      date: "2026-09-10T14:30:00Z",
-      from: "u2",
-      status: "completed",
-      hash: "0xa1b2c3d4",
-    },
-  ],
+  earnings: 0,
+  starBalance: 0,
+  transactions: [],
   unlockedPaidMedia: {},
   expiredTempMedia: {},
   viewedTempMedia: {},

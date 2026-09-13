@@ -1,12 +1,29 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { mockPosts } from "@/data/mock/posts";
+import { Post } from "@/lib/types";
+import { getPostById, getFeedPosts } from "@/lib/api/posts";
 import { PostCard } from "./PostCard";
 
 export function PostDetailView({ postId }: { postId: string }) {
-  const post = mockPosts.find((p) => p.id === postId);
+  const [post, setPost] = useState<Post | null>(null);
+  const [allPosts, setAllPosts] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([getPostById(postId), getFeedPosts()])
+      .then(([p, feed]) => {
+        setPost(p ?? null);
+        setAllPosts(feed);
+      })
+      .finally(() => setLoading(false));
+  }, [postId]);
+
+  if (loading) {
+    return <div className="min-h-[50dvh] flex items-center justify-center text-text-muted text-sm">Loading…</div>;
+  }
 
   if (!post) {
     return (
@@ -28,7 +45,7 @@ export function PostDetailView({ postId }: { postId: string }) {
           <span className="text-xs text-text-muted ml-auto font-mono">{post.id}</span>
         </div>
       </div>
-      <PostCard post={post} allPosts={mockPosts} />
+      <PostCard post={post} allPosts={allPosts} />
     </div>
   );
 }

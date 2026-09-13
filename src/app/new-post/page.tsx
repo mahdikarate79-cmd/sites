@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Avatar } from "@/components/ui/Avatar";
 import { usePrototype } from "@/lib/hooks/usePrototype";
+import { createPostApi } from "@/lib/api/social";
 import { useToast } from "@/components/ui/ToastProvider";
 import { Post, PostMedia } from "@/lib/types";
 import {
@@ -90,27 +91,24 @@ export default function NewPostPage() {
     }
 
     setPosting(true);
-    const post: Post = {
-      id: `up_${Date.now()}`,
-      author: user,
-      content: content.trim(),
-      media: media ? [media] : undefined,
-      tags,
-      paidStars: paidEnabled && media ? paidStars : undefined,
-      privacy: noUsername || privacyEnabled
-        ? { enabled: true, followersOnly: noUsername ? true : followersOnly, followingOnly: noUsername ? true : followingOnly }
-        : undefined,
-      createdAt: new Date().toISOString(),
-      likes: 0,
-      comments: 0,
-      views: 0,
-      shares: 0,
-      stars: 0,
-    };
-
-    addPost(post);
-    showToast("Post published");
-    router.push("/");
+    try {
+      const post = await createPostApi({
+        content: content.trim(),
+        media: media ? [media] : [],
+        tags,
+        paidStars: paidEnabled && media ? paidStars : undefined,
+        privacy: noUsername || privacyEnabled
+          ? { enabled: true, followersOnly: noUsername ? true : followersOnly, followingOnly: noUsername ? true : followingOnly }
+          : undefined,
+      });
+      addPost(post);
+      showToast("Post published");
+      router.push("/");
+    } catch {
+      showToast("Failed to publish post");
+    } finally {
+      setPosting(false);
+    }
   };
 
   return (

@@ -22,7 +22,6 @@ import { useAuth } from "@/lib/hooks/useAuth";
 import { useTelegramGate } from "@/lib/hooks/useTelegramGate";
 import { createPostUnlockInvoice, openTelegramInvoice } from "@/lib/api/payments";
 import { useToast } from "@/components/ui/ToastProvider";
-import { mockPosts } from "@/data/mock/posts";
 import { buildAccessibleReelItems, findReelIndex } from "@/lib/utils/reels";
 import { hasPrivateAccess, isPostPaid, isPostPrivate, PostAccessContext } from "@/lib/utils/postAccess";
 
@@ -55,7 +54,7 @@ export function PostCard({ post, onHide, allPosts }: PostCardProps) {
   const privateLocked = privatePost && !isAuthor && !hasPrivateAccess(post, accessCtx);
   const paidLocked = paid && !isAuthor && !isPostUnlocked(post.id) && !privateLocked;
 
-  const reelSource = allPosts ?? mockPosts;
+  const reelSource = allPosts ?? [];
   const reelItems = useMemo(
     () => buildAccessibleReelItems(reelSource, accessCtx),
     [reelSource, user.id, isFollowing, isPostUnlocked]

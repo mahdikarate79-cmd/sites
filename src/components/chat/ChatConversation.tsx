@@ -9,8 +9,10 @@ import { BlockButton } from "@/components/ui/BlockButton";
 import { UserName } from "@/components/ui/UserName";
 import { getChatMessages, sendMessage, sendAlbumMessage, forwardMessage } from "@/lib/api/chat";
 import { SelectedMedia } from "./MediaGalleryPicker";
-import { currentUser } from "@/data/mock/users";
 import { mockChats } from "@/data/mock/chats";
+import { useAuth } from "@/lib/hooks/useAuth";
+import { createPaidMediaInvoice, openTelegramInvoice } from "@/lib/api/payments";
+import { fetchPaidMediaUnlocks } from "@/lib/api/social";
 import { formatChatTime } from "@/lib/utils/format";
 import { ChatInput } from "./ChatInput";
 import { PinnedMessageBar } from "./PinnedMessageBar";
@@ -78,9 +80,12 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
   const {
     deleteChat, isBlocked, isPaidMediaUnlocked, unlockPaidMediaMessage,
     isTempMediaExpired, isTempMediaViewed, markTempMediaViewed, expireTempMedia,
-    startTempMediaTimer, getTempMediaRemaining, spendStars, unlockPaidMedia,
+    startTempMediaTimer, getTempMediaRemaining, getCurrentUser,
   } = usePrototype();
+  const currentUser = getCurrentUser();
   const { showToast } = useToast();
+  const { isAuthenticated } = useAuth();
+  const [paying, setPaying] = useState(false);
   const blocked = chat ? isBlocked(chat.participant.id) : false;
 
   useEffect(() => {
@@ -338,12 +343,41 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
     setShowUnlockAnim(false);
   };
 
-  const handlePayInViewer = () => {
-    if (!viewerMsg?.paidStars) return;
-    if (!spendStars(viewerMsg.paidStars, "Paid media unlock", "paid_media")) return;
-    unlockPaidMedia(viewerMsg.paidStars);
-    unlockPaidMediaMessage(chatId, viewerMsg.id);
-    setShowUnlockAnim(true);
+  const handlePayInViewer = async () => {
+    if (!viewerMsg?.paidStars || paying || !chat) return;
+    if (!isAuthenticated) return;
+    setPaying(true);
+    try {
+      const invoice = await createPaidMediaInvoice(
+        chatId,
+        viewerMsg.id,
+        chat.participant.id,
+        viewerMsg.paidStars,
+      );
+      if (!invoice.invoiceUrl) {
+        showToast("Payment unavailable");
+        setPaying(false);
+        return;
+      }
+      const opened = openTelegramInvoice(invoice.invoiceUrl, async (status) => {
+        if (status === "paid") {
+          unlockPaidMediaMessage(chatId, viewerMsg.id);
+          await fetchPaidMediaUnlocks();
+          setShowUnlockAnim(true);
+          showToast("Media unlocked");
+        } else if (status === "failed") {
+          showToast("Payment failed");
+        }
+        setPaying(false);
+      });
+      if (!opened) {
+        showToast("Open in Telegram to pay with Stars");
+        setPaying(false);
+      }
+    } catch {
+      showToast("Payment failed");
+      setPaying(false);
+    }
   };
 
   const renderStatusIcon = (msg: ChatMessage, isMe: boolean) => {

@@ -26,6 +26,12 @@ export function getDatabase() {
     dbInstance.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)").run(1, new Date().toISOString());
   }
 
+  const userCols = dbInstance.prepare("PRAGMA table_info(users)").all();
+  if (!userCols.some((c) => c.name === "fake_followers")) {
+    dbInstance.exec("ALTER TABLE users ADD COLUMN fake_followers INTEGER DEFAULT 0");
+    dbInstance.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)").run(2, new Date().toISOString());
+  }
+
   importJsonStoreIfNeeded(dbInstance);
   return dbInstance;
 }

@@ -44,6 +44,18 @@ export async function createDonationInvoice(
   });
 }
 
+export async function createPaidMediaInvoice(
+  chatId: string,
+  messageId: string,
+  recipientId: string,
+  stars: number,
+): Promise<InvoiceResponse> {
+  return apiFetch("/api/payments/invoice", {
+    method: "POST",
+    body: JSON.stringify({ type: "paid_media", chatId, messageId, recipientId, stars }),
+  });
+}
+
 export async function fetchUnlockedPosts(): Promise<string[]> {
   const data = await apiFetch<{ postIds: string[] }>("/api/user/unlocks");
   return data.postIds ?? [];
