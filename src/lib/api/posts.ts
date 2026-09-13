@@ -1,51 +1,58 @@
 import { Post } from "@/lib/types";
-import { mockPosts } from "@/data/mock/posts";
-import { loadState } from "@/lib/store/prototypeStore";
+import { getApiBase } from "./base";
 import { shouldExcludeFromPublicDiscovery } from "@/lib/utils/postAccess";
 
-function allPosts(): Post[] {
-  if (typeof window === "undefined") return mockPosts;
-  const state = loadState();
-  return [...(state.userPosts ?? []), ...mockPosts];
+async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${getApiBase()}${path}`, {
+    ...options,
+    credentials: "include",
+    headers: { "Content-Type": "application/json", ...(options.headers ?? {}) },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error ?? `API error ${res.status}`);
+  }
+  return res.json() as Promise<T>;
 }
 
 export async function getFeedPosts(): Promise<Post[]> {
-  return allPosts();
+  try {
+    const data = await apiFetch<{ posts: Post[] }>("/api/feed");
+    return data.posts ?? [];
+  } catch {
+    return [];
+  }
 }
 
 export async function getPostById(id: string): Promise<Post | undefined> {
-  return allPosts().find((p) => p.id === id);
+  try {
+    const data = await apiFetch<{ post: Post }>(`/api/posts/${encodeURIComponent(id)}`);
+    return data.post;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function getPostsByUser(userId: string): Promise<Post[]> {
-  return allPosts().filter((p) => p.author.id === userId);
+  try {
+    const data = await apiFetch<{ posts: Post[] }>(`/api/users/${encodeURIComponent(userId)}`);
+    return data.posts ?? [];
+  } catch {
+    return [];
+  }
 }
 
 export async function getPublicPosts(): Promise<Post[]> {
-  return allPosts().filter((p) => !shouldExcludeFromPublicDiscovery(p));
-}
-
-export async function toggleLike(postId: string): Promise<{ liked: boolean; likes: number }> {
-  const post = allPosts().find((p) => p.id === postId);
-  if (!post) throw new Error("Post not found");
-  post.liked = !post.liked;
-  post.likes += post.liked ? 1 : -1;
-  return { liked: !!post.liked, likes: post.likes };
-}
-
-export async function toggleBookmark(postId: string): Promise<{ bookmarked: boolean }> {
-  const post = allPosts().find((p) => p.id === postId);
-  if (!post) throw new Error("Post not found");
-  post.bookmarked = !post.bookmarked;
-  return { bookmarked: !!post.bookmarked };
+  const posts = await getFeedPosts();
+  return posts.filter((p) => !shouldExcludeFromPublicDiscovery(p));
 }
 
 export async function searchPosts(query: string): Promise<Post[]> {
   const q = query.toLowerCase();
-  return allPosts().filter(
+  const posts = await getPublicPosts();
+  return posts.filter(
     (p) =>
-      !shouldExcludeFromPublicDiscovery(p) &&
-      (p.content.toLowerCase().includes(q) ||
-        p.tags?.some((t) => t.includes(q.replace(/^#/, ""))))
+      p.content.toLowerCase().includes(q) ||
+      p.tags?.some((t) => t.includes(q.replace(/^#/, "")))
   );
 }

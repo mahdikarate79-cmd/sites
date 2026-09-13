@@ -1,0 +1,59 @@
+import { Post, User } from "@/lib/types";
+import { getApiBase } from "./base";
+
+async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${getApiBase()}${path}`, {
+    ...options,
+    credentials: "include",
+    headers: { "Content-Type": "application/json", ...(options.headers ?? {}) },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error ?? `API error ${res.status}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+export async function fetchFollowers(userId: string): Promise<User[]> {
+  const data = await apiFetch<{ users: User[] }>(`/api/users/${encodeURIComponent(userId)}/followers`);
+  return data.users ?? [];
+}
+
+export async function fetchFollowing(userId: string): Promise<User[]> {
+  const data = await apiFetch<{ users: User[] }>(`/api/users/${encodeURIComponent(userId)}/following`);
+  return data.users ?? [];
+}
+
+export async function followUserApi(userId: string, unfollow = false): Promise<void> {
+  await apiFetch("/api/social/follow", {
+    method: "POST",
+    body: JSON.stringify({ userId, unfollow }),
+  });
+}
+
+export async function fetchUserProfile(usernameOrId: string): Promise<{ user: User; posts: Post[]; following: boolean }> {
+  return apiFetch(`/api/users/${encodeURIComponent(usernameOrId)}`);
+}
+
+export async function createPostApi(body: {
+  content: string;
+  media?: unknown[];
+  tags?: string[];
+  paidStars?: number;
+  privacy?: unknown;
+}): Promise<Post> {
+  const data = await apiFetch<{ post: Post }>("/api/posts/create", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return data.post;
+}
+
+export async function toggleLikeApi(postId: string): Promise<{ liked: boolean; likes: number }> {
+  return apiFetch(`/api/posts/${encodeURIComponent(postId)}/like`, { method: "POST" });
+}
+
+export async function fetchPaidMediaUnlocks(): Promise<string[]> {
+  const data = await apiFetch<{ unlocks: string[] }>("/api/user/paid-media-unlocks");
+  return data.unlocks ?? [];
+}
