@@ -5,8 +5,13 @@ import {
   loadDb,
   saveDb,
   findUserByTelegramId,
+  findUserByTelegramIdIncludingDeleted,
   findUserById,
+  getDeletionCooldown,
+  purgeDeletedUser,
   createUserFromTelegram,
+  isPostUnlocked,
+  unlockPost,
   createSession,
   deleteAccount,
   publicUser,
@@ -29,9 +34,7 @@ import { startCleanupScheduler } from "./mediaCleanup.mjs";
 import { serveStatic, staticDirExists } from "./static.mjs";
 import { config } from "./config.mjs";
 import { getDatabase } from "./database/init.mjs";
-
-const PORT = config.port;
-const HOST = config.host;
+import { startHttpServer } from "./listen.mjs";
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? "";
 const DEV_AUTH = process.env.AUTH_DEV_MODE === "true";
 const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET ?? "";
@@ -51,10 +54,13 @@ function parseCookies(header) {
 }
 
 function corsHeaders(origin) {
-  const allowed = ORIGINS.some((o) => origin?.startsWith(o.replace(/\/$/, "")));
-  const o = allowed ? origin : ORIGINS[0];
+  const normalized = (origin ?? "").replace(/\/$/, "");
+  const allowed = ORIGINS.some((o) => normalized === o.replace(/\/$/, "") || normalized.startsWith(o.replace(/\/$/, "")));
+  if (!allowed) {
+    return { Vary: "Origin" };
+  }
   return {
-    "Access-Control-Allow-Origin": o,
+    "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Credentials": "true",
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
@@ -76,6 +82,12 @@ function readBody(req) {
   });
 }
 
+function isSecureRequest(req) {
+  return config.isProduction
+    || req.headers["x-forwarded-proto"] === "https"
+    || process.env.NODE_ENV === "production";
+}
+
 function sessionCookie(sessionId, secure) {
   const parts = [
     `${COOKIE_NAME}=${sessionId}`,
@@ -84,12 +96,21 @@ function sessionCookie(sessionId, secure) {
     "Max-Age=2592000",
     secure ? "Secure" : "",
     secure ? "SameSite=None" : "SameSite=Lax",
+    config.cookieDomain ? `Domain=${config.cookieDomain}` : "",
   ].filter(Boolean);
   return parts.join("; ");
 }
 
 function clearCookie(secure) {
-  const parts = [`${COOKIE_NAME}=`, "HttpOnly", "Path=/", "Max-Age=0", secure ? "Secure" : "", secure ? "SameSite=None" : "SameSite=Lax"].filter(Boolean);
+  const parts = [
+    `${COOKIE_NAME}=`,
+    "HttpOnly",
+    "Path=/",
+    "Max-Age=0",
+    secure ? "Secure" : "",
+    secure ? "SameSite=None" : "SameSite=Lax",
+    config.cookieDomain ? `Domain=${config.cookieDomain}` : "",
+  ].filter(Boolean);
   return parts.join("; ");
 }
 
@@ -149,6 +170,18 @@ async function handleTelegramAuth(req, res, secure) {
 
   let user = findUserByTelegramId(db, tgUser.id);
   if (!user) {
+    const deletedUser = findUserByTelegramIdIncludingDeleted(db, tgUser.id);
+    if (deletedUser?.deleted) {
+      const cooldown = getDeletionCooldown(deletedUser);
+      if (cooldown) {
+        return json(res, 403, {
+          error: "account_deleted",
+          canRecreateAt: cooldown.canRecreateAt,
+          remainingMs: cooldown.remainingMs,
+        }, corsHeaders(req.headers.origin));
+      }
+      purgeDeletedUser(db, deletedUser.id);
+    }
     user = createUserFromTelegram(db, tgUser);
     db.users[user.id] = user;
   } else {
@@ -246,6 +279,15 @@ function handleNotifications(req, res) {
   return json(res, 200, { notifications: getUserNotifications(db, user.id) }, corsHeaders(req.headers.origin));
 }
 
+function handleUserUnlocks(req, res) {
+  const db = loadDb();
+  ensureAdminSettings(db);
+  const user = requireUser(req, db);
+  if (!user) return json(res, 401, { error: "Unauthorized" }, corsHeaders(req.headers.origin));
+  const postIds = Object.keys(db.unlockedPosts?.[user.id] ?? {});
+  return json(res, 200, { postIds }, corsHeaders(req.headers.origin));
+}
+
 async function handleCreateInvoice(req, res) {
   const db = loadDb();
   const user = requireUser(req, db);
@@ -273,6 +315,21 @@ async function handleCreateInvoice(req, res) {
     title = "Sheytoni Stars";
     description = `Purchase ${stars} Stars`;
     meta = { type: "stars", amount: stars };
+  } else if (type === "post_unlock") {
+    stars = Math.max(1, Math.min(25000, Number(body.stars) || 0));
+    const postId = String(body.postId ?? "");
+    if (!postId) return json(res, 400, { error: "postId required" }, corsHeaders(req.headers.origin));
+    title = "Sheytoni — Unlock post";
+    description = `Unlock paid content`;
+    meta = { type: "post_unlock", postId, stars };
+  } else if (type === "donation") {
+    stars = Math.max(1, Math.min(25000, Number(body.stars) || 0));
+    const postId = String(body.postId ?? "");
+    const recipientId = String(body.recipientId ?? "");
+    if (!postId || !recipientId) return json(res, 400, { error: "postId and recipientId required" }, corsHeaders(req.headers.origin));
+    title = "Sheytoni — Star donation";
+    description = `Send ${stars} Stars`;
+    meta = { type: "donation", postId, recipientId, stars, anonymous: !!body.anonymous };
   } else {
     return json(res, 400, { error: "Invalid type" }, corsHeaders(req.headers.origin));
   }
@@ -338,6 +395,14 @@ async function handleTelegramWebhook(req, res) {
           const exp = new Date();
           exp.setMonth(exp.getMonth() + plan.months);
           user.premiumExpiresAt = exp.toISOString();
+        } else if (intent.meta?.type === "post_unlock") {
+          unlockPost(db, user.id, intent.meta.postId);
+        } else if (intent.meta?.type === "donation") {
+          const recipient = findUserById(db, intent.meta.recipientId);
+          if (recipient) {
+            recipient.earnings = (recipient.earnings ?? 0) + intent.stars;
+            recipient.starBalance = (recipient.starBalance ?? 0) + intent.stars;
+          }
         } else {
           user.starBalance = (user.starBalance ?? 0) + intent.stars;
         }
@@ -461,7 +526,7 @@ function handleAdminMe(req, res) {
 }
 
 const server = http.createServer(async (req, res) => {
-  const secure = req.headers["x-forwarded-proto"] === "https" || process.env.NODE_ENV === "production";
+  const secure = isSecureRequest(req);
   const origin = req.headers.origin;
 
   if (req.method === "OPTIONS") {
@@ -482,6 +547,7 @@ const server = http.createServer(async (req, res) => {
     if (url === "/api/verification/request" && req.method === "POST") return handleVerificationRequest(req, res);
     if (url === "/api/notifications" && req.method === "GET") return handleNotifications(req, res);
     if (url === "/api/payments/invoice" && req.method === "POST") return handleCreateInvoice(req, res);
+    if (url === "/api/user/unlocks" && req.method === "GET") return handleUserUnlocks(req, res);
     if (url === "/api/profile/update" && req.method === "POST") return handleProfileUpdate(req, res);
     if (url === "/api/telegram/webhook" && req.method === "POST") return handleTelegramWebhook(req, res);
     if (url === "/api/storage/upload" && req.method === "POST") return handleStorageUpload(req, res);
@@ -513,7 +579,7 @@ const server = http.createServer(async (req, res) => {
       return handleAdminAction(req, res, db, json, corsHeaders);
     }
 
-    if (serveStatic(req, res)) return;
+    if (config.serveStatic && serveStatic(req, res)) return;
 
     return json(res, 404, { error: "Not found" }, corsHeaders(origin));
   } catch (e) {
@@ -530,10 +596,12 @@ const dbRef = () => {
 
 startCleanupScheduler(dbRef, saveDb);
 
-server.listen(PORT, HOST, () => {
+startHttpServer(server, () => {
   getDatabase();
   const db = loadDb();
   ensureAdminSettings(db);
   saveDb(db);
-  console.log(`Sheytoni running on http://${HOST}:${PORT} (db=sqlite, static=${staticDirExists()}, site=${config.siteUrl})`);
+  console.log(
+    `Sheytoni API ready (env=${config.nodeEnv}, cwd=${process.cwd()}, cors=${ORIGINS.join(",")})`,
+  );
 });
