@@ -58,9 +58,8 @@ export function detachTelegramLeaks(user, tgUser) {
   if (!user) return;
   const tgUsername = tgUser?.username?.toLowerCase();
 
-  if (!user.usernameSet) {
-    user.username = null;
-  } else if (tgUsername && user.username?.toLowerCase() === tgUsername) {
+  // Only strip username when it clearly came from Telegram, never wipe user-chosen names
+  if (tgUsername && user.username?.toLowerCase() === tgUsername) {
     user.username = null;
     user.usernameSet = false;
   }

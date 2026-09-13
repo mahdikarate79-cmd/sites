@@ -32,6 +32,7 @@ import {
   getAdminSession,
 } from "./admin.mjs";
 import { uploadToB2, isB2Configured, downloadFromB2, testB2Connection } from "./b2.mjs";
+import { saveLocalMedia, readLocalMedia, isLocalMediaAvailable, localMediaRoot } from "./localMedia.mjs";
 import { createStarsInvoice, answerPreCheckoutQuery, verifyWebhookSecret, isBotConfigured } from "./telegramBot.mjs";
 import { createNotification, getUserNotifications } from "./notifications.mjs";
 import { startCleanupScheduler } from "./mediaCleanup.mjs";
@@ -494,7 +495,9 @@ async function handleStorageUpload(req, res) {
   const db = loadDb();
   const user = requireUser(req, db);
   if (!user) return json(res, 401, { error: "Unauthorized" }, corsHeaders(req.headers.origin));
-  if (!isB2Configured()) return json(res, 503, { error: "Storage not configured" }, corsHeaders(req.headers.origin));
+  if (!isB2Configured() && !isLocalMediaAvailable()) {
+    return json(res, 503, { error: "Storage not configured" }, corsHeaders(req.headers.origin));
+  }
 
   const raw = await readBody(req);
   let body = {};
@@ -511,33 +514,67 @@ async function handleStorageUpload(req, res) {
 
   const ext = contentType.includes("video") ? ".mp4" : contentType.includes("gif") ? ".gif" : ".jpg";
   const objectKey = `${category ?? "post"}/${user.id}/${crypto.randomBytes(16).toString("hex")}${ext}`;
+  const proxyUrl = `${config.apiUrl}/api/media/${encodeURIComponent(objectKey)}`;
+
+  if (isB2Configured()) {
+    try {
+      const uploaded = await uploadToB2(objectKey, buffer, contentType);
+      db.mediaObjects[objectKey] = {
+        ...uploaded,
+        storage: "b2",
+        userId: user.id,
+        createdAt: new Date().toISOString(),
+        url: proxyUrl,
+      };
+      saveDb(db);
+      return json(res, 200, { objectKey, url: proxyUrl, size: uploaded.size, storage: "b2" }, corsHeaders(req.headers.origin));
+    } catch (e) {
+      console.error("B2 upload failed, using local fallback:", e.message);
+    }
+  }
+
   try {
-    const uploaded = await uploadToB2(objectKey, buffer, contentType);
-    const proxyUrl = `${config.apiUrl}/api/media/${encodeURIComponent(objectKey)}`;
-    db.mediaObjects[objectKey] = { ...uploaded, userId: user.id, createdAt: new Date().toISOString(), url: proxyUrl };
+    const local = saveLocalMedia(objectKey, buffer, contentType);
+    db.mediaObjects[objectKey] = {
+      ...local,
+      userId: user.id,
+      createdAt: new Date().toISOString(),
+      url: proxyUrl,
+    };
     saveDb(db);
-    return json(res, 200, { objectKey, url: proxyUrl, size: uploaded.size }, corsHeaders(req.headers.origin));
-  } catch (e) {
-    console.error("B2 upload failed:", e.message);
-    return json(res, 503, {
-      error: "storage_unavailable",
-      message: "Media storage is temporarily unavailable. Check B2 credentials on the server.",
+    return json(res, 200, {
+      objectKey,
+      url: proxyUrl,
+      size: local.size,
+      storage: "local",
+      warning: isB2Configured() ? "B2 unavailable — stored on server disk until B2 is fixed" : null,
     }, corsHeaders(req.headers.origin));
+  } catch (e) {
+    console.error("Local media save failed:", e.message);
+    return json(res, 503, { error: "storage_unavailable", message: e.message }, corsHeaders(req.headers.origin));
   }
 }
 
 async function handleMediaProxy(req, res, objectKey) {
   const origin = req.headers.origin;
   const extra = { "Cache-Control": "public, max-age=86400" };
-  try {
-    if (isB2Configured()) {
+
+  const local = readLocalMedia(objectKey);
+  if (local) {
+    res.writeHead(200, { "Content-Type": local.contentType, ...extra, ...corsHeaders(origin) });
+    return res.end(local.buffer);
+  }
+
+  if (isB2Configured()) {
+    try {
       const { buffer, contentType } = await downloadFromB2(objectKey);
       res.writeHead(200, { "Content-Type": contentType, ...extra, ...corsHeaders(origin) });
       return res.end(buffer);
+    } catch (e) {
+      console.error("Media proxy B2 error", objectKey, e.message);
     }
-  } catch (e) {
-    console.error("Media proxy error", objectKey, e.message);
   }
+
   return json(res, 404, { error: "Not found" }, corsHeaders(origin));
 }
 
@@ -580,13 +617,18 @@ async function handleProfileUpdate(req, res) {
   if (body.username !== undefined) {
     const nextUsername = String(body.username).trim().toLowerCase();
     const currentUsername = (user.username ?? "").toLowerCase();
-    if (nextUsername && nextUsername !== currentUsername) {
-      if (!usernameAvailable(db, nextUsername)) {
-        return json(res, 409, { error: "Username taken" }, corsHeaders(req.headers.origin));
+    if (nextUsername !== currentUsername) {
+      if (nextUsername) {
+        if (!usernameAvailable(db, nextUsername)) {
+          return json(res, 409, { error: "Username taken" }, corsHeaders(req.headers.origin));
+        }
+        if (user.verified) user.verified = false;
+        user.username = nextUsername;
+        user.usernameSet = true;
+      } else if (currentUsername) {
+        user.username = null;
+        user.usernameSet = false;
       }
-      if (user.verified) user.verified = false;
-      user.username = nextUsername;
-      user.usernameSet = true;
     }
   }
 
@@ -867,7 +909,11 @@ const server = http.createServer(async (req, res) => {
         b2: isB2Configured(),
         b2Connected: b2Status.ok,
         b2Error: b2Status.ok ? null : b2Status.error,
+        b2KeyIdHint: envStr("B2_KEY_ID").slice(0, 4) || null,
+        localMedia: isLocalMediaAvailable(),
+        localMediaPath: localMediaRoot(),
         bot: isBotConfigured(),
+        apiUrl: config.apiUrl,
       }, corsHeaders(origin));
     }
     if (url === "/api/auth/telegram" && req.method === "POST") return await handleTelegramAuth(req, res, secure);
