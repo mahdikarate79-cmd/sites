@@ -71,10 +71,11 @@ import {
   startChat,
   ensureChats,
 } from "./chat.mjs";
+import { USER_SESSION_COOKIE, resolveSessionId } from "./sessionAuth.mjs";
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? "";
 const DEV_AUTH = process.env.AUTH_DEV_MODE === "true";
 const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET ?? "";
-const COOKIE_NAME = "sheytoni_session";
+const COOKIE_NAME = USER_SESSION_COOKIE;
 const ORIGINS = config.corsOrigins;
 
 const PLANS = { "1m": { months: 1, stars: 100 }, "6m": { months: 6, stars: 300 }, "1y": { months: 12, stars: 500 } };
@@ -99,7 +100,7 @@ function corsHeaders(origin) {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Credentials": "true",
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
     Vary: "Origin",
   };
 }
@@ -113,17 +114,31 @@ function readBody(req, maxBytes = 64 * 1024 * 1024) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
+    let settled = false;
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      reject(err);
+    };
     req.on("data", (c) => {
       size += c.length;
       if (size > maxBytes) {
-        reject(new Error("Body too large"));
+        fail(new Error("Body too large"));
         req.destroy();
         return;
       }
       chunks.push(c);
     });
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
-    req.on("error", reject);
+    req.on("end", () => {
+      if (settled) return;
+      settled = true;
+      resolve(Buffer.concat(chunks).toString("utf8"));
+    });
+    req.on("error", fail);
+    req.on("aborted", () => fail(new Error("Request aborted")));
+    req.on("close", () => {
+      if (!settled && !req.complete) fail(new Error("Connection closed"));
+    });
   });
 }
 
@@ -160,8 +175,7 @@ function clearCookie(secure) {
 }
 
 function getSession(req, db) {
-  const cookies = parseCookies(req.headers.cookie);
-  const sid = cookies[COOKIE_NAME];
+  const sid = resolveSessionId(req, COOKIE_NAME);
   if (!sid) return null;
   const session = db.sessions[sid];
   if (!session || session.expiresAt < Date.now()) {
@@ -243,7 +257,11 @@ async function handleTelegramAuth(req, res, secure) {
   db.sessions[session.id] = session;
   saveDb(db);
 
-  return json(res, 200, { user: publicUser(user), loginMethod: "telegram" }, {
+  return json(res, 200, {
+    user: publicUser(user),
+    loginMethod: "telegram",
+    sessionToken: session.id,
+  }, {
     ...corsHeaders(req.headers.origin),
     "Set-Cookie": sessionCookie(session.id, secure),
   });
@@ -267,6 +285,7 @@ function handleMe(req, res) {
   return json(res, 200, {
     user: publicUser(user),
     loginMethod: "telegram",
+    sessionToken: session.id,
     verificationMinFollowers: db.settings.verificationMinFollowers,
   }, corsHeaders(req.headers.origin));
 }
@@ -795,6 +814,12 @@ async function handleSocial(req, res, url) {
 }
 
 async function handleChat(req, res, url) {
+  const isChatRoute =
+    url === "/api/chats"
+    || url === "/api/chats/start"
+    || /^\/api\/chats\/[^/]+(\/messages)?$/.test(url ?? "");
+  if (!isChatRoute) return false;
+
   const db = loadDb();
   ensureChats(db);
   const user = requireUser(req, db);
@@ -858,6 +883,11 @@ function handleAdminMe(req, res) {
 const server = http.createServer(async (req, res) => {
   const secure = isSecureRequest(req);
   const origin = req.headers.origin;
+
+  req.on("error", (err) => {
+    if (err?.code === "ECONNRESET" || err?.message === "aborted") return;
+    console.error("Request error:", err);
+  });
 
   if (req.method === "OPTIONS") {
     res.writeHead(204, corsHeaders(origin));
@@ -970,6 +1000,10 @@ const server = http.createServer(async (req, res) => {
 
     return json(res, 404, { error: "Not found" }, corsHeaders(origin));
   } catch (e) {
+    if (e?.message === "Request aborted" || e?.message === "Connection closed" || e?.code === "ECONNRESET") {
+      if (!res.headersSent) res.writeHead(499);
+      return res.end();
+    }
     console.error(e);
     return json(res, 500, { error: "Internal error" }, corsHeaders(origin));
   }

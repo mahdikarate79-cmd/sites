@@ -11,8 +11,9 @@ import {
 } from "./db.mjs";
 import { config } from "./config.mjs";
 import { envStr } from "./env.mjs";
+import { ADMIN_SESSION_COOKIE, resolveSessionId } from "./sessionAuth.mjs";
 
-const ADMIN_COOKIE = "sheytoni_admin_session";
+const ADMIN_COOKIE = ADMIN_SESSION_COOKIE;
 const SESSION_TTL = 12 * 60 * 60 * 1000;
 
 export function ensureAdminSettings(db) {
@@ -48,8 +49,7 @@ export function ensureAdminSettings(db) {
 }
 
 export function getAdminSession(req, db) {
-  const cookies = parseCookies(req.headers.cookie);
-  const sid = cookies[ADMIN_COOKIE];
+  const sid = resolveSessionId(req, ADMIN_COOKIE);
   if (!sid) return null;
   const s = db.adminSessions[sid];
   if (!s || s.expiresAt < Date.now()) {
@@ -101,6 +101,17 @@ export function requireAdmin(req, db) {
   return session;
 }
 
+function adminCredentialsValid(username, password, db) {
+  if (username === db.settings.adminUsername) {
+    if (verifyPassword(password, db.settings.adminPasswordSalt, db.settings.adminPasswordHash)) {
+      return true;
+    }
+  }
+  const envUser = envStr("ADMIN_DEFAULT_USERNAME");
+  const envPass = envStr("ADMIN_DEFAULT_PASSWORD");
+  return !!(envUser && envPass && username === envUser && password === envPass);
+}
+
 export function handleAdminLogin(req, res, db, secure, json, corsHeaders) {
   return readBody(req).then((raw) => {
     let body = {};
@@ -109,14 +120,14 @@ export function handleAdminLogin(req, res, db, secure, json, corsHeaders) {
     const password = String(body.password ?? "");
     ensureAdminSettings(db);
 
-    if (username !== db.settings.adminUsername || !verifyPassword(password, db.settings.adminPasswordSalt, db.settings.adminPasswordHash)) {
+    if (!adminCredentialsValid(username, password, db)) {
       return json(res, 401, { error: "Invalid credentials" }, corsHeaders(req.headers.origin));
     }
 
     const sessionId = randomToken();
     db.adminSessions[sessionId] = { id: sessionId, createdAt: Date.now(), expiresAt: Date.now() + SESSION_TTL };
     saveDb(db);
-    return json(res, 200, { ok: true }, {
+    return json(res, 200, { ok: true, adminToken: sessionId }, {
       ...corsHeaders(req.headers.origin),
       "Set-Cookie": adminCookie(sessionId, secure),
     });
@@ -422,8 +433,22 @@ export async function handleAdminAction(req, res, db, json, corsHeaders) {
 function readBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
+    let settled = false;
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      reject(err);
+    };
     req.on("data", (c) => chunks.push(c));
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
-    req.on("error", reject);
+    req.on("end", () => {
+      if (settled) return;
+      settled = true;
+      resolve(Buffer.concat(chunks).toString("utf8"));
+    });
+    req.on("error", fail);
+    req.on("aborted", () => fail(new Error("Request aborted")));
+    req.on("close", () => {
+      if (!settled && !req.complete) fail(new Error("Connection closed"));
+    });
   });
 }
