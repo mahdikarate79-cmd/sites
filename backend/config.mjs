@@ -1,9 +1,22 @@
 /**
  * Central config — all values from environment variables in production.
  */
+function resolvePort() {
+  const raw = process.env.PORT ?? process.env.AUTH_PORT;
+  if (raw !== undefined && String(raw).trim() !== "") {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n > 0) return n;
+    console.warn(`[config] Invalid PORT="${raw}" — check cPanel Environment Variables`);
+  }
+  if (process.env.NODE_ENV === "production") {
+    console.warn("[config] PORT not set — cPanel usually injects this; app may return 503");
+  }
+  return 8787;
+}
+
 export const config = {
   siteUrl: process.env.SITE_URL ?? "https://x.venify.xyz",
-  port: Number(process.env.PORT ?? process.env.AUTH_PORT ?? 8787),
+  port: resolvePort(),
   host: process.env.HOST ?? "0.0.0.0",
   nodeEnv: process.env.NODE_ENV ?? "development",
   corsOrigins: (process.env.CORS_ORIGINS ?? "https://x.venify.xyz")

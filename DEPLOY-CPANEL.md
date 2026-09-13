@@ -60,15 +60,19 @@ Frontend فقط UI است و به `https://api.venify.xyz` متصل می‌شو�
 
 ```
 api.venify.xyz/
-├── server.mjs          ← Startup file
+├── server.mjs          ← Startup file (فقط import از lib/server.mjs)
 ├── package.json
 ├── .env.example        ← فقط راهنما (مقادیر واقعی در cPanel)
-├── lib/                ← کد API
+├── lib/                ← تمام کد API
+│   ├── server.mjs      ← منطق اصلی (import از ./config.mjs)
 │   ├── config.mjs
 │   ├── db.mjs
 │   └── database/
-└── data/               ← SQLite اینجا ساخته می‌شود
+├── data/               ← SQLite اینجا ساخته می‌شود
+└── node_modules/       ← بعد از npm install
 ```
+
+> **مهم:** `server.mjs` در root فقط entry point است. فایل `config.mjs` داخل `lib/` است — root مستقیماً `./config.mjs` import نمی‌کند.
 
 3. در cPanel → **Setup Node.js App** → **Create Application**
 

@@ -548,10 +548,17 @@ const dbRef = () => {
 
 startCleanupScheduler(dbRef, saveDb);
 
+server.on("error", (err) => {
+  console.error(`[server] Failed to listen on ${HOST}:${PORT}`, err);
+  process.exit(1);
+});
+
 server.listen(PORT, HOST, () => {
   getDatabase();
   const db = loadDb();
   ensureAdminSettings(db);
   saveDb(db);
-  console.log(`Sheytoni API on http://${HOST}:${PORT} (env=${config.nodeEnv}, db=sqlite, cors=${ORIGINS.join(",")})`);
+  console.log(
+    `Sheytoni API on http://${HOST}:${PORT} (env=${config.nodeEnv}, PORT env=${process.env.PORT ?? "unset"}, db=sqlite, cors=${ORIGINS.join(",")})`,
+  );
 });

@@ -10,24 +10,23 @@ echo "==> Preparing backend package..."
 rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR/lib" "$OUT_DIR/data"
 
-# Copy backend modules (except server.mjs) into lib/
+# All backend modules (including server.mjs) live in lib/ — relative imports unchanged
 for f in backend/*.mjs; do
   base=$(basename "$f")
-  if [ "$base" != "server.mjs" ]; then
-    cp "$f" "$OUT_DIR/lib/"
-  fi
+  if [ "$base" = "cpanel-entry.mjs" ]; then continue; fi
+  cp "$f" "$OUT_DIR/lib/"
 done
 cp -r backend/database "$OUT_DIR/lib/database"
 touch "$OUT_DIR/data/.gitkeep"
 
-# server.mjs at package root (cPanel startup file)
-sed 's|from "./|from "./lib/|g' backend/server.mjs > "$OUT_DIR/server.mjs"
+# cPanel startup file at package root — thin entry only, no direct ./config.mjs imports
+cp backend/cpanel-entry.mjs "$OUT_DIR/server.mjs"
 
 # package.json — production dependencies only
 cat > "$OUT_DIR/package.json" << 'EOF'
 {
   "name": "sheytoni-api",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "type": "module",
   "engines": { "node": ">=18" },
@@ -65,7 +64,20 @@ EOF
 
 echo "==> Verifying package structure..."
 test -f "$OUT_DIR/server.mjs" || { echo "ERROR: server.mjs missing at root"; exit 1; }
+test -f "$OUT_DIR/lib/server.mjs" || { echo "ERROR: lib/server.mjs missing"; exit 1; }
 test -f "$OUT_DIR/lib/config.mjs" || { echo "ERROR: lib/config.mjs missing"; exit 1; }
+
+# Root server.mjs must NOT import ./config.mjs directly (only via lib/server.mjs)
+if grep -q './config.mjs' "$OUT_DIR/server.mjs"; then
+  echo "ERROR: root server.mjs must not import ./config.mjs — use lib/server.mjs"
+  exit 1
+fi
+
+# lib/server.mjs must use relative imports within lib/
+if ! grep -q './config.mjs' "$OUT_DIR/lib/server.mjs"; then
+  echo "ERROR: lib/server.mjs missing ./config.mjs import"
+  exit 1
+fi
 
 if grep -rqE '8948568241|0052f59d50d7ac20000000001|K005zlvRNoTjlRmN4f' "$OUT_DIR" 2>/dev/null; then
   echo "ERROR: Hardcoded secrets found in backend package!"
@@ -78,6 +90,6 @@ rm -f "$ZIP_NAME"
 
 echo ""
 echo "✅ Backend package ready: $ZIP_NAME"
+echo "   Root server.mjs → imports ./lib/server.mjs"
+echo "   lib/server.mjs  → imports ./config.mjs (inside lib/)"
 echo "   Extract into: /home/venifybo/api.venify.xyz"
-echo "   Startup file: server.mjs"
-echo "   Then: npm install && set Environment Variables in cPanel"
