@@ -241,7 +241,7 @@ export default function NewPostPage() {
                   </button>
                   {paidEnabled && (
                     <div className="mt-3 px-1">
-                      <StarsSlider value={paidStars} min={1} max={25000} onChange={setPaidStars} compact />
+                      <StarsSlider value={paidStars} min={5} max={25000} onChange={setPaidStars} compact />
                     </div>
                   )}
                 </div>

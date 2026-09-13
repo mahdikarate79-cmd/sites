@@ -16,7 +16,8 @@ export function ProfileLoader({ username }: ProfileLoaderProps) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchUserProfile(username)
+    const slug = decodeURIComponent(username);
+    fetchUserProfile(slug)
       .then((data) => setUser(data.user))
       .catch(() => setUser(null))
       .finally(() => setLoading(false));

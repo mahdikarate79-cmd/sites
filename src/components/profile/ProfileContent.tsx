@@ -18,12 +18,13 @@ import { formatCount } from "@/lib/utils/format";
 import { getPostsByUser } from "@/lib/api/posts";
 import { startChatWithUser } from "@/lib/api/chat";
 import { usePrototype } from "@/lib/hooks/usePrototype";
+import { useAuth } from "@/lib/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/ToastProvider";
 import { Settings } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
-import { isDeletedUser, DELETED_USER } from "@/lib/auth/deletedUser";
 import { DeletedAccountCooldown } from "@/components/auth/DeletedAccountCooldown";
+import { profileSlug } from "@/lib/utils/profileSlug";
 
 type ProfileTab = "videos" | "photos" | "posts";
 
@@ -46,19 +47,8 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
     getPostsByUser(user.id).then(setPosts);
   }, [user.id]);
 
-  const deleted = isDeletedUser(user.id);
-  const displayUser = deleted ? DELETED_USER : user;
+  const displayUser = user;
   const blocked = !isOwnProfile && isBlocked(user.id);
-
-  if (deleted) {
-    return (
-      <div className="min-h-[50dvh] flex flex-col items-center justify-center px-6 text-center">
-        <p className="text-lg font-semibold mb-2">Deleted Account</p>
-        <p className="text-sm text-text-muted">This profile is no longer available.</p>
-        <Link href="/" className="mt-6 px-5 py-2.5 rounded-full glass-nav text-sm">Back to home</Link>
-      </div>
-    );
-  }
 
   const filtered = posts.filter((p) => {
     if (tab === "videos") return p.media?.some((m) => m.type === "video" || m.type === "gif");
@@ -74,7 +64,7 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
 
   const copyProfileLink = async () => {
     const { getSiteUrl } = await import("@/lib/utils/siteUrl");
-    await navigator.clipboard.writeText(`${getSiteUrl()}/profile/${user.username || user.id}/`);
+    await navigator.clipboard.writeText(`${getSiteUrl()}/profile/${profileSlug(user)}`);
     showToast("Profile link copied");
     setMenuOpen(false);
   };
@@ -239,6 +229,12 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
 
 export function OwnProfile() {
   const { getCurrentUser } = usePrototype();
+  const { refresh } = useAuth();
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
   return (
     <>
       <DeletedAccountCooldown />

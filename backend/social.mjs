@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { findUserById, findUserByUsername, publicUser } from "./db.mjs";
 import { config } from "./config.mjs";
+import { MIN_STARS_PAYMENT, isValidPaidStars } from "./constants.mjs";
 
 function mediaUrl(m) {
   if (!m) return m;
@@ -143,16 +144,15 @@ function sanitizeMediaList(media) {
     }));
 }
 
-export function searchUsers(db, query) {
+export function searchUsers(db, query, viewerId = null) {
   const q = String(query ?? "").trim().toLowerCase().replace(/^@/, "");
   if (!q) return [];
   return Object.values(db.users ?? {})
     .filter((u) => !u.deleted && !u.banned)
+    .filter((u) => u.id !== viewerId)
     .filter((u) =>
       (u.username ?? "").toLowerCase().includes(q)
       || (u.displayName ?? "").toLowerCase().includes(q)
-      || u.id.toLowerCase().includes(q)
-      || String(u.telegramId ?? "").includes(q)
     )
     .sort((a, b) => displayFollowers(b) - displayFollowers(a))
     .slice(0, 50)
@@ -163,6 +163,9 @@ export function createPost(db, authorId, body) {
   ensureSocial(db);
   const author = findUserById(db, authorId);
   if (!author) return { ok: false, error: "User not found" };
+  if (body.paidStars && !isValidPaidStars(body.paidStars)) {
+    return { ok: false, error: `Minimum ${MIN_STARS_PAYMENT} stars required` };
+  }
   const id = `p_${crypto.randomBytes(6).toString("hex")}`;
   const media = sanitizeMediaList(body.media);
   const post = {
@@ -171,7 +174,7 @@ export function createPost(db, authorId, body) {
     content: String(body.content ?? "").slice(0, 5000),
     media,
     tags: body.tags ?? [],
-    paidStars: body.paidStars ? Math.max(1, Number(body.paidStars)) : undefined,
+    paidStars: body.paidStars ? Math.max(MIN_STARS_PAYMENT, Number(body.paidStars)) : undefined,
     privacy: body.privacy,
     likes: 0,
     fakeLikes: 0,

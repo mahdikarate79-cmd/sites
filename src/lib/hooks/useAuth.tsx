@@ -9,7 +9,7 @@ import {
   getTelegramInitData,
 } from "@/lib/auth/client";
 import { fetchUnlockedPosts } from "@/lib/api/payments";
-import { clearLocalUserData, markUserDeleted } from "@/lib/auth/deletedUser";
+import { clearDeletedMark, clearLocalUserData } from "@/lib/auth/deletedUser";
 import { isTelegramMiniApp } from "@/lib/telegram/miniApp";
 
 interface AuthContextValue {
@@ -51,6 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     remainingMs?: number;
   }) => {
     setUser(data.user);
+    if (data.user) clearDeletedMark(data.user.id);
     setLoginMethod(data.loginMethod);
     if (data.verificationMinFollowers) setVerificationMinFollowers(data.verificationMinFollowers);
     setAccountDeleted(!!data.accountDeleted);
@@ -177,7 +178,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const deleteAccount = useCallback(async () => {
     const uid = user?.id;
     await deleteAuthAccount();
-    if (uid) markUserDeleted(uid);
     clearLocalUserData(uid);
     setUser(null);
     setLoginMethod("guest");

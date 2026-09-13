@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { findUserById, publicUser } from "./db.mjs";
+import { MIN_STARS_PAYMENT } from "./constants.mjs";
 
 export function ensureChats(db) {
   if (!db.chats) db.chats = {};
@@ -57,6 +58,9 @@ export function sendChatMessage(db, chatId, userId, body) {
   ensureChats(db);
   const chat = db.chats[chatId];
   if (!chat || !chat.participantIds?.includes(userId)) return { ok: false, error: "Chat not found" };
+  if (body.paidStars && Number(body.paidStars) < MIN_STARS_PAYMENT) {
+    return { ok: false, error: `Minimum ${MIN_STARS_PAYMENT} stars required` };
+  }
   const msg = {
     id: `m_${crypto.randomBytes(6).toString("hex")}`,
     chatId,

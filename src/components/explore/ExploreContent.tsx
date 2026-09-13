@@ -14,6 +14,7 @@ import { buildReelItems } from "@/lib/utils/reels";
 import { shouldExcludeFromPublicDiscovery } from "@/lib/utils/postAccess";
 import { formatCount } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
+import { profileHandle, profileSlug } from "@/lib/utils/profileSlug";
 
 type SearchTab = "accounts" | "reels";
 type SortFilter = "newest" | "popular" | "views" | "oldest";
@@ -161,13 +162,15 @@ export function ExploreContent() {
           ) : accounts.map((user) => (
             <Link
               key={user.id}
-              href={`/profile/${user.username || user.id}/`}
+              href={`/profile/${profileSlug(user)}`}
               className="flex items-center gap-3 px-4 py-3.5 hover:bg-surface/40 transition-colors"
             >
               <Avatar src={user.avatar} alt="" size="lg" />
               <div className="flex-1 min-w-0">
                 <UserName user={user} nameClassName="font-semibold text-sm" />
-                <p className="text-xs text-text-muted">@{user.username ?? user.id}</p>
+                {profileHandle(user) && (
+                  <p className="text-xs text-text-muted">{profileHandle(user)}</p>
+                )}
                 <p className="text-xs text-text-muted mt-0.5">{formatCount(user.followers)} followers</p>
               </div>
             </Link>

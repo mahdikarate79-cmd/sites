@@ -1,6 +1,7 @@
 import { hashPassword, verifyPassword, randomToken } from "./crypto.mjs";
 import { createNotification, broadcastNotification } from "./notifications.mjs";
-import { deleteFromB2, isB2Configured } from "./b2.mjs";
+import { isB2Configured } from "./b2.mjs";
+import { deletePostMedia } from "./mediaCleanup.mjs";
 import {
   findUserById,
   findUserByUsername,
@@ -173,7 +174,13 @@ export function handleAdminStats(req, res, db, json, corsHeaders) {
   const activeCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
   const posts = Object.values(db.posts ?? {});
   let mediaBytes = 0;
-  for (const m of Object.values(db.mediaObjects ?? {})) mediaBytes += m.size ?? 0;
+  let b2Objects = 0;
+  let localObjects = 0;
+  for (const m of Object.values(db.mediaObjects ?? {})) {
+    mediaBytes += m.size ?? 0;
+    if (m.storage === "local") localObjects++;
+    else b2Objects++;
+  }
 
   return json(res, 200, {
     users: users.length,
@@ -181,6 +188,9 @@ export function handleAdminStats(req, res, db, json, corsHeaders) {
     posters: users.filter((u) => (u.postsCount ?? 0) > 0).length,
     posts: posts.length,
     mediaBytes,
+    b2Objects,
+    localObjects,
+    b2Configured: isB2Configured(),
     banned: Object.keys(db.bannedUsers).length,
     pendingVerifications: (db.verificationRequests ?? []).filter((r) => r.status === "pending").length,
     pendingWithdrawals: (db.withdrawalRequests ?? []).filter((r) => r.status === "pending").length,
@@ -329,29 +339,23 @@ export async function handleAdminAction(req, res, db, json, corsHeaders) {
         author.banned = true;
         db.bannedUsers[author.id] = { userId: author.id, bannedAt: new Date().toISOString() };
       }
+      const mediaRemoved = await deletePostMedia(db, post);
       delete db.posts[body.postId];
       if (author) author.postsCount = Math.max(0, (author.postsCount ?? 1) - 1);
       saveDb(db);
-      return json(res, 200, { ok: true }, corsHeaders(req.headers.origin));
+      return json(res, 200, { ok: true, mediaRemoved }, corsHeaders(req.headers.origin));
     }
 
     case "strip_post_media": {
       const post = db.posts[body.postId];
       if (!post) return json(res, 404, { error: "Post not found" }, corsHeaders(req.headers.origin));
-      for (const m of post.media ?? []) {
-        if (isB2Configured() && m.fileId && m.fileName) {
-          try { await deleteFromB2(m.fileId, m.fileName); } catch { /* */ }
-        }
-        m.expired = true;
-        m.url = null;
-      }
-      post.mediaExpired = true;
+      const mediaRemoved = await deletePostMedia(db, post);
       const author = findUserById(db, post.authorId);
       if (body.notify && author) {
         createNotification(db, { userId: author.id, type: "media_removed", title: "Media removed", body: "Media on your post was removed by moderation.", icon: "removed" });
       }
       saveDb(db);
-      return json(res, 200, { ok: true }, corsHeaders(req.headers.origin));
+      return json(res, 200, { ok: true, mediaRemoved }, corsHeaders(req.headers.origin));
     }
 
     case "approve_verification": {
@@ -407,12 +411,12 @@ export async function handleAdminAction(req, res, db, json, corsHeaders) {
       const user = resolveUser(db, { query: body.query ?? body.username ?? body.telegramId });
       if (!user) return json(res, 404, { error: "User not found" }, corsHeaders(req.headers.origin));
       const posts = Object.values(db.posts ?? {}).filter((p) => p.authorId === user.id);
-      return json(res, 200, { user: publicUser(user), posts }, corsHeaders(req.headers.origin));
+      return json(res, 200, { user: publicUser(user, { includeTelegramId: true }), posts }, corsHeaders(req.headers.origin));
     }
 
     case "list_users":
       return json(res, 200, {
-        users: Object.values(db.users).filter((u) => !u.deleted).map(publicUser),
+        users: Object.values(db.users).filter((u) => !u.deleted).map((u) => publicUser(u, { includeTelegramId: true })),
         banned: Object.values(db.bannedUsers),
       }, corsHeaders(req.headers.origin));
 

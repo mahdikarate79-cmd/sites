@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Heart, MessageCircle, Eye, Share2, Bookmark } from "lucide-react";
 import { Post } from "@/lib/types";
 import { formatCount } from "@/lib/utils/format";
@@ -29,6 +29,10 @@ export function PostActions({ post, onDonate }: PostActionsProps) {
     topDonators: post.topDonators ?? [],
   });
   const [likes, setLikes] = useState(post.likes);
+
+  useEffect(() => {
+    setLikes(post.likes);
+  }, [post.id, post.likes]);
   const [comments, setComments] = useState(getCommentCount(post.id, post.comments));
   const [animating, setAnimating] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -39,13 +43,13 @@ export function PostActions({ post, onDonate }: PostActionsProps) {
     setAnimating(true);
     setTimeout(() => setAnimating(false), 200);
     const nowLiked = toggleLike(post.id);
-    setLikes(nowLiked ? likes + 1 : likes - 1);
+    setLikes((n) => (nowLiked ? n + 1 : Math.max(0, n - 1)));
     try {
       const result = await toggleLikeApi(post.id);
       setLikes(result.likes);
     } catch {
       toggleLike(post.id);
-      setLikes(likes);
+      setLikes((n) => (nowLiked ? Math.max(0, n - 1) : n + 1));
     }
   };
 

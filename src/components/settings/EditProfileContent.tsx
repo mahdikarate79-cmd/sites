@@ -187,15 +187,21 @@ export function EditProfileContent() {
       }
 
       if (isAuthenticated) {
-        await updateProfileApi({
+        const updated = await updateProfileApi({
           displayName: payload.displayName,
           username: payload.username,
           bio: payload.bio,
           avatar: avatarUrl,
           cover: coverUrl,
         });
+        updateProfile({
+          displayName: updated.displayName,
+          username: updated.username ?? undefined,
+          bio: updated.bio,
+          avatar: updated.avatar,
+          cover: updated.cover,
+        });
         await refresh();
-        updateProfile({ ...payload, avatar: avatarUrl, cover: coverUrl });
       } else {
         updateProfile({ ...payload, avatar: avatarUrl, cover: coverUrl });
       }

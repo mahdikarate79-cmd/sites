@@ -6,14 +6,23 @@ export { loadDb, saveDb };
 
 const DELETE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
+function cacheUser(db, user) {
+  if (user) db.users[user.id] = user;
+  return user;
+}
+
 export function findUserByTelegramId(db, telegramId) {
+  const cached = Object.values(db.users ?? {}).find((u) => u.telegramId === telegramId && !u.deleted);
+  if (cached) return cached;
   const r = getDatabase().prepare("SELECT * FROM users WHERE telegram_id = ? AND deleted = 0").get(telegramId);
-  return r ? rowToUser(r) : null;
+  return r ? cacheUser(db, rowToUser(r)) : null;
 }
 
 export function findUserByTelegramIdIncludingDeleted(db, telegramId) {
+  const cached = Object.values(db.users ?? {}).find((u) => u.telegramId === telegramId);
+  if (cached) return cached;
   const r = getDatabase().prepare("SELECT * FROM users WHERE telegram_id = ?").get(telegramId);
-  return r ? rowToUser(r) : null;
+  return r ? cacheUser(db, rowToUser(r)) : null;
 }
 
 export function getDeletionCooldown(user) {
@@ -37,13 +46,18 @@ export function purgeDeletedUser(db, userId) {
 
 export function findUserByUsername(db, username) {
   const lower = String(username).toLowerCase();
+  const cached = Object.values(db.users ?? {}).find(
+    (u) => !u.deleted && u.username?.toLowerCase() === lower,
+  );
+  if (cached) return cached;
   const r = getDatabase().prepare("SELECT * FROM users WHERE lower(username) = ? AND deleted = 0").get(lower);
-  return r ? rowToUser(r) : null;
+  return r ? cacheUser(db, rowToUser(r)) : null;
 }
 
 export function findUserById(db, id) {
+  if (db.users?.[id] && !db.users[id].deleted) return db.users[id];
   const r = getDatabase().prepare("SELECT * FROM users WHERE id = ? AND deleted = 0").get(id);
-  return r ? rowToUser(r) : null;
+  return r ? cacheUser(db, rowToUser(r)) : null;
 }
 
 export function usernameAvailable(db, username) {
@@ -139,18 +153,29 @@ export function deleteSessionsExcept(db, keepSessionId) {
 }
 
 export function deleteAccount(db, userId) {
-  const user = db.users[userId];
+  const user = findUserById(db, userId) ?? db.users[userId];
   if (!user) return false;
-  user.deleted = true;
-  user.deletedAt = new Date().toISOString();
+
   if (user.username) {
     const lower = user.username.toLowerCase();
     if (!db.reservedUsernames.includes(lower)) db.reservedUsernames.push(lower);
-    const sqlite = getDatabase();
-    sqlite.prepare("INSERT OR IGNORE INTO reserved_usernames VALUES (?)").run(lower);
+    getDatabase().prepare("INSERT OR IGNORE INTO reserved_usernames VALUES (?)").run(lower);
   }
-  if (!db.deletedUserIds.includes(userId)) db.deletedUserIds.push(userId);
-  deleteSessionsForUser(db, userId);
+
+  for (const [postId, post] of Object.entries(db.posts ?? {})) {
+    if (post.authorId === userId) delete db.posts[postId];
+  }
+
+  for (const key of Object.keys(db.follows ?? {})) {
+    if (key.startsWith(`${userId}:`) || key.endsWith(`:${userId}`)) delete db.follows[key];
+  }
+
+  for (const key of Object.keys(db.postLikes ?? {})) {
+    if (key.startsWith(`${userId}:`)) delete db.postLikes[key];
+  }
+
+  delete db.notifications?.[userId];
+  purgeDeletedUser(db, userId);
   return true;
 }
 
@@ -178,10 +203,10 @@ export function isDeletedUserId(db, userId) {
   return db.deletedUserIds.includes(userId);
 }
 
-export function publicUser(user) {
+export function publicUser(user, { includeTelegramId = false } = {}) {
   if (!user) return null;
   const premiumActive = user.premium && (!user.premiumExpiresAt || new Date(user.premiumExpiresAt) > new Date());
-  return {
+  const out = {
     id: user.id,
     username: user.username ?? null,
     displayName: user.displayName,
@@ -201,8 +226,9 @@ export function publicUser(user) {
     postsCount: user.postsCount ?? 0,
     loginMethod: user.loginMethod ?? "telegram",
     verificationRequestPending: !!user.verificationRequestPending,
-    telegramId: user.telegramId,
   };
+  if (includeTelegramId) out.telegramId = user.telegramId;
+  return out;
 }
 
 function rowToUser(r) {

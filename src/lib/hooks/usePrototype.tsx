@@ -32,6 +32,8 @@ interface PrototypeContextValue {
   isBookmarked: (postId: string) => boolean;
   clearChatUnread: () => void;
   clearNotificationUnread: () => void;
+  setChatUnread: (count: number) => void;
+  setNotificationUnread: (count: number) => void;
   deleteChat: (chatId: string) => void;
   isChatDeleted: (chatId: string) => boolean;
   unlockPaidMedia: (stars: number) => void;
@@ -229,6 +231,14 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
 
   const clearNotificationUnread = useCallback(() => {
     update((s) => ({ ...s, notificationUnread: 0 }));
+  }, [update]);
+
+  const setChatUnread = useCallback((count: number) => {
+    update((s) => ({ ...s, chatUnread: count }));
+  }, [update]);
+
+  const setNotificationUnread = useCallback((count: number) => {
+    update((s) => ({ ...s, notificationUnread: count }));
   }, [update]);
 
   const deleteChat = useCallback((chatId: string) => {
@@ -497,6 +507,8 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
         isBookmarked,
         clearChatUnread,
         clearNotificationUnread,
+        setChatUnread,
+        setNotificationUnread,
         deleteChat,
         isChatDeleted,
         unlockPaidMedia,

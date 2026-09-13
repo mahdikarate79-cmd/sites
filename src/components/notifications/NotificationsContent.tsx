@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Bell, BadgeCheck, AlertCircle, Info } from "lucide-react";
-import { fetchNotifications, ServerNotification } from "@/lib/api/notifications";
+import { fetchNotifications, markNotificationsRead, ServerNotification } from "@/lib/api/notifications";
 import { formatTimeAgo } from "@/lib/utils/format";
 import { usePrototype } from "@/lib/hooks/usePrototype";
 import { useAuth } from "@/lib/hooks/useAuth";
@@ -32,10 +32,14 @@ export function NotificationsContent() {
       return;
     }
     fetchNotifications()
-      .then(setNotifications)
+      .then(({ notifications }) => {
+        setNotifications(notifications);
+        clearNotificationUnread();
+        markNotificationsRead().catch(() => {});
+      })
       .catch(() => setNotifications([]))
       .finally(() => setLoading(false));
-  }, [isAuthenticated]);
+  }, [isAuthenticated, clearNotificationUnread]);
 
   return (
     <div className="min-h-dvh pb-6">

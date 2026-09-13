@@ -72,6 +72,7 @@ import {
   ensureChats,
 } from "./chat.mjs";
 import { USER_SESSION_COOKIE, resolveSessionId } from "./sessionAuth.mjs";
+import { MIN_STARS_PAYMENT, MAX_STARS_PAYMENT, isValidPaidStars } from "./constants.mjs";
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? "";
 const DEV_AUTH = process.env.AUTH_DEV_MODE === "true";
 const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET ?? "";
@@ -230,20 +231,7 @@ async function handleTelegramAuth(req, res, secure) {
   let user = findUserByTelegramId(db, tgUser.id);
   if (!user) {
     const deletedUser = findUserByTelegramIdIncludingDeleted(db, tgUser.id);
-    if (deletedUser?.deleted) {
-      const cooldown = getDeletionCooldown(deletedUser);
-      if (cooldown) {
-        return json(res, 403, {
-          error: "account_deleted",
-          canRecreateAt: cooldown.canRecreateAt,
-          remainingMs: cooldown.remainingMs,
-        }, {
-          ...corsHeaders(req.headers.origin),
-          "Set-Cookie": clearCookie(secure),
-        });
-      }
-      purgeDeletedUser(db, deletedUser.id);
-    }
+    if (deletedUser) purgeDeletedUser(db, deletedUser.id);
     user = createUserFromTelegram(db, tgUser);
     db.users[user.id] = user;
   } else {
@@ -343,7 +331,20 @@ function handleNotifications(req, res) {
   const db = loadDb();
   const user = requireUser(req, db);
   if (!user) return json(res, 401, { error: "Unauthorized" }, corsHeaders(req.headers.origin));
-  return json(res, 200, { notifications: getUserNotifications(db, user.id) }, corsHeaders(req.headers.origin));
+  const notifications = getUserNotifications(db, user.id);
+  const unreadCount = notifications.filter((n) => !n.read).length;
+  return json(res, 200, { notifications, unreadCount }, corsHeaders(req.headers.origin));
+}
+
+async function handleNotificationsMarkRead(req, res) {
+  const db = loadDb();
+  const user = requireUser(req, db);
+  if (!user) return json(res, 401, { error: "Unauthorized" }, corsHeaders(req.headers.origin));
+  for (const n of Object.values(db.notifications ?? {})) {
+    if (n.userId === user.id) n.read = true;
+  }
+  saveDb(db);
+  return json(res, 200, { ok: true }, corsHeaders(req.headers.origin));
 }
 
 function handleUserUnlocks(req, res) {
@@ -378,19 +379,25 @@ async function handleCreateInvoice(req, res) {
     description = `Premium subscription (${body.planId})`;
     meta = { type: "premium", planId: body.planId ?? "6m" };
   } else if (type === "stars") {
-    stars = Math.max(1, Math.min(25000, Number(body.amount) || 0));
+    stars = Math.max(MIN_STARS_PAYMENT, Math.min(MAX_STARS_PAYMENT, Number(body.amount) || 0));
     title = "Sheytoni Stars";
     description = `Purchase ${stars} Stars`;
     meta = { type: "stars", amount: stars };
   } else if (type === "post_unlock") {
-    stars = Math.max(1, Math.min(25000, Number(body.stars) || 0));
+    stars = Number(body.stars) || 0;
+    if (!isValidPaidStars(stars)) {
+      return json(res, 400, { error: `Minimum ${MIN_STARS_PAYMENT} stars required` }, corsHeaders(req.headers.origin));
+    }
     const postId = String(body.postId ?? "");
     if (!postId) return json(res, 400, { error: "postId required" }, corsHeaders(req.headers.origin));
     title = "Sheytoni — Unlock post";
     description = `Unlock paid content`;
     meta = { type: "post_unlock", postId, stars };
   } else if (type === "donation") {
-    stars = Math.max(1, Math.min(25000, Number(body.stars) || 0));
+    stars = Number(body.stars) || 0;
+    if (!isValidPaidStars(stars)) {
+      return json(res, 400, { error: `Minimum ${MIN_STARS_PAYMENT} stars required` }, corsHeaders(req.headers.origin));
+    }
     const postId = String(body.postId ?? "");
     const recipientId = String(body.recipientId ?? "");
     if (!postId || !recipientId) return json(res, 400, { error: "postId and recipientId required" }, corsHeaders(req.headers.origin));
@@ -398,7 +405,10 @@ async function handleCreateInvoice(req, res) {
     description = `Send ${stars} Stars`;
     meta = { type: "donation", postId, recipientId, stars, anonymous: !!body.anonymous };
   } else if (type === "paid_media") {
-    stars = Math.max(1, Math.min(25000, Number(body.stars) || 0));
+    stars = Number(body.stars) || 0;
+    if (!isValidPaidStars(stars)) {
+      return json(res, 400, { error: `Minimum ${MIN_STARS_PAYMENT} stars required` }, corsHeaders(req.headers.origin));
+    }
     const chatId = String(body.chatId ?? "");
     const messageId = String(body.messageId ?? "");
     const recipientId = String(body.recipientId ?? "");
@@ -428,8 +438,13 @@ async function handleCreateInvoice(req, res) {
     return json(res, 503, { error: "Payments not configured" }, corsHeaders(req.headers.origin));
   }
 
-  const invoiceUrl = await createStarsInvoice({ title, description, payload: intentId, amount: stars });
-  return json(res, 200, { invoiceUrl, intentId }, corsHeaders(req.headers.origin));
+  try {
+    const invoiceUrl = await createStarsInvoice({ title, description, payload: intentId, amount: stars });
+    return json(res, 200, { invoiceUrl, intentId }, corsHeaders(req.headers.origin));
+  } catch (e) {
+    console.error("Invoice creation failed:", e.message);
+    return json(res, 502, { error: "invoice_failed", message: e.message }, corsHeaders(req.headers.origin));
+  }
 }
 
 async function handleTelegramWebhook(req, res) {
@@ -726,7 +741,7 @@ async function handleSocial(req, res, url) {
 
   if (url === "/api/users/search" && req.method === "GET") {
     const q = new URL(req.url ?? "", "http://localhost").searchParams.get("q") ?? "";
-    json(res, 200, { users: searchUsers(db, q) }, corsHeaders(origin));
+    json(res, 200, { users: searchUsers(db, q, user?.id ?? null) }, corsHeaders(origin));
     return true;
   }
 
@@ -952,6 +967,7 @@ const server = http.createServer(async (req, res) => {
     if (url === "/api/auth/delete-account" && req.method === "POST") return await handleDeleteAccount(req, res, secure);
     if (url === "/api/verification/request" && req.method === "POST") return await handleVerificationRequest(req, res);
     if (url === "/api/notifications" && req.method === "GET") return handleNotifications(req, res);
+    if (url === "/api/notifications/mark-read" && req.method === "POST") return await handleNotificationsMarkRead(req, res);
     if (url === "/api/payments/invoice" && req.method === "POST") return await handleCreateInvoice(req, res);
     if (url === "/api/user/unlocks" && req.method === "GET") return handleUserUnlocks(req, res);
     if (url === "/api/profile/update" && req.method === "POST") return await handleProfileUpdate(req, res);
