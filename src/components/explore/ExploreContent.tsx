@@ -4,10 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Search, Filter, Video, ImageIcon, Film } from "lucide-react";
-import { Post } from "@/lib/types";
-import { mockPosts } from "@/data/mock/posts";
-import { mockUsers } from "@/data/mock/users";
+import { Post, User } from "@/lib/types";
 import { getFeedPosts } from "@/lib/api/posts";
+import { searchUsers } from "@/lib/api/social";
 import { Avatar } from "@/components/ui/Avatar";
 import { UserName } from "@/components/ui/UserName";
 import { ReelsViewer } from "@/components/video/ReelsViewer";
@@ -15,13 +14,10 @@ import { buildReelItems } from "@/lib/utils/reels";
 import { shouldExcludeFromPublicDiscovery } from "@/lib/utils/postAccess";
 import { formatCount } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
+import { profileHandle, profileSlug } from "@/lib/utils/profileSlug";
 
 type SearchTab = "accounts" | "reels";
 type SortFilter = "newest" | "popular" | "views" | "oldest";
-
-function accountScore(user: typeof mockUsers[0]): number {
-  return (user.verified ? 1000 : 0) + (user.premium ? 500 : 0) + user.followers;
-}
 
 function postMatchesQuery(post: Post, q: string): boolean {
   if (!q) return true;
@@ -29,7 +25,9 @@ function postMatchesQuery(post: Post, q: string): boolean {
   return (
     post.content.toLowerCase().includes(q) ||
     !!post.tags?.some((t) => t.includes(tagQ)) ||
-    (post.category?.toLowerCase().includes(q) ?? false)
+    (post.category?.toLowerCase().includes(q) ?? false) ||
+    (post.author.username ?? "").toLowerCase().includes(q) ||
+    post.author.displayName.toLowerCase().includes(q)
   );
 }
 
@@ -40,11 +38,29 @@ export function ExploreContent() {
   const [showFilters, setShowFilters] = useState(false);
   const [reelsOpen, setReelsOpen] = useState(false);
   const [reelIndex, setReelIndex] = useState(0);
-  const [allPosts, setAllPosts] = useState<Post[]>(mockPosts);
+  const [allPosts, setAllPosts] = useState<Post[]>([]);
+  const [accounts, setAccounts] = useState<User[]>([]);
+  const [searching, setSearching] = useState(false);
 
   useEffect(() => {
     getFeedPosts().then(setAllPosts);
   }, []);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (!q) {
+      setAccounts([]);
+      return;
+    }
+    setSearching(true);
+    const t = setTimeout(() => {
+      searchUsers(q)
+        .then(setAccounts)
+        .catch(() => setAccounts([]))
+        .finally(() => setSearching(false));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [query]);
 
   const publicPosts = useMemo(
     () => allPosts.filter((p) => !shouldExcludeFromPublicDiscovery(p)),
@@ -52,32 +68,6 @@ export function ExploreContent() {
   );
 
   const reelItems = useMemo(() => buildReelItems(publicPosts), [publicPosts]);
-
-  const accounts = useMemo(() => {
-    let users = mockUsers.filter((u) => u.id !== "u1");
-    const q = query.trim().toLowerCase();
-    if (q) {
-      if (q.startsWith("@")) {
-        const username = q.slice(1);
-        users = users
-          .filter((u) => (u.username ?? "").includes(username))
-          .sort((a, b) => {
-            const aName = a.username ?? "";
-            const bName = b.username ?? "";
-            if (aName === username) return -1;
-            if (bName === username) return 1;
-            return aName.localeCompare(bName);
-          });
-      } else {
-        users = users.filter(
-          (u) =>
-            u.displayName.toLowerCase().includes(q) ||
-            (u.username ?? "").toLowerCase().includes(q)
-        );
-      }
-    }
-    return [...users].sort((a, b) => accountScore(b) - accountScore(a));
-  }, [query]);
 
   const reels = useMemo(() => {
     let items = [...reelItems];
@@ -163,21 +153,29 @@ export function ExploreContent() {
 
       {tab === "accounts" && (
         <div className="divide-y divide-border">
-          {accounts.map((user) => (
+          {!query.trim() ? (
+            <p className="text-center text-text-muted py-12 text-sm px-4">
+              Search for users by @username or display name
+            </p>
+          ) : searching ? (
+            <p className="text-center text-text-muted py-12 text-sm">Searching…</p>
+          ) : accounts.map((user) => (
             <Link
               key={user.id}
-              href={`/profile/${user.username}/`}
+              href={`/profile/${profileSlug(user)}`}
               className="flex items-center gap-3 px-4 py-3.5 hover:bg-surface/40 transition-colors"
             >
               <Avatar src={user.avatar} alt="" size="lg" />
               <div className="flex-1 min-w-0">
                 <UserName user={user} nameClassName="font-semibold text-sm" />
-                <p className="text-xs text-text-muted">@{user.username}</p>
+                {profileHandle(user) && (
+                  <p className="text-xs text-text-muted">{profileHandle(user)}</p>
+                )}
                 <p className="text-xs text-text-muted mt-0.5">{formatCount(user.followers)} followers</p>
               </div>
             </Link>
           ))}
-          {accounts.length === 0 && (
+          {query.trim() && !searching && accounts.length === 0 && (
             <p className="text-center text-text-muted py-12 text-sm">No accounts found</p>
           )}
         </div>
@@ -195,13 +193,19 @@ export function ExploreContent() {
                 onClick={() => openReel(i)}
                 className="relative aspect-[3/4] bg-black overflow-hidden"
               >
-                <Image src={thumb} alt="" fill className="object-cover" sizes="33vw" unoptimized />
+                {thumb ? (
+                  <Image src={thumb} alt="" fill className="object-cover" sizes="33vw" unoptimized />
+                ) : (
+                  <div className="w-full h-full bg-surface" />
+                )}
                 <Icon className="absolute top-1.5 right-1.5 w-3.5 h-3.5 text-white drop-shadow" />
               </button>
             );
           })}
           {reels.length === 0 && (
-            <p className="col-span-3 text-center text-text-muted py-12 text-sm">No reels found</p>
+            <p className="col-span-3 text-center text-text-muted py-12 text-sm">
+              {query.trim() ? "No reels found" : "No public posts yet"}
+            </p>
           )}
         </div>
       )}

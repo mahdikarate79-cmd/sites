@@ -11,5 +11,9 @@ export interface AuthUser extends User {
 export interface AuthMeResponse {
   user: AuthUser | null;
   loginMethod: LoginMethod;
+  sessionToken?: string;
   verificationMinFollowers?: number;
+  accountDeleted?: boolean;
+  canRecreateAt?: string;
+  remainingMs?: number;
 }

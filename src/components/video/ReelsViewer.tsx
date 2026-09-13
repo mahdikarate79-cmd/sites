@@ -18,6 +18,7 @@ import { DonateModal } from "@/components/donate/DonateModal";
 import { ReportModal } from "@/components/feed/ReportModal";
 import { usePrototype } from "@/lib/hooks/usePrototype";
 import { useTelegramGate } from "@/lib/hooks/useTelegramGate";
+import { toggleLikeApi } from "@/lib/api/social";
 import { useToast } from "@/components/ui/ToastProvider";
 import { formatCount } from "@/lib/utils/format";
 import { lockScroll, unlockScroll } from "@/lib/utils/scrollLock";
@@ -52,6 +53,32 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
   const { isLiked, toggleLike, getDonation, isFollowing, markInterested, markNotInterested, hidePost, toggleBookmark, isBookmarked } = usePrototype();
   const { requireMiniApp } = useTelegramGate();
   const { showToast } = useToast();
+  const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    const counts: Record<string, number> = {};
+    for (const reel of items) counts[reel.post.id] = reel.post.likes;
+    setLikeCounts(counts);
+  }, [items]);
+
+  const handleLike = async (postId: string) => {
+    if (!requireMiniApp()) return;
+    const nowLiked = toggleLike(postId);
+    setLikeCounts((prev) => ({
+      ...prev,
+      [postId]: nowLiked ? (prev[postId] ?? 0) + 1 : Math.max(0, (prev[postId] ?? 1) - 1),
+    }));
+    try {
+      const result = await toggleLikeApi(postId);
+      setLikeCounts((prev) => ({ ...prev, [postId]: result.likes }));
+    } catch {
+      toggleLike(postId);
+      setLikeCounts((prev) => ({
+        ...prev,
+        [postId]: nowLiked ? Math.max(0, (prev[postId] ?? 1) - 1) : (prev[postId] ?? 0) + 1,
+      }));
+    }
+  };
 
   const item = items[index];
   const post = item?.post;
@@ -171,7 +198,8 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
   const following = isFollowing(post.author.id);
 
   const copyLink = async () => {
-    await navigator.clipboard.writeText(`https://sheytoni.app/post/${post.id}`);
+    const { getPostShareUrl } = await import("@/lib/utils/siteUrl");
+    await navigator.clipboard.writeText(getPostShareUrl(post.id));
     showToast("Link copied");
     setMenuOpen(false);
   };
@@ -271,9 +299,9 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
                     className="absolute right-3 flex flex-col items-center gap-5 z-10 bottom-[max(5.5rem,calc(env(safe-area-inset-bottom)+4.5rem))]"
                     data-reel-ui
                   >
-                    <button onClick={(e) => { e.stopPropagation(); if (requireMiniApp()) toggleLike(reelPost.id); }} className="flex flex-col items-center gap-0.5">
+                    <button onClick={(e) => { e.stopPropagation(); handleLike(reelPost.id); }} className="flex flex-col items-center gap-0.5">
                       <Heart className={cn("w-7 h-7 drop-shadow", isLiked(reelPost.id) ? "text-like fill-like" : "text-white")} />
-                      <span className="text-white text-xs font-medium drop-shadow">{formatCount(reelPost.likes)}</span>
+                      <span className="text-white text-xs font-medium drop-shadow">{formatCount(likeCounts[reelPost.id] ?? reelPost.likes)}</span>
                     </button>
                     <div onClick={(e) => { e.stopPropagation(); if (requireMiniApp()) setDonateOpen(true); }}>
                       <DonateButton total={getDonation(reelPost.id, { total: reelPost.stars ?? 0, topDonators: reelPost.topDonators ?? [] }).total} donated={getDonation(reelPost.id).userDonated} onClick={() => setDonateOpen(true)} vertical size="sm" />
