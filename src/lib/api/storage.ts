@@ -1,6 +1,7 @@
 import { MediaObject, UploadValidation } from "@/lib/types";
 
 import { getApiBase } from "./base";
+import { getAuthHeaders } from "./tokens";
 
 export const UPLOAD_VALIDATION: UploadValidation = {
   maxSizeBytes: 50 * 1024 * 1024,
@@ -47,7 +48,7 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 export async function getSignedMediaUrl(objectKey: string): Promise<string> {
-  return `${getApiBase()}/api/media/${objectKey}`;
+  return `${getApiBase()}/api/media/${encodeURIComponent(objectKey)}`;
 }
 
 export interface UploadResult {
@@ -67,7 +68,10 @@ export async function uploadMedia(
   const res = await fetch(`${getApiBase()}/api/storage/upload`, {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+    },
     body: JSON.stringify({ data, contentType: file.type, category }),
   });
   if (!res.ok) {

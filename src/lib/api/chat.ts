@@ -1,51 +1,61 @@
 import { Chat, ChatMessage, ChatMediaItem } from "@/lib/types";
-import { mockChats, mockMessages as defaultMessages } from "@/data/mock/chats";
-import { appendPersistedMessage, loadChatMessages, persistChatMessages, replacePersistedMessage } from "./chatStorage";
-
-const mockMessages = defaultMessages;
-
-const MAX_MESSAGES_PER_CHAT = 100;
-
-function uniqueId(): string {
-  return `msg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-}
-
-function trimMessages(messages: ChatMessage[]): ChatMessage[] {
-  if (messages.length <= MAX_MESSAGES_PER_CHAT) return messages;
-  return messages.slice(-MAX_MESSAGES_PER_CHAT);
-}
+import { apiFetch } from "./fetch";
 
 export async function getChats(): Promise<Chat[]> {
-  return mockChats;
+  const data = await apiFetch<{ chats: Chat[] }>("/api/chats");
+  return data.chats ?? [];
+}
+
+export async function getChat(chatId: string): Promise<Chat | null> {
+  try {
+    const data = await apiFetch<{ chat: Chat }>(`/api/chats/${encodeURIComponent(chatId)}`);
+    return data.chat;
+  } catch {
+    return null;
+  }
 }
 
 export async function getChatMessages(chatId: string): Promise<ChatMessage[]> {
-  const fallback = mockMessages[chatId] ?? [];
-  const loaded = loadChatMessages(chatId, fallback);
-  mockMessages[chatId] = loaded;
-  return loaded;
+  const data = await apiFetch<{ messages: ChatMessage[] }>(
+    `/api/chats/${encodeURIComponent(chatId)}/messages`
+  );
+  return data.messages ?? [];
+}
+
+export async function startChatWithUser(userId: string): Promise<Chat> {
+  const data = await apiFetch<{ chat: Chat }>("/api/chats/start", {
+    method: "POST",
+    body: JSON.stringify({ userId }),
+  });
+  return data.chat;
 }
 
 export async function sendMessage(
   chatId: string,
   message: Omit<ChatMessage, "id" | "createdAt" | "read">
 ): Promise<ChatMessage> {
-  const newMessage: ChatMessage = {
-    ...message,
-    id: uniqueId(),
-    createdAt: new Date().toISOString(),
-    read: false,
-  };
-
-  if (!mockMessages[chatId]) mockMessages[chatId] = [];
-  mockMessages[chatId] = trimMessages(appendPersistedMessage(chatId, newMessage, mockMessages[chatId]));
-
-  const chat = mockChats.find((c) => c.id === chatId);
-  if (chat) {
-    chat.lastMessage = newMessage;
-  }
-
-  return newMessage;
+  const data = await apiFetch<{ message: ChatMessage }>(
+    `/api/chats/${encodeURIComponent(chatId)}/messages`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        type: message.type,
+        content: message.content,
+        album: message.album,
+        caption: message.caption,
+        paidStars: message.paidStars,
+        temporary: message.temporary,
+        objectKey: message.objectKey,
+        url: message.content,
+        replyTo: message.replyTo,
+        forwardedFrom: message.forwardedFrom,
+        spoiler: message.spoiler,
+        rotation: message.rotation,
+        mirrored: message.mirrored,
+      }),
+    }
+  );
+  return data.message;
 }
 
 export async function sendAlbumMessage(
@@ -62,15 +72,12 @@ export async function sendAlbumMessage(
     mirrored?: boolean;
   }
 ): Promise<ChatMessage> {
-  const groupId = uniqueId();
-  const newMessage: ChatMessage = {
-    id: uniqueId(),
+  return sendMessage(chatId, {
     chatId,
     senderId: payload.senderId,
     type: "album",
     content: payload.caption ?? "",
     album: payload.album,
-    groupId,
     caption: payload.caption,
     spoiler: payload.spoiler,
     paidStars: payload.paidStars,
@@ -78,19 +85,7 @@ export async function sendAlbumMessage(
     temporary: payload.temporary,
     rotation: payload.rotation,
     mirrored: payload.mirrored,
-    createdAt: new Date().toISOString(),
-    read: false,
-  };
-
-  if (!mockMessages[chatId]) mockMessages[chatId] = [];
-  mockMessages[chatId] = trimMessages(appendPersistedMessage(chatId, newMessage, mockMessages[chatId]));
-
-  const chat = mockChats.find((c) => c.id === chatId);
-  if (chat) {
-    chat.lastMessage = newMessage;
-  }
-
-  return newMessage;
+  });
 }
 
 export async function forwardMessage(
@@ -101,8 +96,7 @@ export async function forwardMessage(
     forwardedFrom: ChatMessage["forwardedFrom"];
   }
 ): Promise<ChatMessage> {
-  const newMessage: ChatMessage = {
-    id: uniqueId(),
+  return sendMessage(targetChatId, {
     chatId: targetChatId,
     senderId: payload.senderId,
     type: payload.source.type,
@@ -110,17 +104,5 @@ export async function forwardMessage(
     album: payload.source.album,
     caption: payload.source.caption,
     forwardedFrom: payload.forwardedFrom,
-    createdAt: new Date().toISOString(),
-    read: false,
-  };
-
-  if (!mockMessages[targetChatId]) mockMessages[targetChatId] = [];
-  mockMessages[targetChatId] = trimMessages(appendPersistedMessage(targetChatId, newMessage, mockMessages[targetChatId]));
-
-  const chat = mockChats.find((c) => c.id === targetChatId);
-  if (chat) chat.lastMessage = newMessage;
-
-  return newMessage;
+  });
 }
-
-export { replacePersistedMessage, persistChatMessages, MAX_MESSAGES_PER_CHAT };

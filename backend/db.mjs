@@ -4,9 +4,35 @@ import { getDatabase } from "./database/init.mjs";
 
 export { loadDb, saveDb };
 
+const DELETE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
 export function findUserByTelegramId(db, telegramId) {
   const r = getDatabase().prepare("SELECT * FROM users WHERE telegram_id = ? AND deleted = 0").get(telegramId);
   return r ? rowToUser(r) : null;
+}
+
+export function findUserByTelegramIdIncludingDeleted(db, telegramId) {
+  const r = getDatabase().prepare("SELECT * FROM users WHERE telegram_id = ?").get(telegramId);
+  return r ? rowToUser(r) : null;
+}
+
+export function getDeletionCooldown(user) {
+  if (!user?.deleted || !user.deletedAt) return null;
+  const canRecreateAt = new Date(user.deletedAt).getTime() + DELETE_COOLDOWN_MS;
+  const remainingMs = canRecreateAt - Date.now();
+  if (remainingMs <= 0) return null;
+  return { canRecreateAt: new Date(canRecreateAt).toISOString(), remainingMs };
+}
+
+export function purgeDeletedUser(db, userId) {
+  const sqlite = getDatabase();
+  sqlite.prepare("DELETE FROM users WHERE id = ?").run(userId);
+  sqlite.prepare("DELETE FROM sessions WHERE user_id = ?").run(userId);
+  delete db.users[userId];
+  for (const sid of Object.keys(db.sessions ?? {})) {
+    if (db.sessions[sid].userId === userId) delete db.sessions[sid];
+  }
+  db.deletedUserIds = (db.deletedUserIds ?? []).filter((id) => id !== userId);
 }
 
 export function findUserByUsername(db, username) {
@@ -27,21 +53,45 @@ export function usernameAvailable(db, username) {
   return !sqlite.prepare("SELECT 1 FROM users WHERE lower(username) = ? AND deleted = 0").get(lower);
 }
 
+/** Strip any Telegram username/photo leaked into Sheytoni profile */
+export function detachTelegramLeaks(user, tgUser) {
+  if (!user) return;
+  const tgUsername = tgUser?.username?.toLowerCase();
+
+  // Only strip username when it clearly came from Telegram, never wipe user-chosen names
+  if (tgUsername && user.username?.toLowerCase() === tgUsername) {
+    user.username = null;
+    user.usernameSet = false;
+  }
+
+  const av = String(user.avatar ?? "");
+  if (av.includes("telegram.org") || av.includes("t.me/") || av.startsWith("https://api.telegram.org")) {
+    user.avatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.telegramId ?? user.id}`;
+  }
+
+  const tgName = [tgUser?.first_name, tgUser?.last_name].filter(Boolean).join(" ").trim();
+  if (tgName && !user.profileCustomized && user.displayName === tgName) {
+    user.displayName = "User";
+  }
+}
+
 export function createUserFromTelegram(db, tgUser) {
   const id = `tg_${tgUser.id}`;
-  const displayName = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(" ") || "User";
+  // Sheytoni profile is independent from Telegram name/username/photo
+  const displayName = "User";
   return {
     id,
     telegramId: tgUser.id,
     username: null,
     displayName,
-    avatar: tgUser.photo_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${tgUser.id}`,
+    avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${tgUser.id}`,
     verified: false,
     premium: false,
     banned: false,
     starBalance: 0,
     earnings: 0,
     followers: 0,
+    fakeFollowers: 0,
     following: 0,
     postsCount: 0,
     loginMethod: "telegram",
@@ -50,6 +100,7 @@ export function createUserFromTelegram(db, tgUser) {
     deleted: false,
     verificationRequestPending: false,
     usernameSet: false,
+    profileCustomized: false,
   };
 }
 
@@ -92,10 +143,35 @@ export function deleteAccount(db, userId) {
   if (!user) return false;
   user.deleted = true;
   user.deletedAt = new Date().toISOString();
-  if (user.username) db.reservedUsernames.push(user.username.toLowerCase());
+  if (user.username) {
+    const lower = user.username.toLowerCase();
+    if (!db.reservedUsernames.includes(lower)) db.reservedUsernames.push(lower);
+    const sqlite = getDatabase();
+    sqlite.prepare("INSERT OR IGNORE INTO reserved_usernames VALUES (?)").run(lower);
+  }
   if (!db.deletedUserIds.includes(userId)) db.deletedUserIds.push(userId);
   deleteSessionsForUser(db, userId);
   return true;
+}
+
+export function resolveUserLookup(db, query) {
+  if (!query) return null;
+  const s = String(query).trim().replace(/^@/, "");
+  if (!s) return null;
+  if (/^\d+$/.test(s)) {
+    return findUserByTelegramId(db, Number(s)) ?? findUserById(db, `tg_${s}`) ?? findUserById(db, s);
+  }
+  return findUserByUsername(db, s) ?? findUserById(db, s);
+}
+
+export function isPostUnlocked(db, userId, postId) {
+  return !!(db.unlockedPosts?.[userId]?.[postId]);
+}
+
+export function unlockPost(db, userId, postId) {
+  if (!db.unlockedPosts) db.unlockedPosts = {};
+  if (!db.unlockedPosts[userId]) db.unlockedPosts[userId] = {};
+  db.unlockedPosts[userId][postId] = { unlockedAt: new Date().toISOString() };
 }
 
 export function isDeletedUserId(db, userId) {
@@ -118,8 +194,10 @@ export function publicUser(user) {
     banned: !!user.banned,
     starBalance: user.starBalance ?? 0,
     earnings: user.earnings ?? 0,
-    followers: user.followers ?? 0,
+    followers: (user.followers ?? 0) + (user.fakeFollowers ?? 0),
     following: user.following ?? 0,
+    realFollowers: user.followers ?? 0,
+    fakeFollowers: user.fakeFollowers ?? 0,
     postsCount: user.postsCount ?? 0,
     loginMethod: user.loginMethod ?? "telegram",
     verificationRequestPending: !!user.verificationRequestPending,
@@ -144,6 +222,7 @@ function rowToUser(r) {
     starBalance: r.star_balance,
     earnings: r.earnings,
     followers: r.followers,
+    fakeFollowers: r.fake_followers ?? 0,
     following: r.following,
     postsCount: r.posts_count,
     loginMethod: r.login_method,
@@ -153,5 +232,6 @@ function rowToUser(r) {
     deletedAt: r.deleted_at,
     verificationRequestPending: !!r.verification_request_pending,
     usernameSet: !!r.username_set,
+    profileCustomized: !!r.profile_customized,
   };
 }
