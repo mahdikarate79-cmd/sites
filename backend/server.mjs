@@ -56,6 +56,7 @@ import {
   isFollowing,
   ensureSocial,
   recordDonation,
+  searchUsers,
 } from "./social.mjs";
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? "";
 const DEV_AUTH = process.env.AUTH_DEV_MODE === "true";
@@ -200,14 +201,33 @@ async function handleTelegramAuth(req, res, secure) {
           error: "account_deleted",
           canRecreateAt: cooldown.canRecreateAt,
           remainingMs: cooldown.remainingMs,
-        }, corsHeaders(req.headers.origin));
+        }, {
+          ...corsHeaders(req.headers.origin),
+          "Set-Cookie": clearCookie(secure),
+        });
       }
       purgeDeletedUser(db, deletedUser.id);
     }
     user = createUserFromTelegram(db, tgUser);
+    if (tgUser.username) {
+      const un = String(tgUser.username).trim().toLowerCase();
+      if (usernameAvailable(db, un)) {
+        user.username = un;
+        user.usernameSet = true;
+      }
+    }
     db.users[user.id] = user;
   } else {
-    if (tgUser.photo_url) user.avatar = tgUser.photo_url;
+    if (tgUser.photo_url && !String(user.avatar ?? "").includes("dicebear")) {
+      user.avatar = tgUser.photo_url;
+    }
+    if (!user.username && tgUser.username) {
+      const un = String(tgUser.username).trim().toLowerCase();
+      if (usernameAvailable(db, un)) {
+        user.username = un;
+        user.usernameSet = true;
+      }
+    }
     touchUserActivity(db, user.id);
   }
 
@@ -513,8 +533,20 @@ async function handleProfileUpdate(req, res) {
   }
 
   if (body.bio !== undefined) user.bio = String(body.bio).slice(0, 500);
-  if (body.avatar) user.avatar = String(body.avatar);
-  if (body.cover !== undefined) user.cover = body.cover ? String(body.cover) : undefined;
+  if (body.avatar) {
+    const av = String(body.avatar);
+    if (av.startsWith("blob:") || av.startsWith("data:")) {
+      return json(res, 400, { error: "Upload avatar via storage API" }, corsHeaders(req.headers.origin));
+    }
+    user.avatar = av;
+  }
+  if (body.cover !== undefined) {
+    const cv = body.cover ? String(body.cover) : "";
+    if (cv && (cv.startsWith("blob:") || cv.startsWith("data:"))) {
+      return json(res, 400, { error: "Upload cover via storage API" }, corsHeaders(req.headers.origin));
+    }
+    user.cover = cv || undefined;
+  }
 
   if (body.username !== undefined) {
     const nextUsername = String(body.username).trim().toLowerCase();
@@ -600,6 +632,12 @@ async function handleSocial(req, res, url) {
   ensureSocial(db);
   const user = requireUser(req, db);
   const origin = req.headers.origin;
+
+  if (url === "/api/users/search" && req.method === "GET") {
+    const q = new URL(req.url ?? "", "http://localhost").searchParams.get("q") ?? "";
+    json(res, 200, { users: searchUsers(db, q) }, corsHeaders(origin));
+    return true;
+  }
 
   if (url === "/api/feed" && req.method === "GET") {
     json(res, 200, { posts: getFeedPosts(db, user?.id ?? null) }, corsHeaders(origin));

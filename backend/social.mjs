@@ -115,16 +115,48 @@ export function getPostsByAuthor(db, authorId, viewerId = null) {
     .filter(Boolean);
 }
 
+function sanitizeMediaList(media) {
+  return (media ?? [])
+    .filter((m) => {
+      const url = String(m?.url ?? "");
+      if (url.startsWith("blob:") || url.startsWith("data:")) return false;
+      return !!(url || m?.objectKey);
+    })
+    .map((m) => ({
+      type: m.type ?? "image",
+      url: m.url ?? null,
+      thumbnail: m.thumbnail,
+      objectKey: m.objectKey,
+    }));
+}
+
+export function searchUsers(db, query) {
+  const q = String(query ?? "").trim().toLowerCase().replace(/^@/, "");
+  if (!q) return [];
+  return Object.values(db.users ?? {})
+    .filter((u) => !u.deleted)
+    .filter((u) =>
+      (u.username ?? "").toLowerCase().includes(q)
+      || (u.displayName ?? "").toLowerCase().includes(q)
+      || String(u.telegramId ?? "").includes(q)
+      || u.id.toLowerCase().includes(q)
+    )
+    .sort((a, b) => displayFollowers(b) - displayFollowers(a))
+    .slice(0, 50)
+    .map((u) => publicUser(u));
+}
+
 export function createPost(db, authorId, body) {
   ensureSocial(db);
   const author = findUserById(db, authorId);
   if (!author) return { ok: false, error: "User not found" };
   const id = `p_${crypto.randomBytes(6).toString("hex")}`;
+  const media = sanitizeMediaList(body.media);
   const post = {
     id,
     authorId,
     content: String(body.content ?? "").slice(0, 5000),
-    media: body.media ?? [],
+    media,
     tags: body.tags ?? [],
     paidStars: body.paidStars ? Math.max(1, Number(body.paidStars)) : undefined,
     privacy: body.privacy,

@@ -1,10 +1,17 @@
 "use client";
 
-import { createContext, useCallback, useContext, useState, ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from "react";
 import { Comment, Donator, Post, PostDonationState, PrototypeState, User } from "@/lib/types";
 import { canViewPostMedia, PostAccessContext, shouldShowInFeed } from "@/lib/utils/postAccess";
 import { assertValidStarSpend, assertValidUnlock, sanitizePostContent, sanitizeTags } from "@/lib/security/validate";
-import { loadState, saveState, getPostDonation, ensureStarBalance, createTransaction } from "@/lib/store/prototypeStore";
+import {
+  AUTH_STORAGE_EVENT,
+  loadState,
+  saveState,
+  getPostDonation,
+  ensureStarBalance,
+  createTransaction,
+} from "@/lib/store/prototypeStore";
 import { useAuth } from "@/lib/hooks/useAuth";
 
 interface PrototypeContextValue {
@@ -59,17 +66,28 @@ const PrototypeContext = createContext<PrototypeContextValue | null>(null);
 
 export function PrototypeProvider({ children }: { children: ReactNode }) {
   const { user: authUser } = useAuth();
+  const userId = authUser?.id ?? null;
   const [state, setState] = useState<PrototypeState>(() =>
-    typeof window !== "undefined" ? loadState() : DEFAULT_LOAD
+    typeof window !== "undefined" ? loadState(userId) : DEFAULT_LOAD
   );
+
+  useEffect(() => {
+    setState(loadState(userId));
+  }, [userId]);
+
+  useEffect(() => {
+    const reload = () => setState(loadState(userId));
+    window.addEventListener(AUTH_STORAGE_EVENT, reload);
+    return () => window.removeEventListener(AUTH_STORAGE_EVENT, reload);
+  }, [userId]);
 
   const update = useCallback((fn: (s: PrototypeState) => PrototypeState) => {
     setState((prev) => {
       const next = fn(prev);
-      saveState(next);
+      saveState(next, userId);
       return next;
     });
-  }, []);
+  }, [userId]);
 
   const isFollowing = useCallback((userId: string) => state.following.includes(userId), [state.following]);
   const isBlocked = useCallback((userId: string) => state.blocked.includes(userId), [state.blocked]);
@@ -128,7 +146,22 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
   );
 
   const resolveUser = useCallback((): User => {
-    if (authUser) return { ...authUser, ...state.profileEdits, premium: authUser.premium };
+    if (authUser) {
+      const edits = state.profileEdits;
+      return {
+        ...authUser,
+        ...edits,
+        id: authUser.id,
+        username: authUser.username ?? edits.username ?? undefined,
+        displayName: edits.displayName ?? authUser.displayName,
+        avatar: edits.avatar ?? authUser.avatar,
+        premium: authUser.premium,
+        verified: authUser.verified,
+        followers: authUser.followers,
+        following: authUser.following,
+        postsCount: authUser.postsCount,
+      };
+    }
     return { ...GUEST_USER, ...state.profileEdits };
   }, [authUser, state.profileEdits]);
 

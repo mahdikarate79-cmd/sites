@@ -53,6 +53,13 @@ export async function toggleLikeApi(postId: string): Promise<{ liked: boolean; l
   return apiFetch(`/api/posts/${encodeURIComponent(postId)}/like`, { method: "POST" });
 }
 
+export async function searchUsers(query: string): Promise<User[]> {
+  const q = encodeURIComponent(query.trim());
+  if (!q) return [];
+  const data = await apiFetch<{ users: User[] }>(`/api/users/search?q=${q}`);
+  return data.users ?? [];
+}
+
 export async function fetchPaidMediaUnlocks(): Promise<string[]> {
   const data = await apiFetch<{ unlocks: string[] }>("/api/user/paid-media-unlocks");
   return data.unlocks ?? [];

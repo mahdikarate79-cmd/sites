@@ -1,4 +1,5 @@
 import { User } from "@/lib/types";
+import { clearPrototypeStorage } from "@/lib/store/prototypeStore";
 
 export const DELETED_ACCOUNT_ID = "deleted_account";
 
@@ -45,8 +46,6 @@ export function resolveUser(user: User): User {
   return user;
 }
 
-export function clearLocalUserData(): void {
-  if (typeof window === "undefined") return;
-  localStorage.removeItem("sheytoni-prototype");
-  localStorage.removeItem("sheytoni-chat-messages");
+export function clearLocalUserData(userId?: string | null): void {
+  clearPrototypeStorage(userId);
 }

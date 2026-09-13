@@ -372,8 +372,8 @@ function NotifyForm({ onAct }: { onAct: (a: string, d?: Record<string, unknown>)
       <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" className="w-full px-3 py-2 rounded-xl bg-surface border border-border text-sm" />
       <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="Message" rows={3} className="w-full px-3 py-2 rounded-xl bg-surface border border-border text-sm" />
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={broadcast} onChange={(e) => setBroadcast(e.target.checked)} /> Broadcast to all</label>
-      {!broadcast && <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Username" className="w-full px-3 py-2 rounded-xl bg-surface border border-border text-sm" />}
-      <button type="button" onClick={() => onAct("send_notification", { title, body, broadcast, username })} className="w-full py-2.5 rounded-full bg-[#2AABEE] text-white text-sm font-medium">Send</button>
+      {!broadcast && <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Username, Telegram ID, or user id" className="w-full px-3 py-2 rounded-xl bg-surface border border-border text-sm" />}
+      <button type="button" onClick={() => onAct("send_notification", { title, body, broadcast, query: username, username })} className="w-full py-2.5 rounded-full bg-[#2AABEE] text-white text-sm font-medium">Send</button>
     </div>
   );
 }

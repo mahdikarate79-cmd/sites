@@ -1,5 +1,3 @@
-import { mockUsers } from "@/data/mock/users";
-
 const USERNAME_PATTERN = /^[a-z0-9_]+$/;
 
 export const BANNED_USERNAMES = new Set([
@@ -15,10 +13,6 @@ export const BANNED_USERNAMES = new Set([
   "null",
   "undefined",
 ]);
-
-const TAKEN_USERNAMES = new Set(
-  mockUsers.map((u) => u.username?.toLowerCase()).filter(Boolean) as string[]
-);
 
 export type UsernameValidation =
   | { valid: true }
@@ -45,8 +39,8 @@ export function validateUsername(value: string, currentUsername: string): Userna
     if (username.length < 4) {
       return { valid: false, error: "Username must be at least 4 characters." };
     }
-    if (TAKEN_USERNAMES.has(username) || BANNED_USERNAMES.has(username)) {
-      return { valid: false, error: "This username is already taken." };
+    if (BANNED_USERNAMES.has(username)) {
+      return { valid: false, error: "This username is not allowed." };
     }
   }
 

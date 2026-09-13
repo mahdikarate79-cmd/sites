@@ -74,13 +74,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    let tgUser: { id?: number } = {};
+    try {
+      tgUser = JSON.parse(new URLSearchParams(initData).get("user") ?? "{}");
+    } catch { /* ignore */ }
+
+    if (tgUser.id && lastTelegramId.current && tgUser.id !== lastTelegramId.current) {
+      clearLocalUserData(lastTelegramId.current ? `tg_${lastTelegramId.current}` : null);
+    }
+
     try {
       const data = await authenticateWithTelegram(initData);
       applyMe(data);
+      if (data.accountDeleted) {
+        clearLocalUserData();
+        lastTelegramId.current = tgUser.id ?? null;
+        return;
+      }
       if (data.user) {
-        const tgUser = JSON.parse(new URLSearchParams(initData).get("user") ?? "{}");
         lastTelegramId.current = tgUser.id ?? null;
         await refreshUnlocks();
+      } else {
+        lastTelegramId.current = null;
       }
     } catch {
       applyMe({ user: null, loginMethod: "guest" });
@@ -132,6 +147,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const tgUser = JSON.parse(new URLSearchParams(initData).get("user") ?? "{}");
         if (tgUser.id && lastTelegramId.current && tgUser.id !== lastTelegramId.current) {
+          clearLocalUserData(`tg_${lastTelegramId.current}`);
           await authenticateTelegram();
         }
       } catch { /* ignore */ }
@@ -162,7 +178,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const uid = user?.id;
     await deleteAuthAccount();
     if (uid) markUserDeleted(uid);
-    clearLocalUserData();
+    clearLocalUserData(uid);
     setUser(null);
     setLoginMethod("guest");
     setUnlockedPostIds([]);

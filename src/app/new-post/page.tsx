@@ -7,6 +7,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Avatar } from "@/components/ui/Avatar";
 import { usePrototype } from "@/lib/hooks/usePrototype";
 import { createPostApi } from "@/lib/api/social";
+import { uploadMedia } from "@/lib/api/storage";
 import { useToast } from "@/components/ui/ToastProvider";
 import { Post, PostMedia } from "@/lib/types";
 import {
@@ -39,6 +40,7 @@ export default function NewPostPage() {
 
   const [content, setContent] = useState("");
   const [media, setMedia] = useState<PostMedia | null>(null);
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [mediaPreview, setMediaPreview] = useState<string | null>(null);
   const [tagInput, setTagInput] = useState("");
   const [tags, setTags] = useState<string[]>([]);
@@ -65,11 +67,12 @@ export default function NewPostPage() {
     const url = URL.createObjectURL(file);
     const type = file.type.startsWith("video/") ? "video" : "image";
     setMediaPreview(url);
+    setMediaFile(file);
     setMedia({
       type,
       url,
       thumbnail: type === "image" ? url : undefined,
-      objectKey: `posts/user/${Date.now()}_${file.name}`,
+      objectKey: "",
     });
   };
 
@@ -92,9 +95,19 @@ export default function NewPostPage() {
 
     setPosting(true);
     try {
+      let uploadedMedia: PostMedia[] = [];
+      if (media && mediaFile) {
+        const uploaded = await uploadMedia(mediaFile, "post");
+        uploadedMedia = [{
+          type: media.type,
+          url: uploaded.media.url,
+          objectKey: uploaded.objectKey,
+          thumbnail: media.type === "image" ? uploaded.media.url : undefined,
+        }];
+      }
       const post = await createPostApi({
         content: content.trim(),
-        media: media ? [media] : [],
+        media: uploadedMedia,
         tags,
         paidStars: paidEnabled && media ? paidStars : undefined,
         privacy: noUsername || privacyEnabled
@@ -135,7 +148,7 @@ export default function NewPostPage() {
             )}
             <button
               type="button"
-              onClick={() => { setMedia(null); setMediaPreview(null); }}
+              onClick={() => { setMedia(null); setMediaFile(null); setMediaPreview(null); }}
               className="absolute top-2 right-2 p-1.5 rounded-full glass-nav"
               aria-label="Remove media"
             >

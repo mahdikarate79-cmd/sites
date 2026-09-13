@@ -60,7 +60,7 @@ export function PostCard({ post, onHide, allPosts }: PostCardProps) {
     [reelSource, user.id, isFollowing, isPostUnlocked]
   );
   const hasReelMedia = post.media?.some((m) => m.type === "video" || m.type === "image" || m.type === "gif");
-  const profileHref = `/profile/${post.author.username}/`;
+  const profileHref = `/profile/${post.author.username || post.author.id}/`;
 
   const openReels = (mediaIndex: number) => {
     if (paidLocked || privateLocked) return;

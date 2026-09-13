@@ -1,6 +1,7 @@
 import { Donator, PostDonationState, PrototypeState, TransactionRecord, User } from "@/lib/types";
 
-const STORAGE_KEY = "sheytoni-prototype";
+export const AUTH_STORAGE_EVENT = "sheytoni-auth-storage-reset";
+const LEGACY_KEY = "sheytoni-prototype";
 
 const DEFAULT_STATE: PrototypeState = {
   following: [],
@@ -31,6 +32,11 @@ const DEFAULT_STATE: PrototypeState = {
   unlockedPaidPosts: [],
 };
 
+export function storageKey(userId?: string | null): string {
+  if (!userId) return `${LEGACY_KEY}-guest`;
+  return `${LEGACY_KEY}-${userId}`;
+}
+
 export function ensureStarBalance(balance: number): number {
   return Math.max(0, balance);
 }
@@ -47,20 +53,37 @@ export function createTransaction(
   };
 }
 
-export function loadState(): PrototypeState {
+export function loadState(userId?: string | null): PrototypeState {
   if (typeof window === "undefined") return DEFAULT_STATE;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_STATE;
+    const key = storageKey(userId);
+    let raw = localStorage.getItem(key);
+    if (!raw && userId) {
+      raw = localStorage.getItem(LEGACY_KEY);
+      if (raw) {
+        localStorage.setItem(key, raw);
+        localStorage.removeItem(LEGACY_KEY);
+      }
+    }
+    if (!raw) return { ...DEFAULT_STATE };
     return { ...DEFAULT_STATE, ...JSON.parse(raw) };
   } catch {
-    return DEFAULT_STATE;
+    return { ...DEFAULT_STATE };
   }
 }
 
-export function saveState(state: PrototypeState): void {
+export function saveState(state: PrototypeState, userId?: string | null): void {
   if (typeof window === "undefined") return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  localStorage.setItem(storageKey(userId), JSON.stringify(state));
+}
+
+export function clearPrototypeStorage(userId?: string | null): void {
+  if (typeof window === "undefined") return;
+  if (userId) localStorage.removeItem(storageKey(userId));
+  localStorage.removeItem(LEGACY_KEY);
+  localStorage.removeItem(`${LEGACY_KEY}-guest`);
+  localStorage.removeItem("sheytoni-chat-messages");
+  window.dispatchEvent(new Event(AUTH_STORAGE_EVENT));
 }
 
 export function formatBadgeCount(n: number): string | null {
