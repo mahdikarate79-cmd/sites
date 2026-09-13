@@ -47,7 +47,7 @@ export function ChatList() {
           key={chat.id}
           className="flex items-center gap-3 px-4 py-3 border-b border-border hover:bg-surface/50 transition-colors"
         >
-          <Link href={`/profile/${chat.participant.username}/`} className="shrink-0">
+          <Link href={`/profile/${chat.participant.username || chat.participant.id}/`} className="shrink-0">
             <Avatar src={chat.participant.avatar} alt={chat.participant.displayName} size="lg" />
           </Link>
           <Link href={`/chat/${chat.id}/`} className="flex-1 min-w-0">

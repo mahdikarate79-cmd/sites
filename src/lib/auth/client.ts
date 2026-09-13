@@ -10,18 +10,32 @@ async function authFetch<T>(path: string, options: RequestInit = {}): Promise<T>
       ...(options.headers ?? {}),
     },
   });
+  const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error ?? `Auth error ${res.status}`);
+    throw Object.assign(new Error(data.error ?? `Auth error ${res.status}`), { data, status: res.status });
   }
-  return res.json() as Promise<T>;
+  return data as T;
 }
 
 export async function authenticateWithTelegram(initData: string): Promise<AuthMeResponse> {
-  return authFetch<AuthMeResponse>("/api/auth/telegram", {
+  const res = await fetch(`${getApiBase()}/api/auth/telegram`, {
     method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ initData }),
   });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 403 && data.error === "account_deleted") {
+    return {
+      user: null,
+      loginMethod: "guest",
+      accountDeleted: true,
+      canRecreateAt: data.canRecreateAt,
+      remainingMs: data.remainingMs,
+    };
+  }
+  if (!res.ok) throw new Error(data.error ?? `Auth error ${res.status}`);
+  return data as AuthMeResponse;
 }
 
 export async function fetchAuthMe(): Promise<AuthMeResponse> {
