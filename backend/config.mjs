@@ -1,17 +1,16 @@
 /**
  * Central config — all values from environment variables in production.
+ * cPanel/Passenger often omits PORT; server uses listen("passenger") instead.
  */
 function resolvePort() {
-  const raw = process.env.PORT ?? process.env.AUTH_PORT;
-  if (raw !== undefined && String(raw).trim() !== "") {
-    const n = Number(raw);
-    if (Number.isFinite(n) && n > 0) return n;
-    console.warn(`[config] Invalid PORT="${raw}" — check cPanel Environment Variables`);
+  for (const key of ["PORT", "PASSENGER_LISTEN_PORT", "NODE_PORT", "AUTH_PORT"]) {
+    const raw = process.env[key];
+    if (raw !== undefined && String(raw).trim() !== "") {
+      const n = Number(raw);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
   }
-  if (process.env.NODE_ENV === "production") {
-    console.warn("[config] PORT not set — cPanel usually injects this; app may return 503");
-  }
-  return 8787;
+  return null;
 }
 
 export const config = {

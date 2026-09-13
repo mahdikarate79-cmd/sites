@@ -29,9 +29,7 @@ import { startCleanupScheduler } from "./mediaCleanup.mjs";
 import { serveStatic, staticDirExists } from "./static.mjs";
 import { config } from "./config.mjs";
 import { getDatabase } from "./database/init.mjs";
-
-const PORT = config.port;
-const HOST = config.host;
+import { startHttpServer } from "./listen.mjs";
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? "";
 const DEV_AUTH = process.env.AUTH_DEV_MODE === "true";
 const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET ?? "";
@@ -548,17 +546,12 @@ const dbRef = () => {
 
 startCleanupScheduler(dbRef, saveDb);
 
-server.on("error", (err) => {
-  console.error(`[server] Failed to listen on ${HOST}:${PORT}`, err);
-  process.exit(1);
-});
-
-server.listen(PORT, HOST, () => {
+startHttpServer(server, () => {
   getDatabase();
   const db = loadDb();
   ensureAdminSettings(db);
   saveDb(db);
   console.log(
-    `Sheytoni API on http://${HOST}:${PORT} (env=${config.nodeEnv}, PORT env=${process.env.PORT ?? "unset"}, db=sqlite, cors=${ORIGINS.join(",")})`,
+    `Sheytoni API ready (env=${config.nodeEnv}, cwd=${process.cwd()}, cors=${ORIGINS.join(",")})`,
   );
 });

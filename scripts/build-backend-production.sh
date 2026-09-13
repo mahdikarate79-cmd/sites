@@ -19,27 +19,31 @@ done
 cp -r backend/database "$OUT_DIR/lib/database"
 touch "$OUT_DIR/data/.gitkeep"
 
-# cPanel startup file at package root — thin entry only, no direct ./config.mjs imports
+# cPanel startup file at package root
 cp backend/cpanel-entry.mjs "$OUT_DIR/server.mjs"
 
-# package.json — production dependencies only
 cat > "$OUT_DIR/package.json" << 'EOF'
 {
   "name": "sheytoni-api",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=18" },
+  "engines": { "node": ">=18 <=22" },
+  "scripts": {
+    "start": "node server.mjs"
+  },
   "dependencies": {
-    "better-sqlite3": "^13.0.3"
+    "better-sqlite3": "11.8.1"
   }
 }
 EOF
 
-# .env.example for cPanel Environment Variables
+cat > "$OUT_DIR/.npmrc" << 'EOF'
+engine-strict=false
+EOF
+
 cat > "$OUT_DIR/.env.example" << 'EOF'
 NODE_ENV=production
-PORT=
 HOST=0.0.0.0
 
 SITE_URL=https://x.venify.xyz
@@ -65,17 +69,11 @@ EOF
 echo "==> Verifying package structure..."
 test -f "$OUT_DIR/server.mjs" || { echo "ERROR: server.mjs missing at root"; exit 1; }
 test -f "$OUT_DIR/lib/server.mjs" || { echo "ERROR: lib/server.mjs missing"; exit 1; }
-test -f "$OUT_DIR/lib/config.mjs" || { echo "ERROR: lib/config.mjs missing"; exit 1; }
+test -f "$OUT_DIR/lib/listen.mjs" || { echo "ERROR: lib/listen.mjs missing"; exit 1; }
+test -f "$OUT_DIR/lib/database/sqlite.mjs" || { echo "ERROR: lib/database/sqlite.mjs missing"; exit 1; }
 
-# Root server.mjs must NOT import ./config.mjs directly (only via lib/server.mjs)
 if grep -q './config.mjs' "$OUT_DIR/server.mjs"; then
-  echo "ERROR: root server.mjs must not import ./config.mjs — use lib/server.mjs"
-  exit 1
-fi
-
-# lib/server.mjs must use relative imports within lib/
-if ! grep -q './config.mjs' "$OUT_DIR/lib/server.mjs"; then
-  echo "ERROR: lib/server.mjs missing ./config.mjs import"
+  echo "ERROR: root server.mjs must not import ./config.mjs"
   exit 1
 fi
 
@@ -86,10 +84,9 @@ fi
 
 echo "==> Creating $ZIP_NAME ..."
 rm -f "$ZIP_NAME"
-(cd "$OUT_DIR" && zip -r "../$ZIP_NAME" . -x "node_modules/*" "data/sheytoni.db*" "*.DS_Store")
+(cd "$OUT_DIR" && zip -r "../$ZIP_NAME" . \
+  -x "node_modules/*" "data/sheytoni.db*" "*.DS_Store" "tmp/*" "public/*")
 
 echo ""
 echo "✅ Backend package ready: $ZIP_NAME"
-echo "   Root server.mjs → imports ./lib/server.mjs"
-echo "   lib/server.mjs  → imports ./config.mjs (inside lib/)"
-echo "   Extract into: /home/venifybo/api.venify.xyz"
+echo "   Run: bash scripts/test-backend-production.sh"
