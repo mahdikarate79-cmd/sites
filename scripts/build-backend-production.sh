@@ -21,6 +21,7 @@ touch "$OUT_DIR/data/.gitkeep"
 
 # cPanel startup file at package root
 cp backend/cpanel-entry.mjs "$OUT_DIR/server.mjs"
+cp backend/INSTALL-CPANEL.txt "$OUT_DIR/INSTALL-CPANEL.txt"
 
 cat > "$OUT_DIR/package.json" << 'EOF'
 {

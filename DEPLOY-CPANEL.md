@@ -92,24 +92,50 @@ api.venify.xyz/
 
 **۲.** در cPanel → **Setup Node.js App** → Application root را روی `/home/venifybo/api.venify.xyz` تنظیم کنید.
 
-**۳.** در ترمینال cPanel (یا SSH):
+**۳.** نصب dependencies — **یکی از دو روش:**
+
+#### روش A — از cPanel UI (پیشنهادی)
+
+1. cPanel → **Setup Node.js App**
+2. اپلیکیشن `api.venify.xyz` را باز کنید
+3. روی **Run NPM Install** کلیک کنید
+4. **Restart** اپلیکیشن
+
+#### روش B — از SSH / Terminal
+
+> ⚠️ در SSH معمولی `npm: command not found` طبیعی است. ابتدا virtualenv را فعال کنید.
+
+1. cPanel → **Setup Node.js App** → اپلیکیشن را باز کنید
+2. دستور **«Enter to virtual environment»** را از بالای صفحه کپی کنید. شکل معمول:
 
 ```bash
-cd /home/venifybo/api.venify.xyz
+source /home/venifybo/nodevenv/api.venify.xyz/20/bin/activate && cd /home/venifybo/api.venify.xyz
+```
+
+3. در **cPanel Terminal** (نه SSH خام بدون activate) همان دستور را paste کنید
+4. بعد از activate، `npm` کار می‌کند:
+
+```bash
 rm -rf node_modules package-lock.json
 npm install --production
 npm rebuild better-sqlite3
 ```
 
-**۴.** در cPanel روی **Run NPM Install** کلیک کنید (اگر دکمه وجود دارد).
+5. اگر مسیر virtualenv را نمی‌دانید:
 
-**۵.** Environment Variables را تنظیم کنید (پایین).
+```bash
+ls ~/nodevenv/
+```
 
-**۶.** **Stop App** → **Start App** (یا Restart).
+**۴.** Environment Variables را تنظیم کنید (پایین).
+
+**۵.** **Stop App** → **Start App** (یا Restart).
 
 > **نکته Passenger:** cPanel/CloudLinux معمولاً `PORT` در env قرار نمی‌دهد. سرور با `listen("passenger")` سازگار است — نیازی به تنظیم دستی PORT نیست.
 
 > **نکته better-sqlite3:** ماژول native است و باید روی سرور با `npm install` ساخته شود. ZIP شامل `node_modules` نیست.
+
+> **نکته CloudLinux:** بعد از `npm install` در virtualenv، cPanel معمولاً `node_modules` را به پوشهٔ اپ symlink می‌کند. اگر `node_modules` خالی است، از **Run NPM Install** در cPanel استفاده کنید.
 
 ### Environment Variables (cPanel → Setup Node.js App → Environment Variables)
 
@@ -135,12 +161,14 @@ npm rebuild better-sqlite3
 
 > **`PORT` لازم نیست** — Passenger پورت را مدیریت می‌کند. اگر خطای 503 دارید، `npm rebuild better-sqlite3` و Restart کنید.
 
-### عیب‌یابی 503
+### عیب‌یابی
 
-| خطا در stderr.log | راه‌حل |
-|-------------------|--------|
-| `Cannot find package 'better-sqlite3'` | `cd` به Application root → `npm install --production` → `npm rebuild better-sqlite3` → Restart |
-| `PORT not set` | نسخه جدید ZIP — Passenger نیازی به PORT ندارد |
+| مشکل | راه‌حل |
+|------|--------|
+| `bash: npm: command not found` | virtualenv را فعال کنید (بالا) یا از **Run NPM Install** در cPanel استفاده کنید |
+| `Cannot find package 'better-sqlite3'` | بعد از activate virtualenv: `npm install --production` → `npm rebuild better-sqlite3` → Restart |
+| `PORT not set` | نسخه v3 ZIP — Passenger نیازی به PORT ندارد |
+| 503 بعد از نصب | Restart اپ + بررسی `stderr.log` در cPanel |
 | `EACCES` روی `data/` | `chmod 755 data` و مالکیت پوشه را بررسی کنید |
 
 ### تست Backend
