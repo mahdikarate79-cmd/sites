@@ -15,13 +15,28 @@ rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR"
 cp -r out/. "$OUT_DIR/"
 
-# SPA routing for cPanel Apache
+# Apache routing for Next.js static export on cPanel
+# Next export creates both route.html AND route/ (payload only) — without this, /admin → 403
 cat > "$OUT_DIR/.htaccess" << 'EOF'
 DirectoryIndex index.html
 Options -Indexes
 
 <IfModule mod_rewrite.c>
   RewriteEngine On
+  RewriteBase /
+
+  # /admin/ directory exists but has no index.html → serve admin.html
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteCond %{REQUEST_URI} ^/(.+?)/?$
+  RewriteCond %{DOCUMENT_ROOT}/%1.html -f
+  RewriteRule ^ /%1.html [L]
+
+  # /route without extension → route.html
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME}.html -f
+  RewriteRule ^(.+?)/?$ $1.html [L]
+
+  # SPA fallback
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
   RewriteRule ^ index.html [L]

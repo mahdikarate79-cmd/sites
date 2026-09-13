@@ -177,6 +177,57 @@ ls ~/nodevenv/
 GET https://api.venify.xyz/api/health
 ```
 
+---
+
+## ۸. سوالات متداول
+
+### Webhook چیست؟ (نیازی به cPanel نیست)
+
+**Webhook مربوط به Telegram Bot است، نه cPanel.**
+
+| مورد | توضیح |
+|------|--------|
+| چیست؟ | آدرسی که Telegram برای ارسال رویدادهای پرداخت Stars به Backend شما صدا می‌زند |
+| کجا تنظیم می‌شود؟ | در Telegram (با API ربات)، **نه** در Setup Node.js App |
+| برای Login لازم است؟ | **خیر** — Login از Mini App با `initData` کار می‌کند |
+| برای چی لازم است؟ | فقط **پرداخت Premium و Stars** |
+
+بعد از آماده بودن Backend، یک بار در مرورگر باز کنید:
+
+```
+https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook?url=https://api.venify.xyz/api/telegram/webhook&secret_token=<TELEGRAM_WEBHOOK_SECRET>
+```
+
+اگر `TELEGRAM_WEBHOOK_SECRET` خالی باشد، webhook هم کار می‌کند (بدون secret).
+
+### چرا در مرورگر عادی Login نمی‌شود؟
+
+Sheytoni عمداً **فقط از داخل Telegram Mini App** Login می‌کند.
+
+| محیط | Login |
+|------|-------|
+| Telegram Mini App (از ربات) | ✅ خودکار |
+| مرورگر Chrome/Safari (سایت مستقیم) | ❌ فقط Guest — باید از ربات باز شود |
+
+کاربر باید از ربات `@Sheytoni_Bot` → **Open App** استفاده کند، نه آدرس `x.venify.xyz` در مرورگر.
+
+اگر در Mini App هم Login نمی‌شود، در Backend این env را بررسی کنید:
+
+```
+COOKIE_DOMAIN=.venify.xyz
+CORS_ORIGINS=https://x.venify.xyz
+```
+
+### پنل ادمین 403 Forbidden
+
+علت معمول: Apache پوشهٔ `admin/` را می‌بیند (بدون `index.html`) و 403 می‌دهد.
+
+**راه‌حل سریع:** `https://x.venify.xyz/admin.html`
+
+**راه‌حل دائم:** Frontend ZIP جدید (با `.htaccess` اصلاح‌شده) را آپلود کنید.
+
+ورود ادمین: username/password از `ADMIN_DEFAULT_USERNAME` و `ADMIN_DEFAULT_PASSWORD` در env Backend.
+
 پاسخ مورد انتظار:
 
 ```json
