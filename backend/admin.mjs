@@ -18,18 +18,21 @@ export function ensureAdminSettings(db) {
   if (!db.settings) {
     db.settings = { verificationMinFollowers: 10000 };
   }
-  if (!db.settings.adminUsername) {
-    const adminUser = process.env.ADMIN_DEFAULT_USERNAME;
-    const adminPass = process.env.ADMIN_DEFAULT_PASSWORD;
+  const adminUser = process.env.ADMIN_DEFAULT_USERNAME?.trim();
+  const adminPass = process.env.ADMIN_DEFAULT_PASSWORD?.trim();
+  const forceReset = process.env.ADMIN_FORCE_RESET === "true";
+
+  if (!db.settings.adminUsername || forceReset) {
     if (!adminUser || !adminPass) {
-      if (process.env.NODE_ENV === "production") {
+      if (process.env.NODE_ENV === "production" && !db.settings.adminUsername) {
         throw new Error("ADMIN_DEFAULT_USERNAME and ADMIN_DEFAULT_PASSWORD must be set in production");
       }
     }
     const { salt, hash } = hashPassword(adminPass ?? "changeme");
-    db.settings.adminUsername = adminUser ?? "admin";
+    db.settings.adminUsername = adminUser ?? db.settings.adminUsername ?? "admin";
     db.settings.adminPasswordSalt = salt;
     db.settings.adminPasswordHash = hash;
+    if (forceReset) console.log("[admin] Credentials reset from env (ADMIN_FORCE_RESET=true)");
   }
   if (!db.adminSessions) db.adminSessions = {};
   if (!db.posts) db.posts = {};

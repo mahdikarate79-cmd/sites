@@ -10,6 +10,7 @@ import {
   getDeletionCooldown,
   purgeDeletedUser,
   createUserFromTelegram,
+  detachTelegramLeaks,
   isPostUnlocked,
   unlockPost,
   createSession,
@@ -27,7 +28,7 @@ import {
   handleAdminAction,
   getAdminSession,
 } from "./admin.mjs";
-import { uploadToB2, isB2Configured, downloadFromB2 } from "./b2.mjs";
+import { uploadToB2, isB2Configured, downloadFromB2, testB2Connection } from "./b2.mjs";
 import { createStarsInvoice, answerPreCheckoutQuery, verifyWebhookSecret, isBotConfigured } from "./telegramBot.mjs";
 import { createNotification, getUserNotifications } from "./notifications.mjs";
 import { startCleanupScheduler } from "./mediaCleanup.mjs";
@@ -228,6 +229,7 @@ async function handleTelegramAuth(req, res, secure) {
     user = createUserFromTelegram(db, tgUser);
     db.users[user.id] = user;
   } else {
+    detachTelegramLeaks(user, tgUser);
     touchUserActivity(db, user.id);
   }
 
@@ -506,11 +508,19 @@ async function handleStorageUpload(req, res) {
 
   const ext = contentType.includes("video") ? ".mp4" : contentType.includes("gif") ? ".gif" : ".jpg";
   const objectKey = `${category ?? "post"}/${user.id}/${crypto.randomBytes(16).toString("hex")}${ext}`;
-  const uploaded = await uploadToB2(objectKey, buffer, contentType);
-  const proxyUrl = `${config.apiUrl}/api/media/${encodeURIComponent(objectKey)}`;
-  db.mediaObjects[objectKey] = { ...uploaded, userId: user.id, createdAt: new Date().toISOString(), url: proxyUrl };
-  saveDb(db);
-  return json(res, 200, { objectKey, url: proxyUrl, size: uploaded.size }, corsHeaders(req.headers.origin));
+  try {
+    const uploaded = await uploadToB2(objectKey, buffer, contentType);
+    const proxyUrl = `${config.apiUrl}/api/media/${encodeURIComponent(objectKey)}`;
+    db.mediaObjects[objectKey] = { ...uploaded, userId: user.id, createdAt: new Date().toISOString(), url: proxyUrl };
+    saveDb(db);
+    return json(res, 200, { objectKey, url: proxyUrl, size: uploaded.size }, corsHeaders(req.headers.origin));
+  } catch (e) {
+    console.error("B2 upload failed:", e.message);
+    return json(res, 503, {
+      error: "storage_unavailable",
+      message: "Media storage is temporarily unavailable. Check B2 credentials on the server.",
+    }, corsHeaders(req.headers.origin));
+  }
 }
 
 async function handleMediaProxy(req, res, objectKey) {
@@ -577,6 +587,7 @@ async function handleProfileUpdate(req, res) {
     }
   }
 
+  user.profileCustomized = true;
   saveDb(db);
   return json(res, 200, { user: publicUser(user) }, corsHeaders(req.headers.origin));
 }
@@ -812,27 +823,35 @@ const server = http.createServer(async (req, res) => {
 
   try {
     if (url === "/api/health" && req.method === "GET") {
-      return json(res, 200, { ok: true, dev: DEV_AUTH, b2: isB2Configured(), bot: isBotConfigured() }, corsHeaders(origin));
+      const b2Status = isB2Configured() ? await testB2Connection() : { ok: false, error: "not_configured" };
+      return json(res, 200, {
+        ok: true,
+        dev: DEV_AUTH,
+        b2: isB2Configured(),
+        b2Connected: b2Status.ok,
+        b2Error: b2Status.ok ? null : b2Status.error,
+        bot: isBotConfigured(),
+      }, corsHeaders(origin));
     }
-    if (url === "/api/auth/telegram" && req.method === "POST") return handleTelegramAuth(req, res, secure);
+    if (url === "/api/auth/telegram" && req.method === "POST") return await handleTelegramAuth(req, res, secure);
     if (url === "/api/auth/me" && req.method === "GET") return handleMe(req, res);
     if (url === "/api/auth/logout" && req.method === "POST") return handleLogout(req, res, secure);
-    if (url === "/api/auth/delete-account" && req.method === "POST") return handleDeleteAccount(req, res, secure);
-    if (url === "/api/verification/request" && req.method === "POST") return handleVerificationRequest(req, res);
+    if (url === "/api/auth/delete-account" && req.method === "POST") return await handleDeleteAccount(req, res, secure);
+    if (url === "/api/verification/request" && req.method === "POST") return await handleVerificationRequest(req, res);
     if (url === "/api/notifications" && req.method === "GET") return handleNotifications(req, res);
-    if (url === "/api/payments/invoice" && req.method === "POST") return handleCreateInvoice(req, res);
+    if (url === "/api/payments/invoice" && req.method === "POST") return await handleCreateInvoice(req, res);
     if (url === "/api/user/unlocks" && req.method === "GET") return handleUserUnlocks(req, res);
-    if (url === "/api/profile/update" && req.method === "POST") return handleProfileUpdate(req, res);
-    if (url === "/api/telegram/webhook" && req.method === "POST") return handleTelegramWebhook(req, res);
-    if (url === "/api/storage/upload" && req.method === "POST") return handleStorageUpload(req, res);
+    if (url === "/api/profile/update" && req.method === "POST") return await handleProfileUpdate(req, res);
+    if (url === "/api/telegram/webhook" && req.method === "POST") return await handleTelegramWebhook(req, res);
+    if (url === "/api/storage/upload" && req.method === "POST") return await handleStorageUpload(req, res);
     if (url === "/api/wallet" && req.method === "GET") return handleWallet(req, res);
-    if (url === "/api/withdrawals/request" && req.method === "POST") return handleWithdrawalRequest(req, res);
+    if (url === "/api/withdrawals/request" && req.method === "POST") return await handleWithdrawalRequest(req, res);
 
     if (await handleSocial(req, res, url)) return;
 
     const mediaMatch = url?.match(/^\/api\/media\/(.+)$/);
     if (mediaMatch && req.method === "GET") {
-      return handleMediaProxy(req, res, decodeURIComponent(mediaMatch[1]));
+      return await handleMediaProxy(req, res, decodeURIComponent(mediaMatch[1]));
     }
 
     if (await handleChat(req, res, url)) return;
@@ -840,27 +859,28 @@ const server = http.createServer(async (req, res) => {
     if (url === "/api/admin/login" && req.method === "POST") {
       const db = loadDb();
       ensureAdminSettings(db);
-      return handleAdminLogin(req, res, db, secure, json, corsHeaders);
+      saveDb(db);
+      return await handleAdminLogin(req, res, db, secure, json, corsHeaders);
     }
     if (url === "/api/admin/logout" && req.method === "POST") {
       const db = loadDb();
-      return handleAdminLogout(req, res, db, secure, json, corsHeaders);
+      return await handleAdminLogout(req, res, db, secure, json, corsHeaders);
     }
     if (url === "/api/admin/me" && req.method === "GET") return handleAdminMe(req, res);
     if (url === "/api/admin/credentials" && req.method === "POST") {
       const db = loadDb();
       ensureAdminSettings(db);
-      return handleAdminChangeCredentials(req, res, db, secure, json, corsHeaders);
+      return await handleAdminChangeCredentials(req, res, db, secure, json, corsHeaders);
     }
     if (url === "/api/admin/stats" && req.method === "GET") {
       const db = loadDb();
       ensureAdminSettings(db);
-      return handleAdminStats(req, res, db, json, corsHeaders);
+      return await handleAdminStats(req, res, db, json, corsHeaders);
     }
     if (url === "/api/admin/action" && req.method === "POST") {
       const db = loadDb();
       ensureAdminSettings(db);
-      return handleAdminAction(req, res, db, json, corsHeaders);
+      return await handleAdminAction(req, res, db, json, corsHeaders);
     }
 
     if (config.serveStatic && serveStatic(req, res)) return;
@@ -879,6 +899,10 @@ const dbRef = () => {
 };
 
 startCleanupScheduler(dbRef, saveDb);
+
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled rejection (server kept alive):", reason);
+});
 
 startHttpServer(server, () => {
   getDatabase();

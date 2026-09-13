@@ -31,6 +31,11 @@ export function getDatabase() {
     dbInstance.exec("ALTER TABLE users ADD COLUMN fake_followers INTEGER DEFAULT 0");
     dbInstance.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)").run(2, new Date().toISOString());
   }
+  const userCols2 = dbInstance.prepare("PRAGMA table_info(users)").all();
+  if (!userCols2.some((c) => c.name === "profile_customized")) {
+    dbInstance.exec("ALTER TABLE users ADD COLUMN profile_customized INTEGER DEFAULT 0");
+    dbInstance.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)").run(3, new Date().toISOString());
+  }
 
   importJsonStoreIfNeeded(dbInstance);
   return dbInstance;

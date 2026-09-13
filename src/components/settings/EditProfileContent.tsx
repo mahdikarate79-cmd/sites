@@ -186,8 +186,6 @@ export function EditProfileContent() {
         coverUrl = up.media.url ?? coverUrl;
       }
 
-      updateProfile({ ...payload, avatar: avatarUrl, cover: coverUrl });
-
       if (isAuthenticated) {
         await updateProfileApi({
           displayName: payload.displayName,
@@ -197,6 +195,9 @@ export function EditProfileContent() {
           cover: coverUrl,
         });
         await refresh();
+        updateProfile({ ...payload, avatar: avatarUrl, cover: coverUrl });
+      } else {
+        updateProfile({ ...payload, avatar: avatarUrl, cover: coverUrl });
       }
       setAvatarFile(null);
       setCoverFile(null);

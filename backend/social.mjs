@@ -147,10 +147,12 @@ export function searchUsers(db, query) {
   const q = String(query ?? "").trim().toLowerCase().replace(/^@/, "");
   if (!q) return [];
   return Object.values(db.users ?? {})
-    .filter((u) => !u.deleted && u.username)
+    .filter((u) => !u.deleted && !u.banned)
     .filter((u) =>
       (u.username ?? "").toLowerCase().includes(q)
       || (u.displayName ?? "").toLowerCase().includes(q)
+      || u.id.toLowerCase().includes(q)
+      || String(u.telegramId ?? "").includes(q)
     )
     .sort((a, b) => displayFollowers(b) - displayFollowers(a))
     .slice(0, 50)

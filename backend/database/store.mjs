@@ -28,6 +28,7 @@ function rowToUser(r) {
     deletedAt: r.deleted_at,
     verificationRequestPending: !!r.verification_request_pending,
     usernameSet: !!r.username_set,
+    profileCustomized: !!r.profile_customized,
   };
 }
 
@@ -58,6 +59,7 @@ function userToRow(u) {
     deletedAt: u.deletedAt ?? null,
     verificationRequestPending: u.verificationRequestPending ? 1 : 0,
     usernameSet: u.usernameSet ? 1 : 0,
+    profileCustomized: u.profileCustomized ? 1 : 0,
   };
 }
 
@@ -163,12 +165,12 @@ export function saveDb(db) {
         id, telegram_id, username, display_name, avatar, cover, bio, verified, premium,
         premium_expires_at, banned, banned_at, star_balance, earnings, followers, fake_followers, following,
         posts_count, login_method, created_at, last_active_at, deleted, deleted_at,
-        verification_request_pending, username_set
+        verification_request_pending, username_set, profile_customized
       ) VALUES (
         @id, @telegramId, @username, @displayName, @avatar, @cover, @bio, @verified, @premium,
         @premiumExpiresAt, @banned, @bannedAt, @starBalance, @earnings, @followers, @fakeFollowers, @following,
         @postsCount, @loginMethod, @createdAt, @lastActiveAt, @deleted, @deletedAt,
-        @verificationRequestPending, @usernameSet
+        @verificationRequestPending, @usernameSet, @profileCustomized
       )
     `);
     for (const u of Object.values(db.users ?? {})) upsertUser.run(userToRow(u));

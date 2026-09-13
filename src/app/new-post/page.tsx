@@ -117,8 +117,8 @@ export default function NewPostPage() {
       addPost(post);
       showToast("Post published");
       router.push("/");
-    } catch {
-      showToast("Failed to publish post");
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Failed to publish post");
     } finally {
       setPosting(false);
     }

@@ -53,6 +53,29 @@ export function usernameAvailable(db, username) {
   return !sqlite.prepare("SELECT 1 FROM users WHERE lower(username) = ? AND deleted = 0").get(lower);
 }
 
+/** Strip any Telegram username/photo leaked into Sheytoni profile */
+export function detachTelegramLeaks(user, tgUser) {
+  if (!user) return;
+  const tgUsername = tgUser?.username?.toLowerCase();
+
+  if (!user.usernameSet) {
+    user.username = null;
+  } else if (tgUsername && user.username?.toLowerCase() === tgUsername) {
+    user.username = null;
+    user.usernameSet = false;
+  }
+
+  const av = String(user.avatar ?? "");
+  if (av.includes("telegram.org") || av.includes("t.me/") || av.startsWith("https://api.telegram.org")) {
+    user.avatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.telegramId ?? user.id}`;
+  }
+
+  const tgName = [tgUser?.first_name, tgUser?.last_name].filter(Boolean).join(" ").trim();
+  if (tgName && !user.profileCustomized && user.displayName === tgName) {
+    user.displayName = "User";
+  }
+}
+
 export function createUserFromTelegram(db, tgUser) {
   const id = `tg_${tgUser.id}`;
   // Sheytoni profile is independent from Telegram name/username/photo
@@ -78,6 +101,7 @@ export function createUserFromTelegram(db, tgUser) {
     deleted: false,
     verificationRequestPending: false,
     usernameSet: false,
+    profileCustomized: false,
   };
 }
 
@@ -209,5 +233,6 @@ function rowToUser(r) {
     deletedAt: r.deleted_at,
     verificationRequestPending: !!r.verification_request_pending,
     usernameSet: !!r.username_set,
+    profileCustomized: !!r.profile_customized,
   };
 }

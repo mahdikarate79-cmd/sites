@@ -147,14 +147,12 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
 
   const resolveUser = useCallback((): User => {
     if (authUser) {
-      const edits = state.profileEdits;
       return {
         ...authUser,
-        ...edits,
         id: authUser.id,
-        username: authUser.username ?? edits.username ?? undefined,
-        displayName: edits.displayName ?? authUser.displayName,
-        avatar: edits.avatar ?? authUser.avatar,
+        username: authUser.username ?? undefined,
+        displayName: authUser.displayName,
+        avatar: authUser.avatar,
         premium: authUser.premium,
         verified: authUser.verified,
         followers: authUser.followers,
@@ -168,7 +166,7 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
   const donate = useCallback((postId: string, stars: number, anonymous: boolean, authorId: string) => {
     update((s) => {
       const existing = getPostDonation(s, postId);
-      const user = authUser ? { ...authUser, ...s.profileEdits, premium: authUser.premium } : { ...GUEST_USER, ...s.profileEdits };
+      const user = authUser ? { ...authUser, premium: authUser.premium } : { ...GUEST_USER, ...s.profileEdits };
       const prevUser = existing.topDonators.find((d) => d.user.id === user.id);
       const newDonator: Donator = {
         rank: 0,

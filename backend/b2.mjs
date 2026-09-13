@@ -9,8 +9,8 @@ let authExpires = 0;
 async function authorize() {
   if (authCache && Date.now() < authExpires) return authCache;
 
-  const keyId = process.env.B2_KEY_ID;
-  const appKey = process.env.B2_APPLICATION_KEY;
+  const keyId = process.env.B2_KEY_ID?.trim();
+  const appKey = process.env.B2_APPLICATION_KEY?.trim();
   if (!keyId || !appKey) throw new Error("B2 credentials not configured");
 
   const res = await fetch("https://api.backblazeb2.com/b2api/v2/b2_authorize_account", {
@@ -91,7 +91,21 @@ export async function deleteFromB2(fileId, fileName) {
 }
 
 export function isB2Configured() {
-  return !!(process.env.B2_KEY_ID && process.env.B2_APPLICATION_KEY && process.env.B2_BUCKET_NAME);
+  return !!(
+    process.env.B2_KEY_ID?.trim()
+    && process.env.B2_APPLICATION_KEY?.trim()
+    && process.env.B2_BUCKET_NAME?.trim()
+  );
+}
+
+export async function testB2Connection() {
+  if (!isB2Configured()) return { ok: false, error: "not_configured" };
+  try {
+    await authorize();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 }
 
 export function getPublicMediaUrl(objectKey) {

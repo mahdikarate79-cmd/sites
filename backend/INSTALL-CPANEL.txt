@@ -34,5 +34,14 @@ Sheytoni Backend — نصب روی cPanel / CloudLinux
 تست:
    curl https://api.venify.xyz/api/health
 
+   باید b2Connected: true باشد. اگر b2: true و b2Connected: false
+   یعنی B2_KEY_ID یا B2_APPLICATION_KEY اشتباه است (401).
+
+ریست پنل ادمین:
+   ADMIN_FORCE_RESET=true
+   ADMIN_DEFAULT_USERNAME=...
+   ADMIN_DEFAULT_PASSWORD=...
+   Restart → بعد از لاگین موفق ADMIN_FORCE_RESET=false
+
 Startup file: server.mjs
 Application root: /home/venifybo/api.venify.xyz
