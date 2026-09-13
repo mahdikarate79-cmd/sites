@@ -10,6 +10,7 @@ import {
   saveDb,
 } from "./db.mjs";
 import { config } from "./config.mjs";
+import { envStr } from "./env.mjs";
 
 const ADMIN_COOKIE = "sheytoni_admin_session";
 const SESSION_TTL = 12 * 60 * 60 * 1000;
@@ -18,9 +19,9 @@ export function ensureAdminSettings(db) {
   if (!db.settings) {
     db.settings = { verificationMinFollowers: 10000 };
   }
-  const adminUser = process.env.ADMIN_DEFAULT_USERNAME?.trim();
-  const adminPass = process.env.ADMIN_DEFAULT_PASSWORD?.trim();
-  const forceReset = process.env.ADMIN_FORCE_RESET === "true";
+  const adminUser = envStr("ADMIN_DEFAULT_USERNAME");
+  const adminPass = envStr("ADMIN_DEFAULT_PASSWORD");
+  const forceReset = envStr("ADMIN_FORCE_RESET") === "true";
 
   if (!db.settings.adminUsername || forceReset) {
     if (!adminUser || !adminPass) {

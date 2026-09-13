@@ -2,6 +2,8 @@
  * Central config — all values from environment variables in production.
  * cPanel/Passenger often omits PORT; server uses listen("passenger") instead.
  */
+import { envStr } from "./env.mjs";
+
 function resolvePort() {
   for (const key of ["PORT", "PASSENGER_LISTEN_PORT", "NODE_PORT", "AUTH_PORT"]) {
     const raw = process.env[key];
@@ -14,19 +16,19 @@ function resolvePort() {
 }
 
 export const config = {
-  siteUrl: process.env.SITE_URL ?? "https://x.venify.xyz",
-  apiUrl: process.env.API_PUBLIC_URL ?? process.env.SITE_URL?.replace("x.", "api.") ?? "https://api.venify.xyz",
+  siteUrl: envStr("SITE_URL", "https://x.venify.xyz"),
+  apiUrl: envStr("API_PUBLIC_URL") || envStr("SITE_URL", "https://x.venify.xyz").replace("x.", "api.") || "https://api.venify.xyz",
   port: resolvePort(),
-  host: process.env.HOST ?? "0.0.0.0",
-  nodeEnv: process.env.NODE_ENV ?? "development",
-  corsOrigins: (process.env.CORS_ORIGINS ?? "https://x.venify.xyz")
+  host: envStr("HOST", "0.0.0.0"),
+  nodeEnv: envStr("NODE_ENV", "development"),
+  corsOrigins: envStr("CORS_ORIGINS", "https://x.venify.xyz")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean),
   /** e.g. .venify.xyz — required for cookies across x.venify.xyz ↔ api.venify.xyz */
-  cookieDomain: process.env.COOKIE_DOMAIN ?? "",
-  serveStatic: process.env.SERVE_STATIC === "true",
-  staticDir: process.env.STATIC_DIR ?? "out",
-  dbPath: process.env.DATABASE_PATH ?? "data/sheytoni.db",
-  isProduction: process.env.NODE_ENV === "production",
+  cookieDomain: envStr("COOKIE_DOMAIN"),
+  serveStatic: envStr("SERVE_STATIC") === "true",
+  staticDir: envStr("STATIC_DIR", "out"),
+  dbPath: envStr("DATABASE_PATH", "data/sheytoni.db"),
+  isProduction: envStr("NODE_ENV", "development") === "production",
 };

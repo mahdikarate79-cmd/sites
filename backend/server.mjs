@@ -1,5 +1,8 @@
 import http from "http";
 import crypto from "crypto";
+import fs from "fs";
+import path from "path";
+import { envStr } from "./env.mjs";
 import { validateInitData } from "./validateInitData.mjs";
 import {
   loadDb,
@@ -823,10 +826,44 @@ const server = http.createServer(async (req, res) => {
 
   try {
     if (url === "/api/health" && req.method === "GET") {
+      const db = loadDb();
+      ensureAdminSettings(db);
       const b2Status = isB2Configured() ? await testB2Connection() : { ok: false, error: "not_configured" };
+      const dbPath = config.dbPath;
+      let dbExists = false;
+      let dbWritable = false;
+      let dbSize = 0;
+      try {
+        const st = fs.statSync(dbPath);
+        dbExists = true;
+        dbSize = st.size;
+        fs.accessSync(path.dirname(dbPath), fs.constants.W_OK);
+        dbWritable = true;
+      } catch { /* */ }
+      const userCount = Object.values(db.users ?? {}).filter((u) => !u.deleted).length;
       return json(res, 200, {
         ok: true,
         dev: DEV_AUTH,
+        cwd: process.cwd(),
+        db: {
+          path: dbPath,
+          exists: dbExists,
+          writable: dbWritable,
+          size: dbSize,
+          users: userCount,
+          adminUsername: db.settings?.adminUsername ?? null,
+        },
+        env: {
+          COOKIE_DOMAIN: !!envStr("COOKIE_DOMAIN"),
+          B2_KEY_ID: !!envStr("B2_KEY_ID"),
+          B2_APPLICATION_KEY: !!envStr("B2_APPLICATION_KEY"),
+          B2_BUCKET_NAME: !!envStr("B2_BUCKET_NAME"),
+          ADMIN_DEFAULT_USERNAME: !!envStr("ADMIN_DEFAULT_USERNAME"),
+          ADMIN_DEFAULT_PASSWORD: !!envStr("ADMIN_DEFAULT_PASSWORD"),
+          ADMIN_FORCE_RESET: envStr("ADMIN_FORCE_RESET") === "true",
+          TELEGRAM_BOT_TOKEN: !!envStr("TELEGRAM_BOT_TOKEN"),
+          API_PUBLIC_URL: !!envStr("API_PUBLIC_URL"),
+        },
         b2: isB2Configured(),
         b2Connected: b2Status.ok,
         b2Error: b2Status.ok ? null : b2Status.error,
@@ -910,6 +947,6 @@ startHttpServer(server, () => {
   ensureAdminSettings(db);
   saveDb(db);
   console.log(
-    `Sheytoni API ready (env=${config.nodeEnv}, cwd=${process.cwd()}, cors=${ORIGINS.join(",")})`,
+    `Sheytoni API ready (env=${config.nodeEnv}, cwd=${process.cwd()}, db=${config.dbPath}, cors=${ORIGINS.join(",")})`,
   );
 });

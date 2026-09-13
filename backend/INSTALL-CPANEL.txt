@@ -4,6 +4,32 @@ Sheytoni Backend — نصب روی cPanel / CloudLinux
 روی cPanel، npm و node در SSH معمولی در PATH نیستند.
 این طبیعی است — باید از virtualenv اپلیکیشن استفاده کنید.
 
+⚠️ مهم — پوشه data/ را پاک نکنید
+---------------------------------
+فایل دیتابیس اینجاست: data/sheytoni.db
+اگر ZIP جدید extract می‌کنید، پوشه data/ و فایل sheytoni.db را نگه دارید.
+بدون این فایل، همه کاربران و پست‌ها و ادمین ریست می‌شوند.
+
+متغیرهای محیطی
+---------------
+دو روش (هر دو OK):
+1) cPanel → Setup Node.js App → Environment Variables
+2) فایل .env در کنار server.mjs (اگر cPanel UI کار نکرد)
+
+مثال .env:
+NODE_ENV=production
+COOKIE_DOMAIN=.venify.xyz
+CORS_ORIGINS=https://x.venify.xyz
+DATABASE_PATH=data/sheytoni.db
+B2_KEY_ID=...
+B2_APPLICATION_KEY=...
+B2_BUCKET_NAME=Sheytoni
+ADMIN_DEFAULT_USERNAME=admin
+ADMIN_DEFAULT_PASSWORD=your-password
+ADMIN_FORCE_RESET=true
+
+بعد از لاگین ادمین موفق: ADMIN_FORCE_RESET=false
+
 روش ۱ (ساده‌تر — از cPanel UI)
 -------------------------------
 1. cPanel → Setup Node.js App
@@ -28,20 +54,28 @@ Sheytoni Backend — نصب روی cPanel / CloudLinux
 
 5. برگردید به cPanel → Restart اپلیکیشن
 
-اگر مسیر nodevenv را نمی‌دانید:
-   ls ~/nodevenv/
-
-تست:
+تست سلامت
+----------
    curl https://api.venify.xyz/api/health
 
-   باید b2Connected: true باشد. اگر b2: true و b2Connected: false
-   یعنی B2_KEY_ID یا B2_APPLICATION_KEY اشتباه است (401).
+باید ببینید:
+- db.exists: true
+- db.writable: true
+- db.users: عدد کاربران
+- env.B2_KEY_ID: true (و بقیه true)
+- b2Connected: true
 
-ریست پنل ادمین:
-   ADMIN_FORCE_RESET=true
-   ADMIN_DEFAULT_USERNAME=...
-   ADMIN_DEFAULT_PASSWORD=...
-   Restart → بعد از لاگین موفق ADMIN_FORCE_RESET=false
+اگر b2Connected: false و b2Error: 401
+→ B2_KEY_ID باید Application Key ID باشد (نه Master Key)
+→ B2_APPLICATION_KEY باید Application Key باشد
+→ بدون کوتیشن اضافه در مقدار
+
+اگر db.exists: false یا db.writable: false
+→ پوشه data/ را chmod 755 کنید و مالکیت را به کاربر node بدهید
+
+ریست پنل ادمین
+----------------
+ADMIN_FORCE_RESET=true + Restart → لاگین → ADMIN_FORCE_RESET=false
 
 Startup file: server.mjs
 Application root: /home/venifybo/api.venify.xyz

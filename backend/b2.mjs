@@ -2,6 +2,7 @@
  * Backblaze B2 object storage — media never touches host disk.
  * Requires: B2_KEY_ID, B2_APPLICATION_KEY, B2_BUCKET_NAME
  */
+import { envStr } from "./env.mjs";
 
 let authCache = null;
 let authExpires = 0;
@@ -9,14 +10,18 @@ let authExpires = 0;
 async function authorize() {
   if (authCache && Date.now() < authExpires) return authCache;
 
-  const keyId = process.env.B2_KEY_ID?.trim();
-  const appKey = process.env.B2_APPLICATION_KEY?.trim();
+  const keyId = envStr("B2_KEY_ID");
+  const appKey = envStr("B2_APPLICATION_KEY");
   if (!keyId || !appKey) throw new Error("B2 credentials not configured");
 
   const res = await fetch("https://api.backblazeb2.com/b2api/v2/b2_authorize_account", {
     headers: { Authorization: `Basic ${Buffer.from(`${keyId}:${appKey}`).toString("base64")}` },
   });
-  if (!res.ok) throw new Error(`B2 auth failed: ${res.status}`);
+  if (!res.ok) {
+    throw new Error(
+      `B2 auth failed: ${res.status} — use Application Key ID + Application Key (not Master Key), no quotes in env`,
+    );
+  }
   authCache = await res.json();
   authExpires = Date.now() + 23 * 60 * 60 * 1000;
   return authCache;
@@ -24,8 +29,8 @@ async function authorize() {
 
 async function getUploadUrl() {
   const auth = await authorize();
-  const bucketName = process.env.B2_BUCKET_NAME;
-  const bucketId = process.env.B2_BUCKET_ID;
+  const bucketName = envStr("B2_BUCKET_NAME");
+  const bucketId = envStr("B2_BUCKET_ID");
   if (!bucketName && !bucketId) throw new Error("B2_BUCKET_NAME or B2_BUCKET_ID required");
 
   let resolvedBucketId = bucketId;
@@ -91,11 +96,7 @@ export async function deleteFromB2(fileId, fileName) {
 }
 
 export function isB2Configured() {
-  return !!(
-    process.env.B2_KEY_ID?.trim()
-    && process.env.B2_APPLICATION_KEY?.trim()
-    && process.env.B2_BUCKET_NAME?.trim()
-  );
+  return !!(envStr("B2_KEY_ID") && envStr("B2_APPLICATION_KEY") && envStr("B2_BUCKET_NAME"));
 }
 
 export async function testB2Connection() {
