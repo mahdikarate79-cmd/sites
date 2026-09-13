@@ -167,7 +167,7 @@ ls ~/nodevenv/
 |------|--------|
 | `bash: npm: command not found` | virtualenv را فعال کنید (بالا) یا از **Run NPM Install** در cPanel استفاده کنید |
 | `Cannot find package 'better-sqlite3'` | بعد از activate virtualenv: `npm install --production` → `npm rebuild better-sqlite3` → Restart |
-| `PORT not set` | نسخه v3 ZIP — Passenger نیازی به PORT ندارد |
+| `No PORT and not running under Passenger` | ZIP v4 — سرور خودکار `listen("passenger")` استفاده می‌کند |
 | 503 بعد از نصب | Restart اپ + بررسی `stderr.log` در cPanel |
 | `EACCES` روی `data/` | `chmod 755 data` و مالکیت پوشه را بررسی کنید |
 

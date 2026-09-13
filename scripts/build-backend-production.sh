@@ -26,7 +26,7 @@ cp backend/INSTALL-CPANEL.txt "$OUT_DIR/INSTALL-CPANEL.txt"
 cat > "$OUT_DIR/package.json" << 'EOF'
 {
   "name": "sheytoni-api",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "type": "module",
   "engines": { "node": ">=18 <=22" },

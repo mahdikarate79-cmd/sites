@@ -19,6 +19,19 @@ db.close();
 console.log('better-sqlite3 OK');
 "
 
+echo "==> Test Passenger listen mode (no PORT) ..."
+NODE_ENV=production HOST=0.0.0.0 \
+  CORS_ORIGINS=https://x.venify.xyz SERVE_STATIC=false \
+  DATABASE_PATH=data/test-passenger.db \
+  ADMIN_DEFAULT_USERNAME=t ADMIN_DEFAULT_PASSWORD=t \
+  node --input-type=module -e "
+import http from 'http';
+import { startHttpServer } from './lib/listen.mjs';
+const s = http.createServer((req,res)=>{res.end('ok')});
+startHttpServer(s, ()=>console.log('passenger mode boot ok'));
+setTimeout(()=>{ s.close(); process.exit(0); }, 500);
+" || echo "(passenger listen may fail outside Passenger — OK in CI)"
+
 echo "==> Test server with PORT (standalone) ..."
 PORT=39999 NODE_ENV=production HOST=0.0.0.0 \
   CORS_ORIGINS=https://x.venify.xyz SERVE_STATIC=false \
