@@ -8,6 +8,7 @@ import {
   publicUser,
   saveDb,
 } from "./db.mjs";
+import { config } from "./config.mjs";
 
 const ADMIN_COOKIE = "sheytoni_admin_session";
 const SESSION_TTL = 12 * 60 * 60 * 1000;
@@ -17,8 +18,15 @@ export function ensureAdminSettings(db) {
     db.settings = { verificationMinFollowers: 10000 };
   }
   if (!db.settings.adminUsername) {
-    const { salt, hash } = hashPassword(process.env.ADMIN_DEFAULT_PASSWORD ?? "adminsheytoni");
-    db.settings.adminUsername = process.env.ADMIN_DEFAULT_USERNAME ?? "adminsheytoni";
+    const adminUser = process.env.ADMIN_DEFAULT_USERNAME;
+    const adminPass = process.env.ADMIN_DEFAULT_PASSWORD;
+    if (!adminUser || !adminPass) {
+      if (process.env.NODE_ENV === "production") {
+        throw new Error("ADMIN_DEFAULT_USERNAME and ADMIN_DEFAULT_PASSWORD must be set in production");
+      }
+    }
+    const { salt, hash } = hashPassword(adminPass ?? "changeme");
+    db.settings.adminUsername = adminUser ?? "admin";
     db.settings.adminPasswordSalt = salt;
     db.settings.adminPasswordHash = hash;
   }
@@ -63,12 +71,21 @@ function adminCookie(sessionId, secure) {
     `Max-Age=${SESSION_TTL / 1000}`,
     secure ? "Secure" : "",
     secure ? "SameSite=None" : "SameSite=Lax",
+    config.cookieDomain ? `Domain=${config.cookieDomain}` : "",
   ].filter(Boolean);
   return parts.join("; ");
 }
 
 function clearAdminCookie(secure) {
-  const parts = [`${ADMIN_COOKIE}=`, "HttpOnly", "Path=/", "Max-Age=0", secure ? "Secure" : "", secure ? "SameSite=None" : "SameSite=Lax"].filter(Boolean);
+  const parts = [
+    `${ADMIN_COOKIE}=`,
+    "HttpOnly",
+    "Path=/",
+    "Max-Age=0",
+    secure ? "Secure" : "",
+    secure ? "SameSite=None" : "SameSite=Lax",
+    config.cookieDomain ? `Domain=${config.cookieDomain}` : "",
+  ].filter(Boolean);
   return parts.join("; ");
 }
 
