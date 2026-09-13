@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import Database from "better-sqlite3";
+import Database from "./sqlite.mjs";
 import { config } from "../config.mjs";
 import { SCHEMA_SQL } from "./schema.mjs";
 import { importJsonStoreIfNeeded } from "./migrate-json.mjs";

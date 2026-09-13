@@ -29,9 +29,7 @@ import { startCleanupScheduler } from "./mediaCleanup.mjs";
 import { serveStatic, staticDirExists } from "./static.mjs";
 import { config } from "./config.mjs";
 import { getDatabase } from "./database/init.mjs";
-
-const PORT = config.port;
-const HOST = config.host;
+import { startHttpServer } from "./listen.mjs";
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? "";
 const DEV_AUTH = process.env.AUTH_DEV_MODE === "true";
 const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET ?? "";
@@ -51,10 +49,13 @@ function parseCookies(header) {
 }
 
 function corsHeaders(origin) {
-  const allowed = ORIGINS.some((o) => origin?.startsWith(o.replace(/\/$/, "")));
-  const o = allowed ? origin : ORIGINS[0];
+  const normalized = (origin ?? "").replace(/\/$/, "");
+  const allowed = ORIGINS.some((o) => normalized === o.replace(/\/$/, "") || normalized.startsWith(o.replace(/\/$/, "")));
+  if (!allowed) {
+    return { Vary: "Origin" };
+  }
   return {
-    "Access-Control-Allow-Origin": o,
+    "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Credentials": "true",
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
@@ -76,6 +77,12 @@ function readBody(req) {
   });
 }
 
+function isSecureRequest(req) {
+  return config.isProduction
+    || req.headers["x-forwarded-proto"] === "https"
+    || process.env.NODE_ENV === "production";
+}
+
 function sessionCookie(sessionId, secure) {
   const parts = [
     `${COOKIE_NAME}=${sessionId}`,
@@ -84,12 +91,21 @@ function sessionCookie(sessionId, secure) {
     "Max-Age=2592000",
     secure ? "Secure" : "",
     secure ? "SameSite=None" : "SameSite=Lax",
+    config.cookieDomain ? `Domain=${config.cookieDomain}` : "",
   ].filter(Boolean);
   return parts.join("; ");
 }
 
 function clearCookie(secure) {
-  const parts = [`${COOKIE_NAME}=`, "HttpOnly", "Path=/", "Max-Age=0", secure ? "Secure" : "", secure ? "SameSite=None" : "SameSite=Lax"].filter(Boolean);
+  const parts = [
+    `${COOKIE_NAME}=`,
+    "HttpOnly",
+    "Path=/",
+    "Max-Age=0",
+    secure ? "Secure" : "",
+    secure ? "SameSite=None" : "SameSite=Lax",
+    config.cookieDomain ? `Domain=${config.cookieDomain}` : "",
+  ].filter(Boolean);
   return parts.join("; ");
 }
 
@@ -461,7 +477,7 @@ function handleAdminMe(req, res) {
 }
 
 const server = http.createServer(async (req, res) => {
-  const secure = req.headers["x-forwarded-proto"] === "https" || process.env.NODE_ENV === "production";
+  const secure = isSecureRequest(req);
   const origin = req.headers.origin;
 
   if (req.method === "OPTIONS") {
@@ -513,7 +529,7 @@ const server = http.createServer(async (req, res) => {
       return handleAdminAction(req, res, db, json, corsHeaders);
     }
 
-    if (serveStatic(req, res)) return;
+    if (config.serveStatic && serveStatic(req, res)) return;
 
     return json(res, 404, { error: "Not found" }, corsHeaders(origin));
   } catch (e) {
@@ -530,10 +546,12 @@ const dbRef = () => {
 
 startCleanupScheduler(dbRef, saveDb);
 
-server.listen(PORT, HOST, () => {
+startHttpServer(server, () => {
   getDatabase();
   const db = loadDb();
   ensureAdminSettings(db);
   saveDb(db);
-  console.log(`Sheytoni running on http://${HOST}:${PORT} (db=sqlite, static=${staticDirExists()}, site=${config.siteUrl})`);
+  console.log(
+    `Sheytoni API ready (env=${config.nodeEnv}, cwd=${process.cwd()}, cors=${ORIGINS.join(",")})`,
+  );
 });
