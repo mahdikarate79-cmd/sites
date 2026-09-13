@@ -1,14 +1,22 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { mockPosts } from "@/data/mock/posts";
+import { Post } from "@/lib/types";
 import { PostCard } from "@/components/feed/PostCard";
 import { usePrototype } from "@/lib/hooks/usePrototype";
+import { getFeedPosts } from "@/lib/api/posts";
 
 export function BookmarksContent() {
   const { getBookmarkedPosts } = usePrototype();
-  const bookmarked = getBookmarkedPosts(mockPosts);
+  const [allPosts, setAllPosts] = useState<Post[]>([]);
+
+  useEffect(() => {
+    getFeedPosts().then(setAllPosts);
+  }, []);
+
+  const bookmarked = getBookmarkedPosts(allPosts);
 
   return (
     <div className="min-h-dvh pb-6">
@@ -23,9 +31,9 @@ export function BookmarksContent() {
 
       <div className="max-w-2xl mx-auto">
         {bookmarked.length > 0 ? (
-          bookmarked.map((post) => <PostCard key={post.id} post={post} allPosts={mockPosts} />)
+          bookmarked.map((post) => <PostCard key={post.id} post={post} allPosts={allPosts} />)
         ) : (
-          <p className="text-center text-text-muted py-12 text-sm">No bookmarked posts yet</p>
+          <p className="text-center text-text-muted py-12 text-sm">No saved posts yet</p>
         )}
       </div>
     </div>

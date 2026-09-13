@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import Database from "better-sqlite3";
+import Database from "./sqlite.mjs";
 import { config } from "../config.mjs";
 import { SCHEMA_SQL } from "./schema.mjs";
 import { importJsonStoreIfNeeded } from "./migrate-json.mjs";
@@ -24,6 +24,17 @@ export function getDatabase() {
   const version = dbInstance.prepare("SELECT MAX(version) as v FROM schema_migrations").get()?.v ?? 0;
   if (!version) {
     dbInstance.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)").run(1, new Date().toISOString());
+  }
+
+  const userCols = dbInstance.prepare("PRAGMA table_info(users)").all();
+  if (!userCols.some((c) => c.name === "fake_followers")) {
+    dbInstance.exec("ALTER TABLE users ADD COLUMN fake_followers INTEGER DEFAULT 0");
+    dbInstance.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)").run(2, new Date().toISOString());
+  }
+  const userCols2 = dbInstance.prepare("PRAGMA table_info(users)").all();
+  if (!userCols2.some((c) => c.name === "profile_customized")) {
+    dbInstance.exec("ALTER TABLE users ADD COLUMN profile_customized INTEGER DEFAULT 0");
+    dbInstance.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)").run(3, new Date().toISOString());
   }
 
   importJsonStoreIfNeeded(dbInstance);

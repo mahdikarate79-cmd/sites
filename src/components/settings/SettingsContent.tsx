@@ -15,7 +15,6 @@ import {
   Clapperboard,
   HelpCircle,
   Shield,
-  LogOut,
   Trash2,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
@@ -46,15 +45,10 @@ const LINK_ITEMS = [
 export function SettingsContent() {
   const { theme, setTheme } = useTheme();
   const { getCurrentUser } = usePrototype();
-  const { logout, deleteAccount, isAuthenticated } = useAuth();
+  const { deleteAccount, isAuthenticated } = useAuth();
   const { showToast } = useToast();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const currentUser = getCurrentUser();
-
-  const handleLogout = async () => {
-    await logout();
-    showToast("Logged out");
-  };
 
   const handleDelete = async () => {
     await deleteAccount();
@@ -109,16 +103,6 @@ export function SettingsContent() {
             <span className="flex-1 text-sm font-medium">Edit profile</span>
             <ChevronRight className="w-5 h-5 text-text-muted" />
           </Link>
-          {isAuthenticated && (
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="flex items-center gap-3 w-full px-4 py-3.5 border-t border-border hover:bg-surface/50 transition-colors text-left"
-            >
-              <LogOut className="w-5 h-5 text-text-muted" />
-              <span className="flex-1 text-sm font-medium">Log out</span>
-            </button>
-          )}
         </section>
 
         <section className="glass-nav rounded-2xl overflow-hidden">
