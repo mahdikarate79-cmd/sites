@@ -203,7 +203,7 @@ export async function handleAdminAction(req, res, db, json, corsHeaders) {
       user.bannedAt = new Date().toISOString();
       db.bannedUsers[user.id] = { userId: user.id, username: user.username, telegramId: user.telegramId, bannedAt: user.bannedAt };
       saveDb(db);
-      return json(res, 200, { ok: true }, corsHeaders(req.headers.origin));
+      return json(res, 200, { ok: true, user: publicUser(user) }, corsHeaders(req.headers.origin));
     }
 
     case "unban_user": {
@@ -212,7 +212,7 @@ export async function handleAdminAction(req, res, db, json, corsHeaders) {
       user.banned = false;
       delete db.bannedUsers[user.id];
       saveDb(db);
-      return json(res, 200, { ok: true }, corsHeaders(req.headers.origin));
+      return json(res, 200, { ok: true, user: publicUser(user) }, corsHeaders(req.headers.origin));
     }
 
     case "unban_all":
@@ -254,6 +254,7 @@ export async function handleAdminAction(req, res, db, json, corsHeaders) {
       saveDb(db);
       return json(res, 200, {
         ok: true,
+        user: publicUser(user),
         realFollowers: user.followers ?? 0,
         fakeFollowers: user.fakeFollowers,
         displayFollowers: (user.followers ?? 0) + user.fakeFollowers,
@@ -279,7 +280,7 @@ export async function handleAdminAction(req, res, db, json, corsHeaders) {
       const delta = Number(body.delta) || 0;
       user.starBalance = Math.max(0, (user.starBalance ?? 0) + delta);
       saveDb(db);
-      return json(res, 200, { ok: true, starBalance: user.starBalance }, corsHeaders(req.headers.origin));
+      return json(res, 200, { ok: true, user: publicUser(user), starBalance: user.starBalance }, corsHeaders(req.headers.origin));
     }
 
     case "send_notification": {

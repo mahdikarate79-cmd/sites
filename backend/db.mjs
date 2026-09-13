@@ -55,13 +55,14 @@ export function usernameAvailable(db, username) {
 
 export function createUserFromTelegram(db, tgUser) {
   const id = `tg_${tgUser.id}`;
-  const displayName = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(" ") || "User";
+  // Sheytoni profile is independent from Telegram name/username/photo
+  const displayName = "User";
   return {
     id,
     telegramId: tgUser.id,
     username: null,
     displayName,
-    avatar: tgUser.photo_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${tgUser.id}`,
+    avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${tgUser.id}`,
     verified: false,
     premium: false,
     banned: false,
@@ -137,7 +138,7 @@ export function resolveUserLookup(db, query) {
   if (/^\d+$/.test(s)) {
     return findUserByTelegramId(db, Number(s)) ?? findUserById(db, `tg_${s}`) ?? findUserById(db, s);
   }
-  return findUserByUsername(db, s) ?? findUserById(db, s) ?? findUserById(db, `tg_${s}`);
+  return findUserByUsername(db, s) ?? findUserById(db, s);
 }
 
 export function isPostUnlocked(db, userId, postId) {

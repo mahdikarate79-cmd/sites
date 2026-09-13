@@ -1,5 +1,16 @@
 import crypto from "crypto";
 import { findUserById, findUserByUsername, publicUser } from "./db.mjs";
+import { config } from "./config.mjs";
+
+function mediaUrl(m) {
+  if (!m) return m;
+  if (m.objectKey) {
+    return { ...m, url: `${config.apiUrl}/api/media/${encodeURIComponent(m.objectKey)}` };
+  }
+  const url = String(m.url ?? "");
+  if (url.startsWith("blob:") || url.startsWith("data:")) return { ...m, url: null };
+  return m;
+}
 
 export function ensureSocial(db) {
   if (!db.follows) db.follows = {};
@@ -64,7 +75,7 @@ export function getFollowingList(db, userId) {
 export function resolveProfileUser(db, usernameOrId) {
   const s = String(usernameOrId ?? "").trim().replace(/^@/, "");
   if (!s) return null;
-  return findUserByUsername(db, s) ?? findUserById(db, s) ?? findUserById(db, `tg_${s}`);
+  return findUserByUsername(db, s) ?? findUserById(db, s);
 }
 
 export function serializePost(db, post, viewerId = null) {
@@ -79,7 +90,9 @@ export function serializePost(db, post, viewerId = null) {
       followers: displayFollowers(author),
     },
     content: post.content ?? "",
-    media: post.mediaExpired ? post.media?.map((m) => ({ ...m, url: null, expired: true })) : post.media,
+    media: post.mediaExpired
+      ? post.media?.map((m) => ({ ...m, url: null, expired: true }))
+      : post.media?.map((m) => mediaUrl(m)),
     tags: post.tags ?? [],
     paidStars: post.paidStars,
     privacy: post.privacy,
@@ -134,12 +147,10 @@ export function searchUsers(db, query) {
   const q = String(query ?? "").trim().toLowerCase().replace(/^@/, "");
   if (!q) return [];
   return Object.values(db.users ?? {})
-    .filter((u) => !u.deleted)
+    .filter((u) => !u.deleted && u.username)
     .filter((u) =>
       (u.username ?? "").toLowerCase().includes(q)
       || (u.displayName ?? "").toLowerCase().includes(q)
-      || String(u.telegramId ?? "").includes(q)
-      || u.id.toLowerCase().includes(q)
     )
     .sort((a, b) => displayFollowers(b) - displayFollowers(a))
     .slice(0, 50)

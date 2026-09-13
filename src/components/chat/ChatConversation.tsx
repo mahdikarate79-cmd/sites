@@ -7,9 +7,9 @@ import { ChatMessage, PinnedMessageInfo } from "@/lib/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { BlockButton } from "@/components/ui/BlockButton";
 import { UserName } from "@/components/ui/UserName";
-import { getChatMessages, sendMessage, sendAlbumMessage, forwardMessage } from "@/lib/api/chat";
+import { getChat, getChatMessages, sendMessage, sendAlbumMessage, forwardMessage } from "@/lib/api/chat";
 import { SelectedMedia } from "./MediaGalleryPicker";
-import { mockChats } from "@/data/mock/chats";
+import { Chat } from "@/lib/types";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { createPaidMediaInvoice, openTelegramInvoice } from "@/lib/api/payments";
 import { fetchPaidMediaUnlocks } from "@/lib/api/social";
@@ -29,11 +29,6 @@ import { cn } from "@/lib/utils/cn";
 interface ChatConversationProps {
   chatId: string;
 }
-
-const INITIAL_PINNED: Record<string, PinnedMessageInfo> = {
-  c1: { messageId: "c1m2", scope: "both" },
-  c2: { messageId: "c2m1", scope: "me" },
-};
 
 function mediaTransform(rotation?: number, mirrored?: boolean) {
   const parts: string[] = [];
@@ -61,6 +56,7 @@ function getViewerMedia(msg: ChatMessage) {
 }
 
 export function ChatConversation({ chatId }: ChatConversationProps) {
+  const [chat, setChat] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -69,14 +65,13 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
   const [viewerAlbumIndex, setViewerAlbumIndex] = useState(0);
   const [showUnlockAnim, setShowUnlockAnim] = useState(false);
   const [, setTimerTick] = useState(0);
-  const [pinned, setPinned] = useState<PinnedMessageInfo | null>(INITIAL_PINNED[chatId] ?? null);
+  const [pinned, setPinned] = useState<PinnedMessageInfo | null>(null);
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [contextMsg, setContextMsg] = useState<ChatMessage | null>(null);
   const [forwardMsg, setForwardMsg] = useState<ChatMessage | null>(null);
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const chat = mockChats.find((c) => c.id === chatId);
   const {
     deleteChat, isBlocked, isPaidMediaUnlocked, unlockPaidMediaMessage,
     isTempMediaExpired, isTempMediaViewed, markTempMediaViewed, expireTempMedia,
@@ -94,10 +89,12 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
   }, []);
 
   useEffect(() => {
+    setLoading(true);
+    getChat(chatId).then(setChat);
     getChatMessages(chatId).then((data) => {
       setMessages(data.filter((m) => !isTempMediaExpired(chatId, m.id)));
       setLoading(false);
-    });
+    }).catch(() => setLoading(false));
   }, [chatId, isTempMediaExpired]);
 
   useEffect(() => {
@@ -394,6 +391,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
   };
 
   if (loading) return <div className="flex-1 flex items-center justify-center text-text-muted h-dvh">Loading...</div>;
+  if (!chat) return <div className="flex-1 flex items-center justify-center text-text-muted h-dvh">Chat not found</div>;
 
   const renderForwarded = (msg: ChatMessage) => {
     if (!msg.forwardedFrom) return null;
@@ -509,7 +507,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
             <ArrowLeft className="w-5 h-5" />
           </Link>
           {chat && (
-            <Link href={`/profile/${chat.participant.username}/`} className="flex-1 flex items-center gap-2.5 min-w-0 px-2 py-1 rounded-xl hover:bg-surface/40 transition-colors">
+            <Link href={`/profile/${chat.participant.username || chat.participant.id}/`} className="flex-1 flex items-center gap-2.5 min-w-0 px-2 py-1 rounded-xl hover:bg-surface/40 transition-colors">
               <Avatar src={chat.participant.avatar} alt="" size="sm" />
               <div className="min-w-0 text-left">
                 <UserName user={chat.participant} nameClassName="font-semibold text-sm" />

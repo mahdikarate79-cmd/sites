@@ -47,7 +47,7 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 export async function getSignedMediaUrl(objectKey: string): Promise<string> {
-  return `${getApiBase()}/api/media/${objectKey}`;
+  return `${getApiBase()}/api/media/${encodeURIComponent(objectKey)}`;
 }
 
 export interface UploadResult {

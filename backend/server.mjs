@@ -27,7 +27,7 @@ import {
   handleAdminAction,
   getAdminSession,
 } from "./admin.mjs";
-import { uploadToB2, isB2Configured } from "./b2.mjs";
+import { uploadToB2, isB2Configured, downloadFromB2 } from "./b2.mjs";
 import { createStarsInvoice, answerPreCheckoutQuery, verifyWebhookSecret, isBotConfigured } from "./telegramBot.mjs";
 import { createNotification, getUserNotifications } from "./notifications.mjs";
 import { startCleanupScheduler } from "./mediaCleanup.mjs";
@@ -58,6 +58,14 @@ import {
   recordDonation,
   searchUsers,
 } from "./social.mjs";
+import {
+  listChats,
+  getChat,
+  getChatMessages,
+  sendChatMessage,
+  startChat,
+  ensureChats,
+} from "./chat.mjs";
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? "";
 const DEV_AUTH = process.env.AUTH_DEV_MODE === "true";
 const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET ?? "";
@@ -96,10 +104,19 @@ function json(res, status, body, extraHeaders = {}) {
   res.end(JSON.stringify(body));
 }
 
-function readBody(req) {
+function readBody(req, maxBytes = 64 * 1024 * 1024) {
   return new Promise((resolve, reject) => {
     const chunks = [];
-    req.on("data", (c) => chunks.push(c));
+    let size = 0;
+    req.on("data", (c) => {
+      size += c.length;
+      if (size > maxBytes) {
+        reject(new Error("Body too large"));
+        req.destroy();
+        return;
+      }
+      chunks.push(c);
+    });
     req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     req.on("error", reject);
   });
@@ -209,25 +226,8 @@ async function handleTelegramAuth(req, res, secure) {
       purgeDeletedUser(db, deletedUser.id);
     }
     user = createUserFromTelegram(db, tgUser);
-    if (tgUser.username) {
-      const un = String(tgUser.username).trim().toLowerCase();
-      if (usernameAvailable(db, un)) {
-        user.username = un;
-        user.usernameSet = true;
-      }
-    }
     db.users[user.id] = user;
   } else {
-    if (tgUser.photo_url && !String(user.avatar ?? "").includes("dicebear")) {
-      user.avatar = tgUser.photo_url;
-    }
-    if (!user.username && tgUser.username) {
-      const un = String(tgUser.username).trim().toLowerCase();
-      if (usernameAvailable(db, un)) {
-        user.username = un;
-        user.usernameSet = true;
-      }
-    }
     touchUserActivity(db, user.id);
   }
 
@@ -507,9 +507,25 @@ async function handleStorageUpload(req, res) {
   const ext = contentType.includes("video") ? ".mp4" : contentType.includes("gif") ? ".gif" : ".jpg";
   const objectKey = `${category ?? "post"}/${user.id}/${crypto.randomBytes(16).toString("hex")}${ext}`;
   const uploaded = await uploadToB2(objectKey, buffer, contentType);
-  db.mediaObjects[objectKey] = { ...uploaded, userId: user.id, createdAt: new Date().toISOString() };
+  const proxyUrl = `${config.apiUrl}/api/media/${encodeURIComponent(objectKey)}`;
+  db.mediaObjects[objectKey] = { ...uploaded, userId: user.id, createdAt: new Date().toISOString(), url: proxyUrl };
   saveDb(db);
-  return json(res, 200, { objectKey, url: uploaded.url, size: uploaded.size }, corsHeaders(req.headers.origin));
+  return json(res, 200, { objectKey, url: proxyUrl, size: uploaded.size }, corsHeaders(req.headers.origin));
+}
+
+async function handleMediaProxy(req, res, objectKey) {
+  const origin = req.headers.origin;
+  const extra = { "Cache-Control": "public, max-age=86400" };
+  try {
+    if (isB2Configured()) {
+      const { buffer, contentType } = await downloadFromB2(objectKey);
+      res.writeHead(200, { "Content-Type": contentType, ...extra, ...corsHeaders(origin) });
+      return res.end(buffer);
+    }
+  } catch (e) {
+    console.error("Media proxy error", objectKey, e.message);
+  }
+  return json(res, 404, { error: "Not found" }, corsHeaders(origin));
 }
 
 async function handleProfileUpdate(req, res) {
@@ -722,6 +738,59 @@ async function handleSocial(req, res, url) {
   return false;
 }
 
+async function handleChat(req, res, url) {
+  const db = loadDb();
+  ensureChats(db);
+  const user = requireUser(req, db);
+  const origin = req.headers.origin;
+  if (!user) {
+    json(res, 401, { error: "Unauthorized" }, corsHeaders(origin));
+    return true;
+  }
+
+  if (url === "/api/chats" && req.method === "GET") {
+    json(res, 200, { chats: listChats(db, user.id) }, corsHeaders(origin));
+    return true;
+  }
+
+  if (url === "/api/chats/start" && req.method === "POST") {
+    const raw = await readBody(req);
+    let body = {};
+    try { body = JSON.parse(raw || "{}"); } catch { /* */ }
+    const result = startChat(db, user.id, String(body.userId ?? ""));
+    if (!result.ok) json(res, 400, { error: result.error }, corsHeaders(origin));
+    else { saveDb(db); json(res, 200, { chat: result.chat }, corsHeaders(origin)); }
+    return true;
+  }
+
+  const messagesMatch = url.match(/^\/api\/chats\/([^/]+)\/messages$/);
+  if (messagesMatch && req.method === "GET") {
+    const messages = getChatMessages(db, messagesMatch[1], user.id);
+    if (!messages) json(res, 404, { error: "Not found" }, corsHeaders(origin));
+    else json(res, 200, { messages }, corsHeaders(origin));
+    return true;
+  }
+
+  if (messagesMatch && req.method === "POST") {
+    const raw = await readBody(req);
+    let body = {};
+    try { body = JSON.parse(raw || "{}"); } catch { /* */ }
+    const result = sendChatMessage(db, messagesMatch[1], user.id, body);
+    if (!result.ok) json(res, 400, { error: result.error }, corsHeaders(origin));
+    else { saveDb(db); json(res, 200, { message: result.message }, corsHeaders(origin)); }
+    return true;
+  }
+
+  const chatMatch = url.match(/^\/api\/chats\/([^/]+)$/);
+  if (chatMatch && req.method === "GET") {
+    const chat = getChat(db, chatMatch[1], user.id);
+    json(res, chat ? 200 : 404, chat ? { chat } : { error: "Not found" }, corsHeaders(origin));
+    return true;
+  }
+
+  return false;
+}
+
 function handleAdminMe(req, res) {
   const db = loadDb();
   ensureAdminSettings(db);
@@ -760,6 +829,13 @@ const server = http.createServer(async (req, res) => {
     if (url === "/api/withdrawals/request" && req.method === "POST") return handleWithdrawalRequest(req, res);
 
     if (await handleSocial(req, res, url)) return;
+
+    const mediaMatch = url?.match(/^\/api\/media\/(.+)$/);
+    if (mediaMatch && req.method === "GET") {
+      return handleMediaProxy(req, res, decodeURIComponent(mediaMatch[1]));
+    }
+
+    if (await handleChat(req, res, url)) return;
 
     if (url === "/api/admin/login" && req.method === "POST") {
       const db = loadDb();

@@ -103,7 +103,7 @@ export function ExploreContent() {
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
           <input
             type="search"
-            placeholder="Search by username, name, or tag..."
+            placeholder="Search Sheytoni..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="w-full pl-10 pr-11 py-3 rounded-2xl bg-surface border border-border text-sm outline-none focus:border-text-muted transition-colors"

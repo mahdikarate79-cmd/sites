@@ -15,6 +15,7 @@ function resolvePort() {
 
 export const config = {
   siteUrl: process.env.SITE_URL ?? "https://x.venify.xyz",
+  apiUrl: process.env.API_PUBLIC_URL ?? process.env.SITE_URL?.replace("x.", "api.") ?? "https://api.venify.xyz",
   port: resolvePort(),
   host: process.env.HOST ?? "0.0.0.0",
   nodeEnv: process.env.NODE_ENV ?? "development",

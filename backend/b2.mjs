@@ -93,3 +93,23 @@ export async function deleteFromB2(fileId, fileName) {
 export function isB2Configured() {
   return !!(process.env.B2_KEY_ID && process.env.B2_APPLICATION_KEY && process.env.B2_BUCKET_NAME);
 }
+
+export function getPublicMediaUrl(objectKey) {
+  const auth = authCache;
+  const publicBase = process.env.B2_PUBLIC_URL ?? auth?.downloadUrl;
+  const bucket = process.env.B2_BUCKET_NAME;
+  if (publicBase && bucket) return `${publicBase}/file/${bucket}/${objectKey}`;
+  return null;
+}
+
+export async function downloadFromB2(objectKey) {
+  const auth = await authorize();
+  const bucket = process.env.B2_BUCKET_NAME;
+  const publicBase = process.env.B2_PUBLIC_URL ?? auth.downloadUrl;
+  const url = `${publicBase}/file/${bucket}/${objectKey}`;
+  const res = await fetch(url, { headers: { Authorization: auth.authorizationToken } });
+  if (!res.ok) throw new Error(`B2 download failed: ${res.status}`);
+  const buffer = Buffer.from(await res.arrayBuffer());
+  const contentType = res.headers.get("content-type") ?? "application/octet-stream";
+  return { buffer, contentType };
+}
