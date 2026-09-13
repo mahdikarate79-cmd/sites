@@ -18,6 +18,7 @@ function rowToUser(r) {
     starBalance: r.star_balance,
     earnings: r.earnings,
     followers: r.followers,
+    fakeFollowers: r.fake_followers ?? 0,
     following: r.following,
     postsCount: r.posts_count,
     loginMethod: r.login_method,
@@ -27,6 +28,7 @@ function rowToUser(r) {
     deletedAt: r.deleted_at,
     verificationRequestPending: !!r.verification_request_pending,
     usernameSet: !!r.username_set,
+    profileCustomized: !!r.profile_customized,
   };
 }
 
@@ -47,6 +49,7 @@ function userToRow(u) {
     starBalance: u.starBalance ?? 0,
     earnings: u.earnings ?? 0,
     followers: u.followers ?? 0,
+    fakeFollowers: u.fakeFollowers ?? 0,
     following: u.following ?? 0,
     postsCount: u.postsCount ?? 0,
     loginMethod: u.loginMethod ?? "telegram",
@@ -56,6 +59,7 @@ function userToRow(u) {
     deletedAt: u.deletedAt ?? null,
     verificationRequestPending: u.verificationRequestPending ? 1 : 0,
     usernameSet: u.usernameSet ? 1 : 0,
+    profileCustomized: u.profileCustomized ? 1 : 0,
   };
 }
 
@@ -131,11 +135,24 @@ export function loadDb() {
 
   const reservedUsernames = sqlite.prepare("SELECT username FROM reserved_usernames").all().map((r) => r.username);
   const deletedUserIds = sqlite.prepare("SELECT user_id FROM deleted_user_ids").all().map((r) => r.user_id);
+  const unlockedPosts = settings.unlockedPosts ?? {};
+  const earningsLedger = settings.earningsLedger ?? {};
+  const follows = settings.follows ?? {};
+  const postLikes = settings.postLikes ?? {};
+  const donations = settings.donations ?? {};
+  const unlockedPaidMedia = settings.unlockedPaidMedia ?? {};
+  delete settings.unlockedPosts;
+  delete settings.earningsLedger;
+  delete settings.follows;
+  delete settings.postLikes;
+  delete settings.donations;
+  delete settings.unlockedPaidMedia;
 
   return {
     users, sessions, adminSessions, settings, posts, notifications,
     verificationRequests, withdrawalRequests, bannedUsers, mediaObjects,
     paymentIntents, processedCharges, chats, reservedUsernames, deletedUserIds,
+    unlockedPosts, earningsLedger, follows, postLikes, donations, unlockedPaidMedia,
   };
 }
 
@@ -146,14 +163,14 @@ export function saveDb(db) {
     const upsertUser = sqlite.prepare(`
       INSERT OR REPLACE INTO users (
         id, telegram_id, username, display_name, avatar, cover, bio, verified, premium,
-        premium_expires_at, banned, banned_at, star_balance, earnings, followers, following,
+        premium_expires_at, banned, banned_at, star_balance, earnings, followers, fake_followers, following,
         posts_count, login_method, created_at, last_active_at, deleted, deleted_at,
-        verification_request_pending, username_set
+        verification_request_pending, username_set, profile_customized
       ) VALUES (
         @id, @telegramId, @username, @displayName, @avatar, @cover, @bio, @verified, @premium,
-        @premiumExpiresAt, @banned, @bannedAt, @starBalance, @earnings, @followers, @following,
+        @premiumExpiresAt, @banned, @bannedAt, @starBalance, @earnings, @followers, @fakeFollowers, @following,
         @postsCount, @loginMethod, @createdAt, @lastActiveAt, @deleted, @deletedAt,
-        @verificationRequestPending, @usernameSet
+        @verificationRequestPending, @usernameSet, @profileCustomized
       )
     `);
     for (const u of Object.values(db.users ?? {})) upsertUser.run(userToRow(u));
@@ -172,7 +189,14 @@ export function saveDb(db) {
 
     sqlite.prepare("DELETE FROM settings").run();
     const insSetting = sqlite.prepare("INSERT INTO settings VALUES (?,?)");
-    for (const [k, v] of Object.entries(db.settings ?? {})) {
+    const settingsToSave = { ...(db.settings ?? {}) };
+    if (db.unlockedPosts) settingsToSave.unlockedPosts = db.unlockedPosts;
+    if (db.earningsLedger) settingsToSave.earningsLedger = db.earningsLedger;
+    if (db.follows) settingsToSave.follows = db.follows;
+    if (db.postLikes) settingsToSave.postLikes = db.postLikes;
+    if (db.donations) settingsToSave.donations = db.donations;
+    if (db.unlockedPaidMedia) settingsToSave.unlockedPaidMedia = db.unlockedPaidMedia;
+    for (const [k, v] of Object.entries(settingsToSave)) {
       insSetting.run(k, JSON.stringify(v));
     }
 

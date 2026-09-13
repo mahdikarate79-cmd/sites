@@ -12,4 +12,7 @@ export interface AuthMeResponse {
   user: AuthUser | null;
   loginMethod: LoginMethod;
   verificationMinFollowers?: number;
+  accountDeleted?: boolean;
+  canRecreateAt?: string;
+  remainingMs?: number;
 }

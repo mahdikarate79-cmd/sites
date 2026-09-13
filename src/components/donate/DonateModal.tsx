@@ -10,8 +10,11 @@ import { UserName } from "@/components/ui/UserName";
 import { StarsSlider } from "./StarsSlider";
 import { formatStars } from "@/lib/utils/format";
 import { usePrototype } from "@/lib/hooks/usePrototype";
+import { useAuth } from "@/lib/hooks/useAuth";
+import { useTelegramGate } from "@/lib/hooks/useTelegramGate";
 import { useToast } from "@/components/ui/ToastProvider";
 import { computeDonationRank } from "@/lib/store/prototypeStore";
+import { createDonationInvoice, openTelegramInvoice } from "@/lib/api/payments";
 import { cn } from "@/lib/utils/cn";
 import { Check, Glasses } from "lucide-react";
 
@@ -25,7 +28,9 @@ export function DonateModal({ open, onClose, post }: DonateModalProps) {
   const [stars, setStars] = useState(64);
   const [showInTop, setShowInTop] = useState(true);
   const [donating, setDonating] = useState(false);
-  const { getDonation, donate, getCurrentUser } = usePrototype();
+  const { getDonation, getCurrentUser } = usePrototype();
+  const { isAuthenticated, refresh } = useAuth();
+  const { requireMiniApp } = useTelegramGate();
   const { showToast } = useToast();
   const me = getCurrentUser();
 
@@ -42,13 +47,36 @@ export function DonateModal({ open, onClose, post }: DonateModalProps) {
     [stars, donation.topDonators, anonymous, me]
   );
 
-  const handleDonate = () => {
+  const handleDonate = async () => {
     if (donating) return;
+    if (!requireMiniApp()) return;
+    if (!isAuthenticated) return;
     setDonating(true);
-    donate(post.id, stars, anonymous, post.author.id);
-    showToast(`Sent ${formatStars(stars)} Stars`);
-    setDonating(false);
-    onClose();
+    try {
+      const invoice = await createDonationInvoice(post.id, post.author.id, stars, anonymous);
+      if (!invoice.invoiceUrl) {
+        showToast("Payment unavailable");
+        setDonating(false);
+        return;
+      }
+      const opened = openTelegramInvoice(invoice.invoiceUrl, async (status) => {
+        if (status === "paid") {
+          await refresh();
+          showToast(`Sent ${formatStars(stars)} Stars`);
+          onClose();
+        } else if (status === "failed") {
+          showToast("Payment failed");
+        }
+        setDonating(false);
+      });
+      if (!opened) {
+        showToast("Open in Telegram to pay with Stars");
+        setDonating(false);
+      }
+    } catch {
+      showToast("Payment failed");
+      setDonating(false);
+    }
   };
 
   return (
@@ -134,14 +162,13 @@ export function DonateModal({ open, onClose, post }: DonateModalProps) {
             donating && "opacity-60"
           )}
         >
-          Send
-          <TelegramStarIcon variant="donate" size={16} />
-          <span className="text-white tabular-nums">{formatStars(stars)}</span>
+          {donating ? "Opening invoice…" : "Send"}
+          {!donating && <TelegramStarIcon variant="donate" size={16} />}
+          {!donating && <span className="text-white tabular-nums">{formatStars(stars)}</span>}
         </button>
 
         <p className="text-[10px] text-text-muted text-center mt-3 leading-relaxed">
-          By sending Stars you agree to the{" "}
-          <button type="button" className="text-[#3b82f6]">Terms of Service</button>.
+          Payment via Telegram Stars invoice.
         </p>
       </div>
     </BottomSheet>

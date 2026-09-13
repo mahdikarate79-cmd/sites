@@ -43,6 +43,14 @@ export function FeedList() {
     );
   }
 
+  if (visible.length === 0) {
+    return (
+      <div className="px-4 py-16 text-center text-text-muted text-sm">
+        No posts yet. Follow creators or publish your first post.
+      </div>
+    );
+  }
+
   return (
     <div>
       {visible.map((post) => (
