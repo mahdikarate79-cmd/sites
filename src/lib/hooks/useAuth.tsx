@@ -7,8 +7,8 @@ import {
   deleteAuthAccount,
   fetchAuthMe,
   getTelegramInitData,
-  logoutAuth,
 } from "@/lib/auth/client";
+import { fetchUnlockedPosts } from "@/lib/api/payments";
 import { clearLocalUserData, markUserDeleted } from "@/lib/auth/deletedUser";
 import { isTelegramMiniApp } from "@/lib/telegram/miniApp";
 
@@ -19,8 +19,13 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   isGuest: boolean;
   loading: boolean;
+  accountDeleted: boolean;
+  canRecreateAt: string | null;
+  remainingMs: number | null;
+  unlockedPostIds: string[];
+  isPostUnlocked: (postId: string) => boolean;
   refresh: () => Promise<void>;
-  logout: () => Promise<void>;
+  refreshUnlocks: () => Promise<void>;
   deleteAccount: () => Promise<void>;
 }
 
@@ -31,12 +36,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loginMethod, setLoginMethod] = useState<LoginMethod>("guest");
   const [verificationMinFollowers, setVerificationMinFollowers] = useState(10000);
   const [loading, setLoading] = useState(true);
+  const [accountDeleted, setAccountDeleted] = useState(false);
+  const [canRecreateAt, setCanRecreateAt] = useState<string | null>(null);
+  const [remainingMs, setRemainingMs] = useState<number | null>(null);
+  const [unlockedPostIds, setUnlockedPostIds] = useState<string[]>([]);
   const lastTelegramId = useRef<number | null>(null);
 
-  const applyMe = useCallback((data: { user: AuthUser | null; loginMethod: LoginMethod; verificationMinFollowers?: number }) => {
+  const applyMe = useCallback((data: {
+    user: AuthUser | null;
+    loginMethod: LoginMethod;
+    verificationMinFollowers?: number;
+    accountDeleted?: boolean;
+    canRecreateAt?: string;
+    remainingMs?: number;
+  }) => {
     setUser(data.user);
     setLoginMethod(data.loginMethod);
     if (data.verificationMinFollowers) setVerificationMinFollowers(data.verificationMinFollowers);
+    setAccountDeleted(!!data.accountDeleted);
+    setCanRecreateAt(data.canRecreateAt ?? null);
+    setRemainingMs(data.remainingMs ?? null);
+  }, []);
+
+  const refreshUnlocks = useCallback(async () => {
+    try {
+      const ids = await fetchUnlockedPosts();
+      setUnlockedPostIds(ids);
+    } catch {
+      setUnlockedPostIds([]);
+    }
   }, []);
 
   const authenticateTelegram = useCallback(async () => {
@@ -52,11 +80,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (data.user) {
         const tgUser = JSON.parse(new URLSearchParams(initData).get("user") ?? "{}");
         lastTelegramId.current = tgUser.id ?? null;
+        await refreshUnlocks();
       }
     } catch {
       applyMe({ user: null, loginMethod: "guest" });
     }
-  }, [applyMe]);
+  }, [applyMe, refreshUnlocks]);
 
   const refresh = useCallback(async () => {
     if (isTelegramMiniApp()) {
@@ -67,13 +96,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const data = await fetchAuthMe();
       if (data.loginMethod === "telegram" && data.user) {
         applyMe(data);
+        await refreshUnlocks();
       } else {
         applyMe({ user: null, loginMethod: "guest" });
       }
     } catch {
       applyMe({ user: null, loginMethod: "guest" });
     }
-  }, [applyMe, authenticateTelegram]);
+  }, [applyMe, authenticateTelegram, refreshUnlocks]);
 
   useEffect(() => {
     (async () => {
@@ -84,13 +114,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           const data = await fetchAuthMe();
           applyMe(data.loginMethod === "telegram" && data.user ? data : { user: null, loginMethod: "guest" });
+          if (data.user) await refreshUnlocks();
         } catch {
           applyMe({ user: null, loginMethod: "guest" });
         }
       }
       setLoading(false);
     })();
-  }, [authenticateTelegram, applyMe]);
+  }, [authenticateTelegram, applyMe, refreshUnlocks]);
 
   useEffect(() => {
     if (!isTelegramMiniApp()) return;
@@ -127,15 +158,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [authenticateTelegram]);
 
-  const logout = useCallback(async () => {
-    try {
-      await logoutAuth();
-    } catch { /* ignore */ }
-    setUser(null);
-    setLoginMethod("guest");
-    lastTelegramId.current = null;
-  }, []);
-
   const deleteAccount = useCallback(async () => {
     const uid = user?.id;
     await deleteAuthAccount();
@@ -143,8 +165,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearLocalUserData();
     setUser(null);
     setLoginMethod("guest");
+    setUnlockedPostIds([]);
     lastTelegramId.current = null;
-  }, [user?.id]);
+    if (isTelegramMiniApp()) {
+      const initData = getTelegramInitData();
+      if (initData) {
+        const data = await authenticateWithTelegram(initData);
+        applyMe(data);
+      }
+    }
+  }, [user?.id, applyMe]);
+
+  const isPostUnlocked = useCallback(
+    (postId: string) => unlockedPostIds.includes(postId),
+    [unlockedPostIds],
+  );
 
   return (
     <AuthContext.Provider
@@ -155,8 +190,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAuthenticated: loginMethod === "telegram" && !!user,
         isGuest: loginMethod === "guest" || !user,
         loading,
+        accountDeleted,
+        canRecreateAt,
+        remainingMs,
+        unlockedPostIds,
+        isPostUnlocked,
         refresh,
-        logout,
+        refreshUnlocks,
         deleteAccount,
       }}
     >

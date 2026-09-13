@@ -5,8 +5,13 @@ import {
   loadDb,
   saveDb,
   findUserByTelegramId,
+  findUserByTelegramIdIncludingDeleted,
   findUserById,
+  getDeletionCooldown,
+  purgeDeletedUser,
   createUserFromTelegram,
+  isPostUnlocked,
+  unlockPost,
   createSession,
   deleteAccount,
   publicUser,
@@ -165,6 +170,18 @@ async function handleTelegramAuth(req, res, secure) {
 
   let user = findUserByTelegramId(db, tgUser.id);
   if (!user) {
+    const deletedUser = findUserByTelegramIdIncludingDeleted(db, tgUser.id);
+    if (deletedUser?.deleted) {
+      const cooldown = getDeletionCooldown(deletedUser);
+      if (cooldown) {
+        return json(res, 403, {
+          error: "account_deleted",
+          canRecreateAt: cooldown.canRecreateAt,
+          remainingMs: cooldown.remainingMs,
+        }, corsHeaders(req.headers.origin));
+      }
+      purgeDeletedUser(db, deletedUser.id);
+    }
     user = createUserFromTelegram(db, tgUser);
     db.users[user.id] = user;
   } else {
@@ -262,6 +279,15 @@ function handleNotifications(req, res) {
   return json(res, 200, { notifications: getUserNotifications(db, user.id) }, corsHeaders(req.headers.origin));
 }
 
+function handleUserUnlocks(req, res) {
+  const db = loadDb();
+  ensureAdminSettings(db);
+  const user = requireUser(req, db);
+  if (!user) return json(res, 401, { error: "Unauthorized" }, corsHeaders(req.headers.origin));
+  const postIds = Object.keys(db.unlockedPosts?.[user.id] ?? {});
+  return json(res, 200, { postIds }, corsHeaders(req.headers.origin));
+}
+
 async function handleCreateInvoice(req, res) {
   const db = loadDb();
   const user = requireUser(req, db);
@@ -289,6 +315,21 @@ async function handleCreateInvoice(req, res) {
     title = "Sheytoni Stars";
     description = `Purchase ${stars} Stars`;
     meta = { type: "stars", amount: stars };
+  } else if (type === "post_unlock") {
+    stars = Math.max(1, Math.min(25000, Number(body.stars) || 0));
+    const postId = String(body.postId ?? "");
+    if (!postId) return json(res, 400, { error: "postId required" }, corsHeaders(req.headers.origin));
+    title = "Sheytoni — Unlock post";
+    description = `Unlock paid content`;
+    meta = { type: "post_unlock", postId, stars };
+  } else if (type === "donation") {
+    stars = Math.max(1, Math.min(25000, Number(body.stars) || 0));
+    const postId = String(body.postId ?? "");
+    const recipientId = String(body.recipientId ?? "");
+    if (!postId || !recipientId) return json(res, 400, { error: "postId and recipientId required" }, corsHeaders(req.headers.origin));
+    title = "Sheytoni — Star donation";
+    description = `Send ${stars} Stars`;
+    meta = { type: "donation", postId, recipientId, stars, anonymous: !!body.anonymous };
   } else {
     return json(res, 400, { error: "Invalid type" }, corsHeaders(req.headers.origin));
   }
@@ -354,6 +395,14 @@ async function handleTelegramWebhook(req, res) {
           const exp = new Date();
           exp.setMonth(exp.getMonth() + plan.months);
           user.premiumExpiresAt = exp.toISOString();
+        } else if (intent.meta?.type === "post_unlock") {
+          unlockPost(db, user.id, intent.meta.postId);
+        } else if (intent.meta?.type === "donation") {
+          const recipient = findUserById(db, intent.meta.recipientId);
+          if (recipient) {
+            recipient.earnings = (recipient.earnings ?? 0) + intent.stars;
+            recipient.starBalance = (recipient.starBalance ?? 0) + intent.stars;
+          }
         } else {
           user.starBalance = (user.starBalance ?? 0) + intent.stars;
         }
@@ -498,6 +547,7 @@ const server = http.createServer(async (req, res) => {
     if (url === "/api/verification/request" && req.method === "POST") return handleVerificationRequest(req, res);
     if (url === "/api/notifications" && req.method === "GET") return handleNotifications(req, res);
     if (url === "/api/payments/invoice" && req.method === "POST") return handleCreateInvoice(req, res);
+    if (url === "/api/user/unlocks" && req.method === "GET") return handleUserUnlocks(req, res);
     if (url === "/api/profile/update" && req.method === "POST") return handleProfileUpdate(req, res);
     if (url === "/api/telegram/webhook" && req.method === "POST") return handleTelegramWebhook(req, res);
     if (url === "/api/storage/upload" && req.method === "POST") return handleStorageUpload(req, res);

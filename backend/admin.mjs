@@ -5,6 +5,7 @@ import {
   findUserById,
   findUserByUsername,
   findUserByTelegramId,
+  resolveUserLookup,
   publicUser,
   saveDb,
 } from "./db.mjs";
@@ -39,6 +40,7 @@ export function ensureAdminSettings(db) {
   if (!db.mediaObjects) db.mediaObjects = {};
   if (!db.paymentIntents) db.paymentIntents = {};
   if (!db.chats) db.chats = {};
+  if (!db.unlockedPosts) db.unlockedPosts = {};
 }
 
 export function getAdminSession(req, db) {
@@ -171,9 +173,10 @@ export function handleAdminStats(req, res, db, json, corsHeaders) {
   }, corsHeaders(req.headers.origin));
 }
 
-function resolveUser(db, { username, telegramId, userId }) {
+function resolveUser(db, { username, telegramId, userId, query }) {
   if (userId) return findUserById(db, userId);
-  if (username) return findUserByUsername(db, username);
+  if (query) return resolveUserLookup(db, query);
+  if (username) return resolveUserLookup(db, username);
   if (telegramId) return findUserByTelegramId(db, Number(telegramId));
   return null;
 }
@@ -194,7 +197,7 @@ export async function handleAdminAction(req, res, db, json, corsHeaders) {
       return json(res, 200, { ok: true, value: db.settings.verificationMinFollowers }, corsHeaders(req.headers.origin));
 
     case "ban_user": {
-      const user = resolveUser(db, body);
+      const user = resolveUser(db, { ...body, query: body.query ?? body.username ?? body.telegramId });
       if (!user) return json(res, 404, { error: "User not found" }, corsHeaders(req.headers.origin));
       user.banned = true;
       user.bannedAt = new Date().toISOString();
@@ -364,6 +367,13 @@ export async function handleAdminAction(req, res, db, json, corsHeaders) {
       w.rejectedAt = new Date().toISOString();
       saveDb(db);
       return json(res, 200, { ok: true }, corsHeaders(req.headers.origin));
+    }
+
+    case "search_user": {
+      const user = resolveUser(db, { query: body.query ?? body.username ?? body.telegramId });
+      if (!user) return json(res, 404, { error: "User not found" }, corsHeaders(req.headers.origin));
+      const posts = Object.values(db.posts ?? {}).filter((p) => p.authorId === user.id);
+      return json(res, 200, { user: publicUser(user), posts }, corsHeaders(req.headers.origin));
     }
 
     case "list_users":

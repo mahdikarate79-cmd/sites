@@ -8,6 +8,7 @@ ZIP_NAME="sheytoni-frontend-production.zip"
 
 echo "==> Building Next.js static export (production API URL)..."
 export NEXT_PUBLIC_API_URL="https://api.venify.xyz"
+export NEXT_PUBLIC_SITE_URL="https://x.venify.xyz"
 npm run build
 
 echo "==> Preparing frontend package..."

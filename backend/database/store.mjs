@@ -131,11 +131,14 @@ export function loadDb() {
 
   const reservedUsernames = sqlite.prepare("SELECT username FROM reserved_usernames").all().map((r) => r.username);
   const deletedUserIds = sqlite.prepare("SELECT user_id FROM deleted_user_ids").all().map((r) => r.user_id);
+  const unlockedPosts = settings.unlockedPosts ?? {};
+  delete settings.unlockedPosts;
 
   return {
     users, sessions, adminSessions, settings, posts, notifications,
     verificationRequests, withdrawalRequests, bannedUsers, mediaObjects,
     paymentIntents, processedCharges, chats, reservedUsernames, deletedUserIds,
+    unlockedPosts,
   };
 }
 
@@ -172,7 +175,9 @@ export function saveDb(db) {
 
     sqlite.prepare("DELETE FROM settings").run();
     const insSetting = sqlite.prepare("INSERT INTO settings VALUES (?,?)");
-    for (const [k, v] of Object.entries(db.settings ?? {})) {
+    const settingsToSave = { ...(db.settings ?? {}) };
+    if (db.unlockedPosts) settingsToSave.unlockedPosts = db.unlockedPosts;
+    for (const [k, v] of Object.entries(settingsToSave)) {
       insSetting.run(k, JSON.stringify(v));
     }
 

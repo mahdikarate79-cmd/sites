@@ -246,31 +246,75 @@ export function AdminPanel() {
   );
 }
 
-function UserActions({ users, onAct }: { users: Array<{ username: string; id: string; followers: number; verified: boolean; premium: boolean }>; onAct: (a: string, d?: Record<string, unknown>) => Promise<void> }) {
+function UserActions({ users, onAct }: { users: Array<{ username: string | null; id: string; telegramId?: number; followers: number; verified: boolean; premium: boolean; displayName?: string }>; onAct: (a: string, d?: Record<string, unknown>) => Promise<void> }) {
   const [target, setTarget] = useState("");
   const [count, setCount] = useState("1000");
   const [stars, setStars] = useState("-100");
+  const [found, setFound] = useState<{ user: { id: string; username: string | null; displayName: string; telegramId?: number; followers: number; verified: boolean; premium: boolean }; posts: Array<{ id: string; content?: string }> } | null>(null);
+  const [filter, setFilter] = useState("");
+
+  const q = (extra: Record<string, unknown> = {}) => ({ query: target, ...extra });
+
+  const search = async () => {
+    try {
+      const r = await adminAction("search_user", { query: target }) as { user: typeof found extends null ? never : NonNullable<typeof found>["user"]; posts: Array<{ id: string; content?: string }> };
+      setFound({ user: r.user, posts: r.posts ?? [] });
+    } catch {
+      setFound(null);
+    }
+  };
+
+  const filtered = users.filter((u) => {
+    const f = filter.toLowerCase();
+    if (!f) return true;
+    return (
+      (u.username ?? "").toLowerCase().includes(f)
+      || u.id.toLowerCase().includes(f)
+      || String(u.telegramId ?? "").includes(f)
+      || (u.displayName ?? "").toLowerCase().includes(f)
+    );
+  });
 
   return (
     <div className="space-y-3">
-      <input value={target} onChange={(e) => setTarget(e.target.value)} placeholder="Username or Telegram ID" className="w-full px-3 py-2 rounded-xl bg-surface border border-border text-sm" />
+      <input value={target} onChange={(e) => setTarget(e.target.value)} placeholder="Username, @name, Telegram ID, or user id" className="w-full px-3 py-2 rounded-xl bg-surface border border-border text-sm" />
+      <button type="button" onClick={search} className="w-full py-2 rounded-full bg-[#2AABEE] text-white text-sm font-medium">Search user</button>
+
+      {found && (
+        <div className="glass-nav rounded-xl p-3 space-y-2">
+          <p className="font-semibold">{found.user.displayName}</p>
+          <p className="text-xs text-text-muted">@{found.user.username ?? "—"} · TG {found.user.telegramId ?? "—"} · {found.user.id}</p>
+          <a href={`/profile/${found.user.username || found.user.id}/`} target="_blank" rel="noopener noreferrer" className="text-xs text-[#2AABEE] underline">Open profile</a>
+          <p className="text-xs text-text-muted">{found.posts.length} posts in DB</p>
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-2">
-        <button type="button" onClick={() => onAct("ban_user", { username: target })} className="px-3 py-1.5 rounded-full bg-like/20 text-like text-xs">Ban</button>
-        <button type="button" onClick={() => onAct("unban_user", { username: target })} className="px-3 py-1.5 rounded-full bg-surface text-xs">Unban</button>
-        <button type="button" onClick={() => onAct("set_verified", { username: target, verified: true })} className="px-3 py-1.5 rounded-full bg-[#2AABEE]/20 text-[#2AABEE] text-xs">Verify</button>
-        <button type="button" onClick={() => onAct("set_verified", { username: target, verified: false })} className="px-3 py-1.5 rounded-full bg-surface text-xs">Remove verify</button>
-        <button type="button" onClick={() => onAct("set_premium", { username: target, premium: true, months: 6 })} className="px-3 py-1.5 rounded-full bg-surface text-xs">Give premium</button>
-        <button type="button" onClick={() => onAct("set_premium", { username: target, premium: false })} className="px-3 py-1.5 rounded-full bg-surface text-xs">Remove premium</button>
+        <button type="button" onClick={() => onAct("ban_user", q())} className="px-3 py-1.5 rounded-full bg-like/20 text-like text-xs">Ban</button>
+        <button type="button" onClick={() => onAct("unban_user", q())} className="px-3 py-1.5 rounded-full bg-surface text-xs">Unban</button>
+        <button type="button" onClick={() => onAct("set_verified", q({ verified: true }))} className="px-3 py-1.5 rounded-full bg-[#2AABEE]/20 text-[#2AABEE] text-xs">Verify</button>
+        <button type="button" onClick={() => onAct("set_verified", q({ verified: false }))} className="px-3 py-1.5 rounded-full bg-surface text-xs">Remove verify</button>
+        <button type="button" onClick={() => onAct("set_premium", q({ premium: true, months: 6 }))} className="px-3 py-1.5 rounded-full bg-surface text-xs">Give premium</button>
+        <button type="button" onClick={() => onAct("set_premium", q({ premium: false }))} className="px-3 py-1.5 rounded-full bg-surface text-xs">Remove premium</button>
       </div>
       <div className="flex gap-2 items-center">
         <input value={count} onChange={(e) => setCount(e.target.value)} className="w-24 px-2 py-1.5 rounded-lg bg-surface border border-border text-sm" />
-        <button type="button" onClick={() => onAct("add_fake_followers", { username: target, count: Number(count) })} className="px-3 py-1.5 rounded-full bg-surface text-xs">Add fake followers</button>
+        <button type="button" onClick={() => onAct("add_fake_followers", q({ count: Number(count) }))} className="px-3 py-1.5 rounded-full bg-surface text-xs">Add fake followers</button>
       </div>
       <div className="flex gap-2 items-center">
         <input value={stars} onChange={(e) => setStars(e.target.value)} className="w-24 px-2 py-1.5 rounded-lg bg-surface border border-border text-sm" />
-        <button type="button" onClick={() => onAct("adjust_stars", { username: target, delta: Number(stars) })} className="px-3 py-1.5 rounded-full bg-surface text-xs">Adjust stars</button>
+        <button type="button" onClick={() => onAct("adjust_stars", q({ delta: Number(stars) }))} className="px-3 py-1.5 rounded-full bg-surface text-xs">Adjust stars</button>
       </div>
       <button type="button" onClick={() => onAct("unban_all")} className="text-xs text-like">Unban all users</button>
+
+      <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter user list…" className="w-full px-3 py-2 rounded-xl bg-surface border border-border text-sm" />
+      <div className="max-h-48 overflow-y-auto space-y-1">
+        {filtered.slice(0, 50).map((u) => (
+          <button key={u.id} type="button" onClick={() => setTarget(u.username ?? String(u.telegramId ?? u.id))} className="w-full text-left text-xs p-2 rounded-lg hover:bg-surface truncate">
+            @{u.username ?? "—"} · TG {u.telegramId ?? "—"} · {u.id}
+          </button>
+        ))}
+      </div>
       <div className="text-xs text-text-muted pt-2">{users.length} registered users</div>
     </div>
   );
@@ -280,23 +324,34 @@ function PostActions({ posts, onAct }: { posts: Array<{ id: string; authorId: st
   const [postId, setPostId] = useState("");
   const [notify, setNotify] = useState(true);
   const [ban, setBan] = useState(false);
+  const [filter, setFilter] = useState("");
+
+  const filtered = posts.filter((p) => {
+    const f = filter.toLowerCase();
+    if (!f) return true;
+    return p.id.toLowerCase().includes(f) || (p.content ?? "").toLowerCase().includes(f) || p.authorId.toLowerCase().includes(f);
+  });
 
   return (
     <div className="space-y-3">
-      <input value={postId} onChange={(e) => setPostId(e.target.value)} placeholder="Post ID" className="w-full px-3 py-2 rounded-xl bg-surface border border-border text-sm" />
+      <input value={postId} onChange={(e) => setPostId(e.target.value)} placeholder="Post ID (e.g. p12)" className="w-full px-3 py-2 rounded-xl bg-surface border border-border text-sm font-mono" />
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} /> Notify user</label>
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={ban} onChange={(e) => setBan(e.target.checked)} /> Ban author</label>
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         <button type="button" onClick={() => onAct("delete_post", { postId, notify, banAuthor: ban })} className="px-3 py-1.5 rounded-full bg-like/20 text-like text-xs">Delete post</button>
         <button type="button" onClick={() => onAct("strip_post_media", { postId, notify })} className="px-3 py-1.5 rounded-full bg-surface text-xs">Strip media only</button>
       </div>
-      <div className="space-y-1 max-h-48 overflow-y-auto">
-        {posts.slice(0, 20).map((p) => (
-          <button key={p.id} type="button" onClick={() => setPostId(p.id)} className="w-full text-left text-xs p-2 rounded-lg hover:bg-surface truncate">
-            {p.id}: {p.content?.slice(0, 60) || "(no caption)"} {p.mediaExpired ? "[media expired]" : ""}
+      <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter posts by ID, author, caption…" className="w-full px-3 py-2 rounded-xl bg-surface border border-border text-sm" />
+      <div className="space-y-1 max-h-64 overflow-y-auto">
+        {filtered.slice(0, 50).map((p) => (
+          <button key={p.id} type="button" onClick={() => setPostId(p.id)} className="w-full text-left text-xs p-2 rounded-lg hover:bg-surface">
+            <span className="font-mono text-[#2AABEE]">{p.id}</span>
+            <span className="text-text-muted"> · {p.authorId}</span>
+            <p className="truncate">{p.content?.slice(0, 80) || "(no caption)"} {p.mediaExpired ? "[media expired]" : ""}</p>
           </button>
         ))}
       </div>
+      <p className="text-xs text-text-muted">{posts.length} posts in DB · mock feed IDs like p1, p12 work in frontend</p>
     </div>
   );
 }

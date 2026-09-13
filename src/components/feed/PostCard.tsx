@@ -18,7 +18,9 @@ import { SpoilerOverlay, PaidPriceBadge } from "@/components/chat/SpoilerOverlay
 import { formatTimeAgo } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
 import { usePrototype } from "@/lib/hooks/usePrototype";
+import { useAuth } from "@/lib/hooks/useAuth";
 import { useTelegramGate } from "@/lib/hooks/useTelegramGate";
+import { createPostUnlockInvoice, openTelegramInvoice } from "@/lib/api/payments";
 import { useToast } from "@/components/ui/ToastProvider";
 import { mockPosts } from "@/data/mock/posts";
 import { buildAccessibleReelItems, findReelIndex } from "@/lib/utils/reels";
@@ -35,26 +37,28 @@ export function PostCard({ post, onHide, allPosts }: PostCardProps) {
   const [reelsOpen, setReelsOpen] = useState(false);
   const [reelMediaIndex, setReelMediaIndex] = useState(0);
   const [accessModal, setAccessModal] = useState<"paid" | "private" | null>(null);
-  const { isFollowing, isPaidPostUnlocked, unlockPaidPost, getCurrentUser } = usePrototype();
+  const { isFollowing, getCurrentUser } = usePrototype();
+  const { isPostUnlocked, refresh, refreshUnlocks, isAuthenticated } = useAuth();
   const { requireMiniApp } = useTelegramGate();
   const { showToast } = useToast();
+  const [unlocking, setUnlocking] = useState(false);
 
   const user = getCurrentUser();
   const isAuthor = post.author.id === user.id;
   const accessCtx: PostAccessContext = {
     viewerId: user.id,
     isFollowing,
-    isUnlocked: isPaidPostUnlocked,
+    isUnlocked: (id: string) => isPostUnlocked(id),
   };
   const paid = isPostPaid(post);
   const privatePost = isPostPrivate(post);
   const privateLocked = privatePost && !isAuthor && !hasPrivateAccess(post, accessCtx);
-  const paidLocked = paid && !isAuthor && !isPaidPostUnlocked(post.id) && !privateLocked;
+  const paidLocked = paid && !isAuthor && !isPostUnlocked(post.id) && !privateLocked;
 
   const reelSource = allPosts ?? mockPosts;
   const reelItems = useMemo(
     () => buildAccessibleReelItems(reelSource, accessCtx),
-    [reelSource, user.id, isFollowing, isPaidPostUnlocked]
+    [reelSource, user.id, isFollowing, isPostUnlocked]
   );
   const hasReelMedia = post.media?.some((m) => m.type === "video" || m.type === "image" || m.type === "gif");
   const profileHref = `/profile/${post.author.username}/`;
@@ -73,14 +77,34 @@ export function PostCard({ post, onHide, allPosts }: PostCardProps) {
     }
   };
 
-  const handleUnlock = () => {
+  const handleUnlock = async () => {
     if (!requireMiniApp()) return;
-    if (!post.paidStars) return;
-    if (unlockPaidPost(post.id, post.paidStars)) {
-      showToast("Content unlocked");
-      setAccessModal(null);
-    } else {
-      showToast("Not enough Stars");
+    if (!isAuthenticated || !post.paidStars || unlocking) return;
+    setUnlocking(true);
+    try {
+      const invoice = await createPostUnlockInvoice(post.id, post.paidStars);
+      if (!invoice.invoiceUrl) {
+        showToast("Payment unavailable");
+        return;
+      }
+      const opened = openTelegramInvoice(invoice.invoiceUrl, async (status) => {
+        if (status === "paid") {
+          await refreshUnlocks();
+          await refresh();
+          showToast("Content unlocked");
+          setAccessModal(null);
+        } else if (status === "failed") {
+          showToast("Payment failed");
+        }
+        setUnlocking(false);
+      });
+      if (!opened) {
+        showToast("Open in Telegram to pay with Stars");
+        setUnlocking(false);
+      }
+    } catch {
+      showToast("Payment failed");
+      setUnlocking(false);
     }
   };
 
