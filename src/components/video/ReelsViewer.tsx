@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import Image from "next/image";
 import {
-  ArrowLeft, Heart, MessageCircle, Share2, MoreVertical,
+  ArrowLeft, Heart, MessageCircle, Share2, MoreVertical, Eye,
   Volume2, VolumeX, Play, Minimize2, Bookmark, Flag, ThumbsDown, Maximize, Link2,
 } from "lucide-react";
+import { ProfileLink } from "@/components/ui/ProfileLink";
+import { CommentsSheet } from "@/components/feed/CommentsSheet";
 import { ReelItem } from "@/lib/utils/reels";
 import { Avatar } from "@/components/ui/Avatar";
 import { DonateButton } from "@/components/ui/DonateButton";
@@ -18,6 +19,7 @@ import { DonateModal } from "@/components/donate/DonateModal";
 import { ReportModal } from "@/components/feed/ReportModal";
 import { usePrototype } from "@/lib/hooks/usePrototype";
 import { useTelegramGate } from "@/lib/hooks/useTelegramGate";
+import { toggleLikeApi } from "@/lib/api/social";
 import { useToast } from "@/components/ui/ToastProvider";
 import { formatCount } from "@/lib/utils/format";
 import { lockScroll, unlockScroll } from "@/lib/utils/scrollLock";
@@ -40,6 +42,7 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
   const [donateOpen, setDonateOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(false);
   const [showHeart, setShowHeart] = useState(false);
   const [speed2x, setSpeed2x] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -52,6 +55,32 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
   const { isLiked, toggleLike, getDonation, isFollowing, markInterested, markNotInterested, hidePost, toggleBookmark, isBookmarked } = usePrototype();
   const { requireMiniApp } = useTelegramGate();
   const { showToast } = useToast();
+  const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    const counts: Record<string, number> = {};
+    for (const reel of items) counts[reel.post.id] = reel.post.likes;
+    setLikeCounts(counts);
+  }, [items]);
+
+  const handleLike = async (postId: string) => {
+    if (!requireMiniApp()) return;
+    const nowLiked = toggleLike(postId);
+    setLikeCounts((prev) => ({
+      ...prev,
+      [postId]: nowLiked ? (prev[postId] ?? 0) + 1 : Math.max(0, (prev[postId] ?? 1) - 1),
+    }));
+    try {
+      const result = await toggleLikeApi(postId);
+      setLikeCounts((prev) => ({ ...prev, [postId]: result.likes }));
+    } catch {
+      toggleLike(postId);
+      setLikeCounts((prev) => ({
+        ...prev,
+        [postId]: nowLiked ? Math.max(0, (prev[postId] ?? 1) - 1) : (prev[postId] ?? 0) + 1,
+      }));
+    }
+  };
 
   const item = items[index];
   const post = item?.post;
@@ -134,7 +163,7 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
       if (tapTimer.current) { clearTimeout(tapTimer.current); tapTimer.current = null; }
       lastTap.current = 0;
       if (!requireMiniApp()) return;
-      toggleLike(post.id);
+      handleLike(post.id);
       setShowHeart(true);
       setTimeout(() => setShowHeart(false), 600);
       return;
@@ -171,7 +200,8 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
   const following = isFollowing(post.author.id);
 
   const copyLink = async () => {
-    await navigator.clipboard.writeText(`https://sheytoni.app/post/${post.id}`);
+    const { getPostShareUrl } = await import("@/lib/utils/siteUrl");
+    await navigator.clipboard.writeText(getPostShareUrl(post.id));
     showToast("Link copied");
     setMenuOpen(false);
   };
@@ -271,17 +301,21 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
                     className="absolute right-3 flex flex-col items-center gap-5 z-10 bottom-[max(5.5rem,calc(env(safe-area-inset-bottom)+4.5rem))]"
                     data-reel-ui
                   >
-                    <button onClick={(e) => { e.stopPropagation(); if (requireMiniApp()) toggleLike(reelPost.id); }} className="flex flex-col items-center gap-0.5">
+                    <button onClick={(e) => { e.stopPropagation(); handleLike(reelPost.id); }} className="flex flex-col items-center gap-0.5">
                       <Heart className={cn("w-7 h-7 drop-shadow", isLiked(reelPost.id) ? "text-like fill-like" : "text-white")} />
-                      <span className="text-white text-xs font-medium drop-shadow">{formatCount(reelPost.likes)}</span>
+                      <span className="text-white text-xs font-medium drop-shadow">{formatCount(likeCounts[reelPost.id] ?? reelPost.likes)}</span>
                     </button>
                     <div onClick={(e) => { e.stopPropagation(); if (requireMiniApp()) setDonateOpen(true); }}>
                       <DonateButton total={getDonation(reelPost.id, { total: reelPost.stars ?? 0, topDonators: reelPost.topDonators ?? [] }).total} donated={getDonation(reelPost.id).userDonated} onClick={() => setDonateOpen(true)} vertical size="sm" />
                     </div>
-                    <button className="flex flex-col items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+                    <button className="flex flex-col items-center gap-0.5" onClick={(e) => { e.stopPropagation(); if (requireMiniApp()) setCommentsOpen(true); }}>
                       <MessageCircle className="w-7 h-7 text-white drop-shadow" />
                       <span className="text-white text-xs font-medium drop-shadow">{formatCount(reelPost.comments)}</span>
                     </button>
+                    <div className="flex flex-col items-center gap-0.5 pointer-events-none">
+                      <Eye className="w-7 h-7 text-white drop-shadow" />
+                      <span className="text-white text-xs font-medium drop-shadow">{formatCount(reelPost.views)}</span>
+                    </div>
                     <button className="flex flex-col items-center gap-0.5" onClick={(e) => { e.stopPropagation(); if (requireMiniApp()) setShareOpen(true); }}>
                       <Share2 className="w-7 h-7 text-white drop-shadow" />
                       <span className="text-white text-xs font-medium drop-shadow">{formatCount(reelPost.shares)}</span>
@@ -293,12 +327,12 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
                     data-reel-ui
                   >
                     <div className="flex items-center gap-2 mb-1.5">
-                      <Link href={`/profile/${reelPost.author.username || reelPost.author.id}/`} onClick={(e) => e.stopPropagation()}>
+                      <ProfileLink user={reelPost.author} onClick={(e) => e.stopPropagation()}>
                         <Avatar src={reelPost.author.avatar} alt={reelPost.author.displayName} size="sm" />
-                      </Link>
-                      <Link href={`/profile/${reelPost.author.username || reelPost.author.id}/`} onClick={(e) => e.stopPropagation()} className="min-w-0">
+                      </ProfileLink>
+                      <ProfileLink user={reelPost.author} onClick={(e) => e.stopPropagation()} className="min-w-0">
                         <UserName user={reelPost.author} nameClassName="text-white font-semibold text-sm drop-shadow" />
-                      </Link>
+                      </ProfileLink>
                       {!isFollowing(reelPost.author.id) && <FollowButton userId={reelPost.author.id} size="sm" />}
                     </div>
                     {reelPost.content && (
@@ -360,7 +394,8 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
       )}
 
       <DonateModal open={donateOpen} onClose={() => setDonateOpen(false)} post={post} />
-      <ReportModal open={reportOpen} onClose={() => setReportOpen(false)} />
+      <CommentsSheet open={commentsOpen} onClose={() => setCommentsOpen(false)} postId={post.id} initialCount={post.comments} />
+      <ReportModal open={reportOpen} onClose={() => setReportOpen(false)} postId={post.id} userId={post.author.id} />
       <ShareChatPicker open={shareOpen} onClose={() => setShareOpen(false)} title="Share to" onSend={(ids) => showToast(`Shared to ${ids.length} chat${ids.length > 1 ? "s" : ""}`)} />
     </div>
   );

@@ -1,26 +1,43 @@
 import { hashPassword, verifyPassword, randomToken } from "./crypto.mjs";
 import { createNotification, broadcastNotification } from "./notifications.mjs";
-import { deleteFromB2, isB2Configured } from "./b2.mjs";
+import { isB2Configured } from "./b2.mjs";
+import { deletePostMedia } from "./mediaCleanup.mjs";
 import {
   findUserById,
   findUserByUsername,
   findUserByTelegramId,
+  resolveUserLookup,
   publicUser,
   saveDb,
 } from "./db.mjs";
+import { config } from "./config.mjs";
+import { envStr } from "./env.mjs";
+import { ADMIN_SESSION_COOKIE, resolveSessionId } from "./sessionAuth.mjs";
+import { adjustPostStats, displayLikes } from "./social.mjs";
+import { listReports } from "./reports.mjs";
 
-const ADMIN_COOKIE = "sheytoni_admin_session";
+const ADMIN_COOKIE = ADMIN_SESSION_COOKIE;
 const SESSION_TTL = 12 * 60 * 60 * 1000;
 
 export function ensureAdminSettings(db) {
   if (!db.settings) {
     db.settings = { verificationMinFollowers: 10000 };
   }
-  if (!db.settings.adminUsername) {
-    const { salt, hash } = hashPassword(process.env.ADMIN_DEFAULT_PASSWORD ?? "adminsheytoni");
-    db.settings.adminUsername = process.env.ADMIN_DEFAULT_USERNAME ?? "adminsheytoni";
+  const adminUser = envStr("ADMIN_DEFAULT_USERNAME");
+  const adminPass = envStr("ADMIN_DEFAULT_PASSWORD");
+  const forceReset = envStr("ADMIN_FORCE_RESET") === "true";
+
+  if (!db.settings.adminUsername || forceReset) {
+    if (!adminUser || !adminPass) {
+      if (process.env.NODE_ENV === "production" && !db.settings.adminUsername) {
+        throw new Error("ADMIN_DEFAULT_USERNAME and ADMIN_DEFAULT_PASSWORD must be set in production");
+      }
+    }
+    const { salt, hash } = hashPassword(adminPass ?? "changeme");
+    db.settings.adminUsername = adminUser ?? db.settings.adminUsername ?? "admin";
     db.settings.adminPasswordSalt = salt;
     db.settings.adminPasswordHash = hash;
+    if (forceReset) console.log("[admin] Credentials reset from env (ADMIN_FORCE_RESET=true)");
   }
   if (!db.adminSessions) db.adminSessions = {};
   if (!db.posts) db.posts = {};
@@ -31,11 +48,11 @@ export function ensureAdminSettings(db) {
   if (!db.mediaObjects) db.mediaObjects = {};
   if (!db.paymentIntents) db.paymentIntents = {};
   if (!db.chats) db.chats = {};
+  if (!db.unlockedPosts) db.unlockedPosts = {};
 }
 
 export function getAdminSession(req, db) {
-  const cookies = parseCookies(req.headers.cookie);
-  const sid = cookies[ADMIN_COOKIE];
+  const sid = resolveSessionId(req, ADMIN_COOKIE);
   if (!sid) return null;
   const s = db.adminSessions[sid];
   if (!s || s.expiresAt < Date.now()) {
@@ -63,12 +80,21 @@ function adminCookie(sessionId, secure) {
     `Max-Age=${SESSION_TTL / 1000}`,
     secure ? "Secure" : "",
     secure ? "SameSite=None" : "SameSite=Lax",
+    config.cookieDomain ? `Domain=${config.cookieDomain}` : "",
   ].filter(Boolean);
   return parts.join("; ");
 }
 
 function clearAdminCookie(secure) {
-  const parts = [`${ADMIN_COOKIE}=`, "HttpOnly", "Path=/", "Max-Age=0", secure ? "Secure" : "", secure ? "SameSite=None" : "SameSite=Lax"].filter(Boolean);
+  const parts = [
+    `${ADMIN_COOKIE}=`,
+    "HttpOnly",
+    "Path=/",
+    "Max-Age=0",
+    secure ? "Secure" : "",
+    secure ? "SameSite=None" : "SameSite=Lax",
+    config.cookieDomain ? `Domain=${config.cookieDomain}` : "",
+  ].filter(Boolean);
   return parts.join("; ");
 }
 
@@ -76,6 +102,17 @@ export function requireAdmin(req, db) {
   const session = getAdminSession(req, db);
   if (!session) return null;
   return session;
+}
+
+function adminCredentialsValid(username, password, db) {
+  if (username === db.settings.adminUsername) {
+    if (verifyPassword(password, db.settings.adminPasswordSalt, db.settings.adminPasswordHash)) {
+      return true;
+    }
+  }
+  const envUser = envStr("ADMIN_DEFAULT_USERNAME");
+  const envPass = envStr("ADMIN_DEFAULT_PASSWORD");
+  return !!(envUser && envPass && username === envUser && password === envPass);
 }
 
 export function handleAdminLogin(req, res, db, secure, json, corsHeaders) {
@@ -86,14 +123,14 @@ export function handleAdminLogin(req, res, db, secure, json, corsHeaders) {
     const password = String(body.password ?? "");
     ensureAdminSettings(db);
 
-    if (username !== db.settings.adminUsername || !verifyPassword(password, db.settings.adminPasswordSalt, db.settings.adminPasswordHash)) {
+    if (!adminCredentialsValid(username, password, db)) {
       return json(res, 401, { error: "Invalid credentials" }, corsHeaders(req.headers.origin));
     }
 
     const sessionId = randomToken();
     db.adminSessions[sessionId] = { id: sessionId, createdAt: Date.now(), expiresAt: Date.now() + SESSION_TTL };
     saveDb(db);
-    return json(res, 200, { ok: true }, {
+    return json(res, 200, { ok: true, adminToken: sessionId }, {
       ...corsHeaders(req.headers.origin),
       "Set-Cookie": adminCookie(sessionId, secure),
     });
@@ -139,7 +176,13 @@ export function handleAdminStats(req, res, db, json, corsHeaders) {
   const activeCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
   const posts = Object.values(db.posts ?? {});
   let mediaBytes = 0;
-  for (const m of Object.values(db.mediaObjects ?? {})) mediaBytes += m.size ?? 0;
+  let b2Objects = 0;
+  let localObjects = 0;
+  for (const m of Object.values(db.mediaObjects ?? {})) {
+    mediaBytes += m.size ?? 0;
+    if (m.storage === "local") localObjects++;
+    else b2Objects++;
+  }
 
   return json(res, 200, {
     users: users.length,
@@ -147,6 +190,9 @@ export function handleAdminStats(req, res, db, json, corsHeaders) {
     posters: users.filter((u) => (u.postsCount ?? 0) > 0).length,
     posts: posts.length,
     mediaBytes,
+    b2Objects,
+    localObjects,
+    b2Configured: isB2Configured(),
     banned: Object.keys(db.bannedUsers).length,
     pendingVerifications: (db.verificationRequests ?? []).filter((r) => r.status === "pending").length,
     pendingWithdrawals: (db.withdrawalRequests ?? []).filter((r) => r.status === "pending").length,
@@ -154,9 +200,10 @@ export function handleAdminStats(req, res, db, json, corsHeaders) {
   }, corsHeaders(req.headers.origin));
 }
 
-function resolveUser(db, { username, telegramId, userId }) {
+function resolveUser(db, { username, telegramId, userId, query }) {
   if (userId) return findUserById(db, userId);
-  if (username) return findUserByUsername(db, username);
+  if (query) return resolveUserLookup(db, query);
+  if (username) return resolveUserLookup(db, username);
   if (telegramId) return findUserByTelegramId(db, Number(telegramId));
   return null;
 }
@@ -177,13 +224,13 @@ export async function handleAdminAction(req, res, db, json, corsHeaders) {
       return json(res, 200, { ok: true, value: db.settings.verificationMinFollowers }, corsHeaders(req.headers.origin));
 
     case "ban_user": {
-      const user = resolveUser(db, body);
+      const user = resolveUser(db, { ...body, query: body.query ?? body.username ?? body.telegramId });
       if (!user) return json(res, 404, { error: "User not found" }, corsHeaders(req.headers.origin));
       user.banned = true;
       user.bannedAt = new Date().toISOString();
       db.bannedUsers[user.id] = { userId: user.id, username: user.username, telegramId: user.telegramId, bannedAt: user.bannedAt };
       saveDb(db);
-      return json(res, 200, { ok: true }, corsHeaders(req.headers.origin));
+      return json(res, 200, { ok: true, user: publicUser(user) }, corsHeaders(req.headers.origin));
     }
 
     case "unban_user": {
@@ -192,7 +239,7 @@ export async function handleAdminAction(req, res, db, json, corsHeaders) {
       user.banned = false;
       delete db.bannedUsers[user.id];
       saveDb(db);
-      return json(res, 200, { ok: true }, corsHeaders(req.headers.origin));
+      return json(res, 200, { ok: true, user: publicUser(user) }, corsHeaders(req.headers.origin));
     }
 
     case "unban_all":
@@ -230,9 +277,42 @@ export async function handleAdminAction(req, res, db, json, corsHeaders) {
     case "add_fake_followers": {
       const user = resolveUser(db, body);
       if (!user) return json(res, 404, { error: "User not found" }, corsHeaders(req.headers.origin));
-      user.followers = (user.followers ?? 0) + Math.max(0, Number(body.count) || 0);
+      const delta = Number(body.count) || 0;
+      user.fakeFollowers = Math.max(0, (user.fakeFollowers ?? 0) + delta);
       saveDb(db);
-      return json(res, 200, { ok: true, followers: user.followers }, corsHeaders(req.headers.origin));
+      return json(res, 200, {
+        ok: true,
+        user: publicUser(user),
+        realFollowers: user.followers ?? 0,
+        fakeFollowers: user.fakeFollowers,
+        displayFollowers: (user.followers ?? 0) + user.fakeFollowers,
+      }, corsHeaders(req.headers.origin));
+    }
+
+    case "add_fake_likes": {
+      const post = db.posts[body.postId];
+      if (!post) return json(res, 404, { error: "Post not found" }, corsHeaders(req.headers.origin));
+      const delta = Number(body.count) || 0;
+      post.fakeLikes = Math.max(0, (post.fakeLikes ?? 0) + delta);
+      saveDb(db);
+      return json(res, 200, {
+        ok: true,
+        realLikes: post.likes ?? 0,
+        fakeLikes: post.fakeLikes,
+        displayLikes: displayLikes(post),
+      }, corsHeaders(req.headers.origin));
+    }
+
+    case "adjust_post_stats": {
+      const result = adjustPostStats(db, body.postId, {
+        likesDelta: Number(body.likesDelta) || 0,
+        viewsDelta: Number(body.viewsDelta) || 0,
+        fakeLikesDelta: Number(body.fakeLikesDelta) || 0,
+        fakeViewsDelta: Number(body.fakeViewsDelta) || 0,
+      });
+      if (!result.ok) return json(res, 404, { error: result.error }, corsHeaders(req.headers.origin));
+      saveDb(db);
+      return json(res, 200, { ok: true, ...result }, corsHeaders(req.headers.origin));
     }
 
     case "adjust_stars": {
@@ -241,7 +321,7 @@ export async function handleAdminAction(req, res, db, json, corsHeaders) {
       const delta = Number(body.delta) || 0;
       user.starBalance = Math.max(0, (user.starBalance ?? 0) + delta);
       saveDb(db);
-      return json(res, 200, { ok: true, starBalance: user.starBalance }, corsHeaders(req.headers.origin));
+      return json(res, 200, { ok: true, user: publicUser(user), starBalance: user.starBalance }, corsHeaders(req.headers.origin));
     }
 
     case "send_notification": {
@@ -275,29 +355,23 @@ export async function handleAdminAction(req, res, db, json, corsHeaders) {
         author.banned = true;
         db.bannedUsers[author.id] = { userId: author.id, bannedAt: new Date().toISOString() };
       }
+      const mediaRemoved = await deletePostMedia(db, post);
       delete db.posts[body.postId];
       if (author) author.postsCount = Math.max(0, (author.postsCount ?? 1) - 1);
       saveDb(db);
-      return json(res, 200, { ok: true }, corsHeaders(req.headers.origin));
+      return json(res, 200, { ok: true, mediaRemoved }, corsHeaders(req.headers.origin));
     }
 
     case "strip_post_media": {
       const post = db.posts[body.postId];
       if (!post) return json(res, 404, { error: "Post not found" }, corsHeaders(req.headers.origin));
-      for (const m of post.media ?? []) {
-        if (isB2Configured() && m.fileId && m.fileName) {
-          try { await deleteFromB2(m.fileId, m.fileName); } catch { /* */ }
-        }
-        m.expired = true;
-        m.url = null;
-      }
-      post.mediaExpired = true;
+      const mediaRemoved = await deletePostMedia(db, post);
       const author = findUserById(db, post.authorId);
       if (body.notify && author) {
         createNotification(db, { userId: author.id, type: "media_removed", title: "Media removed", body: "Media on your post was removed by moderation.", icon: "removed" });
       }
       saveDb(db);
-      return json(res, 200, { ok: true }, corsHeaders(req.headers.origin));
+      return json(res, 200, { ok: true, mediaRemoved }, corsHeaders(req.headers.origin));
     }
 
     case "approve_verification": {
@@ -341,22 +415,43 @@ export async function handleAdminAction(req, res, db, json, corsHeaders) {
     case "reject_withdrawal": {
       const w = db.withdrawalRequests.find((r) => r.id === body.requestId);
       if (!w) return json(res, 404, { error: "Not found" }, corsHeaders(req.headers.origin));
-      const user = findUserById(db, w.userId);
-      if (user) user.starBalance = (user.starBalance ?? 0) + w.stars;
+      const { refundWithdrawal } = await import("./wallet.mjs");
+      refundWithdrawal(db, w.userId, w.stars);
       w.status = "rejected";
       w.rejectedAt = new Date().toISOString();
       saveDb(db);
       return json(res, 200, { ok: true }, corsHeaders(req.headers.origin));
     }
 
+    case "search_user": {
+      const user = resolveUser(db, { query: body.query ?? body.username ?? body.telegramId });
+      if (!user) return json(res, 404, { error: "User not found" }, corsHeaders(req.headers.origin));
+      const posts = Object.values(db.posts ?? {}).filter((p) => p.authorId === user.id);
+      return json(res, 200, { user: publicUser(user, { includeTelegramId: true }), posts }, corsHeaders(req.headers.origin));
+    }
+
     case "list_users":
       return json(res, 200, {
-        users: Object.values(db.users).filter((u) => !u.deleted).map(publicUser),
+        users: Object.values(db.users).filter((u) => !u.deleted).map((u) => publicUser(u, { includeTelegramId: true })),
         banned: Object.values(db.bannedUsers),
       }, corsHeaders(req.headers.origin));
 
     case "list_posts":
-      return json(res, 200, { posts: Object.values(db.posts ?? {}) }, corsHeaders(req.headers.origin));
+      return json(res, 200, {
+        posts: Object.values(db.posts ?? {}).map((p) => {
+          const author = findUserById(db, p.authorId);
+          return {
+            ...p,
+            displayLikes: displayLikes(p),
+            displayViews: (p.views ?? 0) + (p.fakeViews ?? 0),
+            authorUsername: author?.username ?? null,
+            authorDisplayName: author?.displayName ?? null,
+          };
+        }),
+      }, corsHeaders(req.headers.origin));
+
+    case "list_reports":
+      return json(res, 200, { reports: listReports(db) }, corsHeaders(req.headers.origin));
 
     case "list_verifications":
       return json(res, 200, { requests: db.verificationRequests ?? [] }, corsHeaders(req.headers.origin));
@@ -372,8 +467,22 @@ export async function handleAdminAction(req, res, db, json, corsHeaders) {
 function readBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
+    let settled = false;
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      reject(err);
+    };
     req.on("data", (c) => chunks.push(c));
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
-    req.on("error", reject);
+    req.on("end", () => {
+      if (settled) return;
+      settled = true;
+      resolve(Buffer.concat(chunks).toString("utf8"));
+    });
+    req.on("error", fail);
+    req.on("aborted", () => fail(new Error("Request aborted")));
+    req.on("close", () => {
+      if (!settled && !req.complete) fail(new Error("Connection closed"));
+    });
   });
 }

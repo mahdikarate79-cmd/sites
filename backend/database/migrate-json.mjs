@@ -1,15 +1,19 @@
 import fs from "fs";
 import path from "path";
 
-const JSON_STORE = path.join(process.cwd(), "backend", "data", "store.json");
+const JSON_STORE_CANDIDATES = [
+  path.join(process.cwd(), "data", "store.json"),
+  path.join(process.cwd(), "backend", "data", "store.json"),
+];
 
 /** One-time import from legacy store.json — data survives code/domain updates */
 export function importJsonStoreIfNeeded(sqlite) {
   const count = sqlite.prepare("SELECT COUNT(*) as c FROM users").get().c;
-  if (count > 0 || !fs.existsSync(JSON_STORE)) return;
+  const jsonStore = JSON_STORE_CANDIDATES.find((p) => fs.existsSync(p));
+  if (count > 0 || !jsonStore) return;
 
   console.log("Migrating legacy store.json → SQLite...");
-  const legacy = JSON.parse(fs.readFileSync(JSON_STORE, "utf8"));
+  const legacy = JSON.parse(fs.readFileSync(jsonStore, "utf8"));
 
   const insertUser = sqlite.prepare(`
     INSERT OR REPLACE INTO users (

@@ -93,6 +93,7 @@ export interface Comment {
   postId: string;
   authorId: string;
   authorName: string;
+  authorUsername?: string | null;
   authorAvatar: string;
   authorVerified?: boolean;
   authorPremium?: boolean;

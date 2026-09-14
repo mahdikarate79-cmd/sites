@@ -10,6 +10,7 @@ import { useToast } from "@/components/ui/ToastProvider";
 import { usePrototype } from "@/lib/hooks/usePrototype";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { updateProfile as updateProfileApi } from "@/lib/auth/client";
+import { uploadMedia } from "@/lib/api/storage";
 import { validateUsername } from "@/lib/utils/username";
 import { cn } from "@/lib/utils/cn";
 
@@ -85,6 +86,9 @@ export function EditProfileContent() {
 
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const years = useMemo(() => {
     const currentYear = new Date().getFullYear();
@@ -169,24 +173,50 @@ export function EditProfileContent() {
       avatar,
       cover: cover || undefined,
     };
-    updateProfile(payload);
+    setSaving(true);
+    try {
+      let avatarUrl = avatar;
+      let coverUrl = cover || undefined;
+      if (isAuthenticated && avatarFile) {
+        const up = await uploadMedia(avatarFile, "avatar");
+        avatarUrl = up.media.url ?? avatarUrl;
+      }
+      if (isAuthenticated && coverFile) {
+        const up = await uploadMedia(coverFile, "cover");
+        coverUrl = up.media.url ?? coverUrl;
+      }
 
-    if (isAuthenticated) {
-      try {
-        await updateProfileApi({
+      if (isAuthenticated) {
+        const updated = await updateProfileApi({
           displayName: payload.displayName,
           username: payload.username,
           bio: payload.bio,
-          avatar: payload.avatar,
-          cover: payload.cover,
+          avatar: avatarUrl,
+          cover: coverUrl,
+          age: payload.age,
+          orientation: payload.orientation,
+        });
+        updateProfile({
+          displayName: updated.displayName,
+          username: updated.username ?? undefined,
+          bio: updated.bio,
+          avatar: updated.avatar,
+          cover: updated.cover,
+          age: updated.age,
+          orientation: updated.orientation,
         });
         await refresh();
-      } catch (e) {
-        showToast(e instanceof Error ? e.message : "Could not save to server");
-        return;
+      } else {
+        updateProfile({ ...payload, avatar: avatarUrl, cover: coverUrl });
       }
+      setAvatarFile(null);
+      setCoverFile(null);
+      showToast("Profile updated");
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Could not save to server");
+    } finally {
+      setSaving(false);
     }
-    showToast("Profile updated");
   };
 
   const handleAvatarPick = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -196,6 +226,7 @@ export function EditProfileContent() {
       return;
     }
     readImageFile(file, setAvatar);
+    setAvatarFile(file);
     e.target.value = "";
   };
 
@@ -206,6 +237,7 @@ export function EditProfileContent() {
       return;
     }
     readImageFile(file, setCover);
+    setCoverFile(file);
     e.target.value = "";
   };
 
