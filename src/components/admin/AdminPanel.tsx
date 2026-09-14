@@ -23,9 +23,11 @@ import {
   Shield,
   Loader2,
   CheckCircle2,
+  AlertTriangle,
 } from "lucide-react";
+import { profilePath } from "@/components/ui/ProfileLink";
 
-type Tab = "dashboard" | "users" | "posts" | "verifications" | "withdrawals" | "notify" | "settings";
+type Tab = "dashboard" | "users" | "posts" | "reports" | "verifications" | "withdrawals" | "notify" | "settings";
 
 export function AdminPanel() {
   const [authed, setAuthed] = useState(false);
@@ -37,6 +39,7 @@ export function AdminPanel() {
   const [posts, setPosts] = useState<unknown[]>([]);
   const [verifications, setVerifications] = useState<unknown[]>([]);
   const [withdrawals, setWithdrawals] = useState<unknown[]>([]);
+  const [reports, setReports] = useState<unknown[]>([]);
   const [msg, setMsg] = useState("");
   const [msgOk, setMsgOk] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -75,6 +78,10 @@ export function AdminPanel() {
     if (t === "withdrawals") {
       const r = await adminAction("list_withdrawals");
       setWithdrawals((r as { requests: unknown[] }).requests ?? []);
+    }
+    if (t === "reports") {
+      const r = await adminAction("list_reports");
+      setReports((r as { reports: unknown[] }).reports ?? []);
     }
   };
 
@@ -163,6 +170,7 @@ export function AdminPanel() {
     { id: "dashboard", label: "Stats", icon: BarChart3 },
     { id: "users", label: "Users", icon: Users },
     { id: "posts", label: "Posts", icon: FileText },
+    { id: "reports", label: "Reports", icon: AlertTriangle },
     { id: "verifications", label: "Verify", icon: BadgeCheck },
     { id: "withdrawals", label: "Withdraw", icon: Wallet },
     { id: "notify", label: "Notify", icon: Bell },
@@ -237,7 +245,11 @@ export function AdminPanel() {
         )}
 
         {tab === "posts" && (
-          <PostActions onAct={act} pendingAction={pendingAction} posts={posts as Array<{ id: string; authorId: string; content: string; mediaExpired?: boolean }>} />
+          <PostActions onAct={act} pendingAction={pendingAction} posts={posts as Array<{ id: string; authorId: string; content: string; media?: Array<{ type: string; url?: string | null }>; mediaExpired?: boolean; likes?: number; fakeLikes?: number; views?: number; fakeViews?: number; displayLikes?: number; displayViews?: number; authorUsername?: string | null; authorDisplayName?: string | null }>} />
+        )}
+
+        {tab === "reports" && (
+          <ReportActions onAct={act} pendingAction={pendingAction} reports={reports as Array<{ id: string; postId?: string | null; userId?: string | null; category: string; subcategory?: string; detail?: string; postContent?: string | null; postMedia?: Array<{ type: string; url?: string | null }>; reportedUsername?: string | null; createdAt: string; status: string }>} />
         )}
 
         {tab === "verifications" && (
@@ -361,7 +373,7 @@ function UserActions({ users, onAct, pendingAction }: { users: Array<{ username:
         <div className="glass-nav rounded-xl p-3 space-y-2">
           <p className="font-semibold">{found.user.displayName}</p>
           <p className="text-xs text-text-muted">@{found.user.username ?? "—"} · TG {found.user.telegramId ?? "—"} · {found.user.id}</p>
-          <a href={`/profile/${found.user.username || found.user.id}/`} target="_blank" rel="noopener noreferrer" className="text-xs text-[#2AABEE] underline">Open profile</a>
+          <a href={profilePath({ id: found.user.id, username: found.user.username ?? undefined })} target="_blank" rel="noopener noreferrer" className="text-xs text-[#2AABEE] underline">Open profile</a>
           <p className="text-xs text-text-muted">{found.posts.length} posts in DB</p>
         </div>
       )}
@@ -376,7 +388,7 @@ function UserActions({ users, onAct, pendingAction }: { users: Array<{ username:
       </div>
       <div className="flex gap-2 items-center flex-wrap">
         <input value={count} onChange={(e) => setCount(e.target.value)} className="w-24 px-2 py-1.5 rounded-lg bg-surface border border-border text-sm" />
-        <ActionButton label="Add fake followers" pending={isPending("add_fake_followers", { count: Number(count) })} onClick={() => runAction("add_fake_followers", { count: Number(count) })} className="px-3 py-1.5 rounded-full bg-surface text-xs" />
+        <ActionButton label="Adjust followers (+/-)" pending={isPending("add_fake_followers", { count: Number(count) })} onClick={() => runAction("add_fake_followers", { count: Number(count) })} className="px-3 py-1.5 rounded-full bg-surface text-xs" />
       </div>
       <div className="flex gap-2 items-center">
         <input value={stars} onChange={(e) => setStars(e.target.value)} className="w-24 px-2 py-1.5 rounded-lg bg-surface border border-border text-sm" />
@@ -397,12 +409,14 @@ function UserActions({ users, onAct, pendingAction }: { users: Array<{ username:
   );
 }
 
-function PostActions({ posts, onAct, pendingAction }: { posts: Array<{ id: string; authorId: string; content: string; mediaExpired?: boolean; likes?: number; fakeLikes?: number }>; onAct: (a: string, d?: Record<string, unknown>) => Promise<Record<string, unknown> | null>; pendingAction: string | null }) {
+function PostActions({ posts, onAct, pendingAction }: { posts: Array<{ id: string; authorId: string; content: string; media?: Array<{ type: string; url?: string | null }>; mediaExpired?: boolean; likes?: number; fakeLikes?: number; views?: number; fakeViews?: number; displayLikes?: number; displayViews?: number; authorUsername?: string | null; authorDisplayName?: string | null }>; onAct: (a: string, d?: Record<string, unknown>) => Promise<Record<string, unknown> | null>; pendingAction: string | null }) {
   const [postId, setPostId] = useState("");
   const [likeCount, setLikeCount] = useState("100");
+  const [viewCount, setViewCount] = useState("100");
   const [notify, setNotify] = useState(true);
   const [ban, setBan] = useState(false);
   const [filter, setFilter] = useState("");
+  const selected = posts.find((p) => p.id === postId);
 
   const filtered = posts.filter((p) => {
     const f = filter.toLowerCase();
@@ -419,21 +433,73 @@ function PostActions({ posts, onAct, pendingAction }: { posts: Array<{ id: strin
         <ActionButton label="Delete post" pending={pendingAction === `delete_post:${JSON.stringify({ postId, notify, banAuthor: ban })}`} onClick={() => onAct("delete_post", { postId, notify, banAuthor: ban })} className="px-3 py-1.5 rounded-full bg-like/20 text-like text-xs" />
         <ActionButton label="Strip media only" pending={pendingAction === `strip_post_media:${JSON.stringify({ postId, notify })}`} onClick={() => onAct("strip_post_media", { postId, notify })} className="px-3 py-1.5 rounded-full bg-surface text-xs" />
       </div>
+      {selected && (
+        <div className="glass-nav rounded-xl p-3 space-y-2 text-xs">
+          <p className="font-semibold">{selected.authorDisplayName ?? selected.authorId} @{selected.authorUsername ?? "—"}</p>
+          <p className="text-text-muted whitespace-pre-wrap">{selected.content?.slice(0, 300) || "(no caption)"}</p>
+          {selected.media?.[0]?.url && !selected.mediaExpired && (
+            <img src={selected.media[0].url} alt="" className="rounded-lg max-h-40 w-full object-cover" />
+          )}
+          <p className="text-text-muted">
+            Likes {selected.displayLikes ?? ((selected.likes ?? 0) + (selected.fakeLikes ?? 0))} · Views {selected.displayViews ?? ((selected.views ?? 0) + (selected.fakeViews ?? 0))}
+          </p>
+        </div>
+      )}
       <div className="flex gap-2 items-center flex-wrap">
-        <input value={likeCount} onChange={(e) => setLikeCount(e.target.value)} className="w-24 px-2 py-1.5 rounded-lg bg-surface border border-border text-sm" />
-        <ActionButton label="Add fake likes" pending={pendingAction === `add_fake_likes:${JSON.stringify({ postId, count: Number(likeCount) })}`} onClick={() => onAct("add_fake_likes", { postId, count: Number(likeCount) })} className="px-3 py-1.5 rounded-full bg-surface text-xs" />
+        <input value={likeCount} onChange={(e) => setLikeCount(e.target.value)} className="w-24 px-2 py-1.5 rounded-lg bg-surface border border-border text-sm" placeholder="+/- likes" />
+        <ActionButton label="Adjust likes (+/-)" pending={pendingAction === `add_fake_likes:${JSON.stringify({ postId, count: Number(likeCount) })}`} onClick={() => onAct("add_fake_likes", { postId, count: Number(likeCount) })} className="px-3 py-1.5 rounded-full bg-surface text-xs" />
+      </div>
+      <div className="flex gap-2 items-center flex-wrap">
+        <input value={viewCount} onChange={(e) => setViewCount(e.target.value)} className="w-24 px-2 py-1.5 rounded-lg bg-surface border border-border text-sm" placeholder="+/- views" />
+        <ActionButton label="Adjust views (+/-)" pending={pendingAction === `adjust_post_stats:${JSON.stringify({ postId, fakeViewsDelta: Number(viewCount) })}`} onClick={() => onAct("adjust_post_stats", { postId, fakeViewsDelta: Number(viewCount) })} className="px-3 py-1.5 rounded-full bg-surface text-xs" />
       </div>
       <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter posts by ID, author, caption…" className="w-full px-3 py-2 rounded-xl bg-surface border border-border text-sm" />
       <div className="space-y-1 max-h-64 overflow-y-auto">
         {filtered.slice(0, 50).map((p) => (
           <button key={p.id} type="button" onClick={() => setPostId(p.id)} className="w-full text-left text-xs p-2 rounded-lg hover:bg-surface">
             <span className="font-mono text-[#2AABEE]">{p.id}</span>
-            <span className="text-text-muted"> · {p.authorId}</span>
-            <p className="truncate">{p.content?.slice(0, 80) || "(no caption)"} {p.mediaExpired ? "[media expired]" : ""}</p>
+            <span className="text-text-muted"> · @{p.authorUsername ?? p.authorId}</span>
+            <p className="truncate">{p.content?.slice(0, 80) || "(no caption)"} {p.mediaExpired ? "[media expired]" : p.media?.length ? "[media]" : ""}</p>
+            <p className="text-text-muted">♥ {p.displayLikes ?? ((p.likes ?? 0) + (p.fakeLikes ?? 0))} · 👁 {p.displayViews ?? ((p.views ?? 0) + (p.fakeViews ?? 0))}</p>
           </button>
         ))}
       </div>
       <p className="text-xs text-text-muted">{posts.length} posts in DB</p>
+    </div>
+  );
+}
+
+function ReportActions({ reports, onAct, pendingAction }: { reports: Array<{ id: string; postId?: string | null; userId?: string | null; category: string; subcategory?: string; detail?: string; postContent?: string | null; postMedia?: Array<{ type: string; url?: string | null }>; reportedUsername?: string | null; createdAt: string; status: string }>; onAct: (a: string, d?: Record<string, unknown>) => Promise<Record<string, unknown> | null>; pendingAction: string | null }) {
+  const pending = reports.filter((r) => r.status === "pending");
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-text-muted">{pending.length} pending reports</p>
+      {pending.length === 0 && <p className="text-sm text-text-muted text-center py-8">No pending reports</p>}
+      {pending.map((r) => (
+        <div key={r.id} className="glass-nav rounded-xl p-3 space-y-2">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold">{r.category}{r.subcategory ? ` · ${r.subcategory}` : ""}</p>
+              <p className="text-xs text-text-muted">{new Date(r.createdAt).toLocaleString()}</p>
+              {r.reportedUsername && <p className="text-xs text-text-muted">User @{r.reportedUsername}</p>}
+            </div>
+            <span className="text-[10px] uppercase tracking-wide text-amber-400">{r.status}</span>
+          </div>
+          {r.postContent && <p className="text-xs whitespace-pre-wrap">{r.postContent.slice(0, 400)}</p>}
+          {r.detail && <p className="text-xs text-text-muted italic">{r.detail}</p>}
+          {r.postMedia?.[0]?.url && (
+            <img src={r.postMedia[0].url} alt="" className="rounded-lg max-h-36 w-full object-cover" />
+          )}
+          {r.postId && (
+            <div className="flex flex-wrap gap-2 pt-1">
+              <ActionButton label="Delete post" pending={pendingAction === `delete_post:${JSON.stringify({ postId: r.postId, notify: true, banAuthor: false })}`} onClick={() => onAct("delete_post", { postId: r.postId, notify: true })} className="px-3 py-1.5 rounded-full bg-like/20 text-like text-xs" />
+              <ActionButton label="Strip media" pending={pendingAction === `strip_post_media:${JSON.stringify({ postId: r.postId, notify: true })}`} onClick={() => onAct("strip_post_media", { postId: r.postId, notify: true })} className="px-3 py-1.5 rounded-full bg-surface text-xs" />
+              <ActionButton label="Ban author" pending={pendingAction === `delete_post:${JSON.stringify({ postId: r.postId, notify: true, banAuthor: true })}`} onClick={() => onAct("delete_post", { postId: r.postId, notify: true, banAuthor: true })} className="px-3 py-1.5 rounded-full bg-like/20 text-like text-xs" />
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

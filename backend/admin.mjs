@@ -13,6 +13,8 @@ import {
 import { config } from "./config.mjs";
 import { envStr } from "./env.mjs";
 import { ADMIN_SESSION_COOKIE, resolveSessionId } from "./sessionAuth.mjs";
+import { adjustPostStats, displayLikes } from "./social.mjs";
+import { listReports } from "./reports.mjs";
 
 const ADMIN_COOKIE = ADMIN_SESSION_COOKIE;
 const SESSION_TTL = 12 * 60 * 60 * 1000;
@@ -275,7 +277,8 @@ export async function handleAdminAction(req, res, db, json, corsHeaders) {
     case "add_fake_followers": {
       const user = resolveUser(db, body);
       if (!user) return json(res, 404, { error: "User not found" }, corsHeaders(req.headers.origin));
-      user.fakeFollowers = (user.fakeFollowers ?? 0) + Math.max(0, Number(body.count) || 0);
+      const delta = Number(body.count) || 0;
+      user.fakeFollowers = Math.max(0, (user.fakeFollowers ?? 0) + delta);
       saveDb(db);
       return json(res, 200, {
         ok: true,
@@ -289,14 +292,27 @@ export async function handleAdminAction(req, res, db, json, corsHeaders) {
     case "add_fake_likes": {
       const post = db.posts[body.postId];
       if (!post) return json(res, 404, { error: "Post not found" }, corsHeaders(req.headers.origin));
-      post.fakeLikes = (post.fakeLikes ?? 0) + Math.max(0, Number(body.count) || 0);
+      const delta = Number(body.count) || 0;
+      post.fakeLikes = Math.max(0, (post.fakeLikes ?? 0) + delta);
       saveDb(db);
       return json(res, 200, {
         ok: true,
         realLikes: post.likes ?? 0,
         fakeLikes: post.fakeLikes,
-        displayLikes: (post.likes ?? 0) + post.fakeLikes,
+        displayLikes: displayLikes(post),
       }, corsHeaders(req.headers.origin));
+    }
+
+    case "adjust_post_stats": {
+      const result = adjustPostStats(db, body.postId, {
+        likesDelta: Number(body.likesDelta) || 0,
+        viewsDelta: Number(body.viewsDelta) || 0,
+        fakeLikesDelta: Number(body.fakeLikesDelta) || 0,
+        fakeViewsDelta: Number(body.fakeViewsDelta) || 0,
+      });
+      if (!result.ok) return json(res, 404, { error: result.error }, corsHeaders(req.headers.origin));
+      saveDb(db);
+      return json(res, 200, { ok: true, ...result }, corsHeaders(req.headers.origin));
     }
 
     case "adjust_stars": {
@@ -421,7 +437,21 @@ export async function handleAdminAction(req, res, db, json, corsHeaders) {
       }, corsHeaders(req.headers.origin));
 
     case "list_posts":
-      return json(res, 200, { posts: Object.values(db.posts ?? {}) }, corsHeaders(req.headers.origin));
+      return json(res, 200, {
+        posts: Object.values(db.posts ?? {}).map((p) => {
+          const author = findUserById(db, p.authorId);
+          return {
+            ...p,
+            displayLikes: displayLikes(p),
+            displayViews: (p.views ?? 0) + (p.fakeViews ?? 0),
+            authorUsername: author?.username ?? null,
+            authorDisplayName: author?.displayName ?? null,
+          };
+        }),
+      }, corsHeaders(req.headers.origin));
+
+    case "list_reports":
+      return json(res, 200, { reports: listReports(db) }, corsHeaders(req.headers.origin));
 
     case "list_verifications":
       return json(res, 200, { requests: db.verificationRequests ?? [] }, corsHeaders(req.headers.origin));

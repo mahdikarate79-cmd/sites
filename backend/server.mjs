@@ -33,7 +33,16 @@ import {
 } from "./admin.mjs";
 import { uploadToB2, isB2Configured, downloadFromB2, testB2Connection } from "./b2.mjs";
 import { saveLocalMedia, readLocalMedia, isLocalMediaAvailable, localMediaRoot } from "./localMedia.mjs";
-import { createStarsInvoice, answerPreCheckoutQuery, verifyWebhookSecret, isBotConfigured } from "./telegramBot.mjs";
+import {
+  createStarsInvoice,
+  answerPreCheckoutQuery,
+  verifyWebhookSecret,
+  isBotConfigured,
+  sendWelcomeMessage,
+  ensureWebhookConfigured,
+} from "./telegramBot.mjs";
+import { getPostComments, createComment, ensureComments } from "./comments.mjs";
+import { createReport, ensureReports } from "./reports.mjs";
 import { createNotification, getUserNotifications } from "./notifications.mjs";
 import { startCleanupScheduler } from "./mediaCleanup.mjs";
 import { serveStatic, staticDirExists } from "./static.mjs";
@@ -62,6 +71,8 @@ import {
   ensureSocial,
   recordDonation,
   searchUsers,
+  displayFollowers,
+  incrementPostView,
 } from "./social.mjs";
 import {
   listChats,
@@ -239,7 +250,13 @@ async function handleTelegramAuth(req, res, secure) {
     touchUserActivity(db, user.id);
   }
 
-  if (user.banned) return json(res, 403, { error: "Account banned" }, corsHeaders(req.headers.origin));
+  if (user.banned) {
+    return json(res, 403, {
+      error: "Account banned",
+      banned: true,
+      bannedAt: user.bannedAt ?? null,
+    }, corsHeaders(req.headers.origin));
+  }
 
   const session = createSession(user.id, tgUser.id);
   db.sessions[session.id] = session;
@@ -263,6 +280,16 @@ function handleMe(req, res) {
 
   const user = findUserById(db, session.userId);
   if (!user || user.banned || session.telegramId !== user.telegramId) {
+    if (user?.banned) {
+      delete db.sessions[session.id];
+      saveDb(db);
+      return json(res, 200, {
+        user: null,
+        loginMethod: "guest",
+        banned: true,
+        bannedAt: user.bannedAt ?? null,
+      }, corsHeaders(req.headers.origin));
+    }
     delete db.sessions[session.id];
     saveDb(db);
     return json(res, 200, { user: null, loginMethod: "guest" }, corsHeaders(req.headers.origin));
@@ -306,7 +333,8 @@ async function handleVerificationRequest(req, res) {
   if (user.verificationRequestPending) return json(res, 400, { error: "Request pending" }, corsHeaders(req.headers.origin));
 
   const minFollowers = db.settings.verificationMinFollowers ?? 10000;
-  if ((user.followers ?? 0) < minFollowers) {
+  const displayCount = displayFollowers(user);
+  if (displayCount < minFollowers) {
     return json(res, 400, { error: `Minimum ${minFollowers} followers required` }, corsHeaders(req.headers.origin));
   }
 
@@ -316,7 +344,7 @@ async function handleVerificationRequest(req, res) {
     userId: user.id,
     username: user.username,
     displayName: user.displayName,
-    followers: user.followers,
+    followers: displayCount,
     postsCount: user.postsCount,
     status: "pending",
     createdAt: new Date().toISOString(),
@@ -465,7 +493,25 @@ async function handleTelegramWebhook(req, res) {
     const q = update.pre_checkout_query;
     const intent = db.paymentIntents[q.invoice_payload];
     const ok = intent && intent.status === "pending" && intent.stars === q.total_amount;
-    await answerPreCheckoutQuery(q.id, ok, ok ? undefined : "Invalid payment");
+    if (!ok) {
+      console.warn("[payment] pre_checkout rejected", {
+        payload: q.invoice_payload,
+        intentStatus: intent?.status,
+        intentStars: intent?.stars,
+        queryAmount: q.total_amount,
+      });
+    }
+    await answerPreCheckoutQuery(q.id, ok, ok ? undefined : "Payment unavailable");
+    return json(res, 200, { ok: true });
+  }
+
+  const message = update.message;
+  if (message?.text?.startsWith("/start") && message.chat?.id) {
+    try {
+      await sendWelcomeMessage(message.chat.id);
+    } catch (e) {
+      console.error("[bot] welcome message failed:", e.message);
+    }
     return json(res, 200, { ok: true });
   }
 
@@ -529,8 +575,8 @@ async function handleStorageUpload(req, res) {
   const db = loadDb();
   const user = requireUser(req, db);
   if (!user) return json(res, 401, { error: "Unauthorized" }, corsHeaders(req.headers.origin));
-  if (!isB2Configured() && !isLocalMediaAvailable()) {
-    return json(res, 503, { error: "Storage not configured" }, corsHeaders(req.headers.origin));
+  if (!isB2Configured()) {
+    return json(res, 503, { error: "B2 storage required — configure B2 credentials" }, corsHeaders(req.headers.origin));
   }
 
   const raw = await readBody(req);
@@ -543,49 +589,29 @@ async function handleStorageUpload(req, res) {
   if (!data || !contentType) return json(res, 400, { error: "Missing data" }, corsHeaders(req.headers.origin));
 
   const buffer = Buffer.from(data, "base64");
-  const maxSize = user.premium ? 1024 * 1024 * 1024 : 10 * 1024 * 1024;
-  if (buffer.length > maxSize) return json(res, 400, { error: "File too large" }, corsHeaders(req.headers.origin));
+  const maxSize = user.premium ? 50 * 1024 * 1024 : 15 * 1024 * 1024;
+  if (buffer.length > maxSize) {
+    return json(res, 400, { error: `File too large (max ${Math.round(maxSize / 1024 / 1024)}MB)` }, corsHeaders(req.headers.origin));
+  }
 
   const ext = contentType.includes("video") ? ".mp4" : contentType.includes("gif") ? ".gif" : ".jpg";
   const objectKey = `${category ?? "post"}/${user.id}/${crypto.randomBytes(16).toString("hex")}${ext}`;
   const proxyUrl = `${config.apiUrl}/api/media/${encodeURIComponent(objectKey)}`;
 
-  if (isB2Configured()) {
-    try {
-      const uploaded = await uploadToB2(objectKey, buffer, contentType);
-      db.mediaObjects[objectKey] = {
-        ...uploaded,
-        storage: "b2",
-        userId: user.id,
-        createdAt: new Date().toISOString(),
-        url: proxyUrl,
-      };
-      saveDb(db);
-      return json(res, 200, { objectKey, url: proxyUrl, size: uploaded.size, storage: "b2" }, corsHeaders(req.headers.origin));
-    } catch (e) {
-      console.error("B2 upload failed, using local fallback:", e.message);
-    }
-  }
-
   try {
-    const local = saveLocalMedia(objectKey, buffer, contentType);
+    const uploaded = await uploadToB2(objectKey, buffer, contentType);
     db.mediaObjects[objectKey] = {
-      ...local,
+      ...uploaded,
+      storage: "b2",
       userId: user.id,
       createdAt: new Date().toISOString(),
       url: proxyUrl,
     };
     saveDb(db);
-    return json(res, 200, {
-      objectKey,
-      url: proxyUrl,
-      size: local.size,
-      storage: "local",
-      warning: isB2Configured() ? "B2 unavailable — stored on server disk until B2 is fixed" : null,
-    }, corsHeaders(req.headers.origin));
+    return json(res, 200, { objectKey, url: proxyUrl, size: uploaded.size, storage: "b2" }, corsHeaders(req.headers.origin));
   } catch (e) {
-    console.error("Local media save failed:", e.message);
-    return json(res, 503, { error: "storage_unavailable", message: e.message }, corsHeaders(req.headers.origin));
+    console.error("B2 upload failed:", e.message);
+    return json(res, 503, { error: "b2_upload_failed", message: e.message }, corsHeaders(req.headers.origin));
   }
 }
 
@@ -666,9 +692,32 @@ async function handleProfileUpdate(req, res) {
     }
   }
 
+  if (body.age !== undefined) {
+    const age = Math.max(18, Math.min(99, Number(body.age) || 0));
+    if (age >= 18) user.age = age;
+  }
+  if (body.orientation !== undefined) {
+    const allowed = ["straight", "gay", "lesbian", "bisexual", "trans", "pansexual", "asexual", "queer"];
+    const o = String(body.orientation ?? "").trim();
+    user.orientation = allowed.includes(o) ? o : null;
+  }
+
   user.profileCustomized = true;
   saveDb(db);
   return json(res, 200, { user: publicUser(user) }, corsHeaders(req.headers.origin));
+}
+
+async function handleReport(req, res) {
+  const db = loadDb();
+  const user = requireUser(req, db);
+  if (!user) return json(res, 401, { error: "Unauthorized" }, corsHeaders(req.headers.origin));
+  const raw = await readBody(req);
+  let body = {};
+  try { body = JSON.parse(raw || "{}"); } catch { /* */ }
+  ensureReports(db);
+  const report = createReport(db, user.id, body);
+  saveDb(db);
+  return json(res, 200, { ok: true, id: report.id }, corsHeaders(req.headers.origin));
 }
 
 function handleWallet(req, res) {
@@ -750,9 +799,38 @@ async function handleSocial(req, res, url) {
     return true;
   }
 
+  const commentsMatch = url.match(/^\/api\/posts\/([^/]+)\/comments$/);
+  if (commentsMatch) {
+    const postId = decodeURIComponent(commentsMatch[1]);
+    ensureComments(db);
+    if (req.method === "GET") {
+      json(res, 200, { comments: getPostComments(db, postId) }, corsHeaders(origin));
+      return true;
+    }
+    if (req.method === "POST") {
+      if (!user) { json(res, 401, { error: "Unauthorized" }, corsHeaders(origin)); return true; }
+      const raw = await readBody(req);
+      let body = {};
+      try { body = JSON.parse(raw || "{}"); } catch { /* */ }
+      const result = createComment(db, postId, user.id, body.content);
+      if (!result.ok) json(res, 400, { error: result.error }, corsHeaders(origin));
+      else { saveDb(db); json(res, 200, { comment: result.comment }, corsHeaders(origin)); }
+      return true;
+    }
+  }
+
+  const viewMatch = url.match(/^\/api\/posts\/([^/]+)\/view$/);
+  if (viewMatch && req.method === "POST") {
+    const postId = decodeURIComponent(viewMatch[1]);
+    const views = incrementPostView(db, postId);
+    if (views == null) json(res, 404, { error: "Not found" }, corsHeaders(origin));
+    else { saveDb(db); json(res, 200, { views }, corsHeaders(origin)); }
+    return true;
+  }
+
   const postMatch = url.match(/^\/api\/posts\/([^/]+)$/);
   if (postMatch && req.method === "GET") {
-    const post = getPostById(db, postMatch[1], user?.id ?? null);
+    const post = getPostById(db, decodeURIComponent(postMatch[1]), user?.id ?? null);
     json(res, post ? 200 : 404, post ? { post } : { error: "Not found" }, corsHeaders(origin));
     return true;
   }
@@ -779,7 +857,7 @@ async function handleSocial(req, res, url) {
 
   const profileMatch = url.match(/^\/api\/users\/([^/]+)$/);
   if (profileMatch && req.method === "GET") {
-    const profile = resolveProfileUser(db, profileMatch[1]);
+    const profile = resolveProfileUser(db, decodeURIComponent(profileMatch[1]));
     if (!profile) json(res, 404, { error: "Not found" }, corsHeaders(origin));
     else {
       json(res, 200, {
@@ -968,6 +1046,7 @@ const server = http.createServer(async (req, res) => {
     if (url === "/api/verification/request" && req.method === "POST") return await handleVerificationRequest(req, res);
     if (url === "/api/notifications" && req.method === "GET") return handleNotifications(req, res);
     if (url === "/api/notifications/mark-read" && req.method === "POST") return await handleNotificationsMarkRead(req, res);
+    if (url === "/api/reports" && req.method === "POST") return await handleReport(req, res);
     if (url === "/api/payments/invoice" && req.method === "POST") return await handleCreateInvoice(req, res);
     if (url === "/api/user/unlocks" && req.method === "GET") return handleUserUnlocks(req, res);
     if (url === "/api/profile/update" && req.method === "POST") return await handleProfileUpdate(req, res);
@@ -1042,6 +1121,7 @@ startHttpServer(server, () => {
   const db = loadDb();
   ensureAdminSettings(db);
   saveDb(db);
+  ensureWebhookConfigured().catch((e) => console.error("[bot] webhook setup:", e.message));
   console.log(
     `Sheytoni API ready (env=${config.nodeEnv}, cwd=${process.cwd()}, db=${config.dbPath}, cors=${ORIGINS.join(",")})`,
   );

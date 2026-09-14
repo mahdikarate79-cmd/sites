@@ -5,6 +5,13 @@ export interface InvoiceResponse {
   intentId: string;
 }
 
+export async function createStarsPurchaseInvoice(amount: number): Promise<InvoiceResponse> {
+  return apiFetch("/api/payments/invoice", {
+    method: "POST",
+    body: JSON.stringify({ type: "stars", amount }),
+  });
+}
+
 export async function createPremiumInvoice(planId: string): Promise<InvoiceResponse> {
   return apiFetch("/api/payments/invoice", {
     method: "POST",

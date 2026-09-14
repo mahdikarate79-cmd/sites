@@ -6,6 +6,7 @@ import { ArrowLeft } from "lucide-react";
 import { User } from "@/lib/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { UserName } from "@/components/ui/UserName";
+import { ProfileLink } from "@/components/ui/ProfileLink";
 import { FollowButton } from "@/components/ui/FollowButton";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { fetchFollowers, fetchFollowing } from "@/lib/api/social";
@@ -49,13 +50,13 @@ export function FollowListContent({ mode }: FollowListContentProps) {
           <p className="text-center text-text-muted py-12 text-sm">Loading…</p>
         ) : users.length > 0 ? users.map((u) => (
           <div key={u.id} className="flex items-center gap-3 px-4 py-3.5">
-            <Link href={`/profile/${u.username || u.id}/`} className="shrink-0">
+            <ProfileLink user={u} className="shrink-0">
               <Avatar src={u.avatar} alt="" size="md" />
-            </Link>
-            <Link href={`/profile/${u.username || u.id}/`} className="flex-1 min-w-0">
+            </ProfileLink>
+            <ProfileLink user={u} className="flex-1 min-w-0">
               <UserName user={u} nameClassName="text-sm font-semibold" />
               <p className="text-xs text-text-muted truncate">@{u.username ?? "—"}</p>
-            </Link>
+            </ProfileLink>
             <FollowButton userId={u.id} size="sm" />
           </div>
         )) : (

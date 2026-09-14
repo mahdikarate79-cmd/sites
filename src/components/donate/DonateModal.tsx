@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import { Post } from "@/lib/types";
+import { ProfileLink } from "@/components/ui/ProfileLink";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { Avatar } from "@/components/ui/Avatar";
 import { TelegramStarIcon } from "@/components/ui/TelegramStarIcon";
@@ -86,9 +86,9 @@ export function DonateModal({ open, onClose, post }: DonateModalProps) {
 
         <p className="text-xs text-text-muted text-center leading-relaxed mt-2 mb-3 px-1">
           Choose how many Stars you want to send to{" "}
-          <Link href={`/profile/${post.author.username || post.author.id}/`} className="text-text font-medium hover:underline">
+          <ProfileLink user={post.author} className="text-text font-medium hover:underline">
             {post.author.displayName}
-          </Link>{" "}
+          </ProfileLink>{" "}
           to support this post.
         </p>
 
@@ -104,7 +104,6 @@ export function DonateModal({ open, onClose, post }: DonateModalProps) {
         <div className="flex justify-center gap-6 mb-3 min-h-[88px]">
           {preview.length > 0 ? (
             preview.slice(0, 2).map((d) => {
-              const profileHref = `/profile/${d.user.username || d.user.id}/`;
               return (
                 <div key={`${d.user.id}-${d.rank}`} className="flex flex-col items-center gap-1">
                   {d.anonymous ? (
@@ -112,9 +111,9 @@ export function DonateModal({ open, onClose, post }: DonateModalProps) {
                       <Glasses className="w-5 h-5 text-text-muted" />
                     </div>
                   ) : (
-                    <Link href={profileHref} onClick={(e) => e.stopPropagation()}>
+                    <ProfileLink user={d.user} onClick={(e) => e.stopPropagation()}>
                       <Avatar src={d.user.avatar} alt={d.user.displayName} size="lg" />
-                    </Link>
+                    </ProfileLink>
                   )}
                   <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-gold text-[10px] font-medium text-white tabular-nums">
                     <TelegramStarIcon variant="donate" size={11} />
@@ -124,9 +123,9 @@ export function DonateModal({ open, onClose, post }: DonateModalProps) {
                     {d.anonymous ? (
                       "Anonymous"
                     ) : (
-                      <Link href={profileHref} onClick={(e) => e.stopPropagation()} className="hover:underline">
+                      <ProfileLink user={d.user} onClick={(e) => e.stopPropagation()} className="hover:underline">
                         <UserName user={d.user} nameClassName="text-[10px]" />
-                      </Link>
+                      </ProfileLink>
                     )}
                   </span>
                 </div>

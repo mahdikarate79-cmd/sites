@@ -29,6 +29,8 @@ function rowToUser(r) {
     verificationRequestPending: !!r.verification_request_pending,
     usernameSet: !!r.username_set,
     profileCustomized: !!r.profile_customized,
+    age: r.age ?? null,
+    orientation: r.orientation ?? null,
   };
 }
 
@@ -60,6 +62,8 @@ function userToRow(u) {
     verificationRequestPending: u.verificationRequestPending ? 1 : 0,
     usernameSet: u.usernameSet ? 1 : 0,
     profileCustomized: u.profileCustomized ? 1 : 0,
+    age: u.age ?? null,
+    orientation: u.orientation ?? null,
   };
 }
 
@@ -141,18 +145,23 @@ export function loadDb() {
   const postLikes = settings.postLikes ?? {};
   const donations = settings.donations ?? {};
   const unlockedPaidMedia = settings.unlockedPaidMedia ?? {};
+  const comments = settings.comments ?? {};
+  const reports = settings.reports ?? {};
   delete settings.unlockedPosts;
   delete settings.earningsLedger;
   delete settings.follows;
   delete settings.postLikes;
   delete settings.donations;
   delete settings.unlockedPaidMedia;
+  delete settings.comments;
+  delete settings.reports;
 
   return {
     users, sessions, adminSessions, settings, posts, notifications,
     verificationRequests, withdrawalRequests, bannedUsers, mediaObjects,
     paymentIntents, processedCharges, chats, reservedUsernames, deletedUserIds,
     unlockedPosts, earningsLedger, follows, postLikes, donations, unlockedPaidMedia,
+    comments, reports,
   };
 }
 
@@ -165,12 +174,12 @@ export function saveDb(db) {
         id, telegram_id, username, display_name, avatar, cover, bio, verified, premium,
         premium_expires_at, banned, banned_at, star_balance, earnings, followers, fake_followers, following,
         posts_count, login_method, created_at, last_active_at, deleted, deleted_at,
-        verification_request_pending, username_set, profile_customized
+        verification_request_pending, username_set, profile_customized, age, orientation
       ) VALUES (
         @id, @telegramId, @username, @displayName, @avatar, @cover, @bio, @verified, @premium,
         @premiumExpiresAt, @banned, @bannedAt, @starBalance, @earnings, @followers, @fakeFollowers, @following,
         @postsCount, @loginMethod, @createdAt, @lastActiveAt, @deleted, @deletedAt,
-        @verificationRequestPending, @usernameSet, @profileCustomized
+        @verificationRequestPending, @usernameSet, @profileCustomized, @age, @orientation
       )
     `);
     for (const u of Object.values(db.users ?? {})) upsertUser.run(userToRow(u));
@@ -196,6 +205,8 @@ export function saveDb(db) {
     if (db.postLikes) settingsToSave.postLikes = db.postLikes;
     if (db.donations) settingsToSave.donations = db.donations;
     if (db.unlockedPaidMedia) settingsToSave.unlockedPaidMedia = db.unlockedPaidMedia;
+    if (db.comments) settingsToSave.comments = db.comments;
+    if (db.reports) settingsToSave.reports = db.reports;
     for (const [k, v] of Object.entries(settingsToSave)) {
       insSetting.run(k, JSON.stringify(v));
     }

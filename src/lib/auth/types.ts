@@ -16,4 +16,6 @@ export interface AuthMeResponse {
   accountDeleted?: boolean;
   canRecreateAt?: string;
   remainingMs?: number;
+  banned?: boolean;
+  bannedAt?: string | null;
 }

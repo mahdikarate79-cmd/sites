@@ -11,6 +11,15 @@ export async function authenticateWithTelegram(initData: string): Promise<AuthMe
     body: JSON.stringify({ initData }),
   });
   const data = await res.json().catch(() => ({}));
+  if (res.status === 403 && data.banned) {
+    clearSessionToken();
+    return {
+      user: null,
+      loginMethod: "guest",
+      banned: true,
+      bannedAt: data.bannedAt ?? null,
+    };
+  }
   if (res.status === 403 && data.error === "account_deleted") {
     clearSessionToken();
     return {
@@ -55,6 +64,8 @@ export async function updateProfile(data: {
   bio?: string;
   avatar?: string;
   cover?: string;
+  age?: number;
+  orientation?: string;
 }): Promise<AuthUser> {
   const res = await apiFetch<{ user: AuthUser }>("/api/profile/update", {
     method: "POST",

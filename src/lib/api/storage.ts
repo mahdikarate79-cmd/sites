@@ -56,15 +56,34 @@ export interface UploadResult {
   media: MediaObject;
 }
 
+async function compressImageIfNeeded(file: File, maxDim = 2048): Promise<File> {
+  if (!file.type.startsWith("image/") || file.type === "image/gif") return file;
+  if (file.size < 2 * 1024 * 1024) return file;
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+  const width = Math.round(bitmap.width * scale);
+  const height = Math.round(bitmap.height * scale);
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return file;
+  ctx.drawImage(bitmap, 0, 0, width, height);
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
+  if (!blob || blob.size >= file.size) return file;
+  return new File([blob], file.name.replace(/\.\w+$/, ".jpg"), { type: "image/jpeg" });
+}
+
 /** Upload media to Backblaze B2 via backend — never stored on host disk */
 export async function uploadMedia(
   file: File,
   category: "avatar" | "cover" | "post" | "chat"
 ): Promise<UploadResult> {
-  const validation = validateUpload(file);
+  const prepared = file.type.startsWith("image/") ? await compressImageIfNeeded(file) : file;
+  const validation = validateUpload(prepared);
   if (!validation.valid) throw new Error(validation.error);
 
-  const data = await fileToBase64(file);
+  const data = await fileToBase64(prepared);
   const res = await fetch(`${getApiBase()}/api/storage/upload`, {
     method: "POST",
     credentials: "include",
@@ -72,7 +91,7 @@ export async function uploadMedia(
       "Content-Type": "application/json",
       ...getAuthHeaders(),
     },
-    body: JSON.stringify({ data, contentType: file.type, category }),
+    body: JSON.stringify({ data, contentType: prepared.type, category }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -83,8 +102,8 @@ export async function uploadMedia(
     objectKey: result.objectKey,
     media: {
       objectKey: result.objectKey,
-      mimeType: file.type,
-      size: file.size,
+      mimeType: prepared.type,
+      size: prepared.size,
       url: result.url,
     },
   };

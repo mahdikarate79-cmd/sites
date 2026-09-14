@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Chat } from "@/lib/types";
+import { ProfileLink } from "@/components/ui/ProfileLink";
 import { Avatar } from "@/components/ui/Avatar";
 import { UserName } from "@/components/ui/UserName";
 import { NotificationBadge } from "@/components/ui/NotificationBadge";
@@ -47,9 +48,9 @@ export function ChatList() {
           key={chat.id}
           className="flex items-center gap-3 px-4 py-3 border-b border-border hover:bg-surface/50 transition-colors"
         >
-          <Link href={`/profile/${chat.participant.username || chat.participant.id}/`} className="shrink-0">
+          <ProfileLink user={chat.participant} className="shrink-0">
             <Avatar src={chat.participant.avatar} alt={chat.participant.displayName} size="lg" />
-          </Link>
+          </ProfileLink>
           <Link href={`/chat/${chat.id}/`} className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
               <UserName user={chat.participant} nameClassName="font-semibold text-sm" className="min-w-0" />

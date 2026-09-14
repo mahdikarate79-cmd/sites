@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { ProfileLink } from "@/components/ui/ProfileLink";
 import { Search, Filter, Video, ImageIcon, Film } from "lucide-react";
 import { Post, User } from "@/lib/types";
 import { getFeedPosts } from "@/lib/api/posts";
@@ -14,7 +15,7 @@ import { buildReelItems } from "@/lib/utils/reels";
 import { shouldExcludeFromPublicDiscovery } from "@/lib/utils/postAccess";
 import { formatCount } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
-import { profileHandle, profileSlug } from "@/lib/utils/profileSlug";
+import { profileHandle } from "@/lib/utils/profileSlug";
 
 type SearchTab = "accounts" | "reels";
 type SortFilter = "newest" | "popular" | "views" | "oldest";
@@ -160,9 +161,9 @@ export function ExploreContent() {
           ) : searching ? (
             <p className="text-center text-text-muted py-12 text-sm">Searching…</p>
           ) : accounts.map((user) => (
-            <Link
+            <ProfileLink
               key={user.id}
-              href={`/profile/${profileSlug(user)}`}
+              user={user}
               className="flex items-center gap-3 px-4 py-3.5 hover:bg-surface/40 transition-colors"
             >
               <Avatar src={user.avatar} alt="" size="lg" />
@@ -173,7 +174,7 @@ export function ExploreContent() {
                 )}
                 <p className="text-xs text-text-muted mt-0.5">{formatCount(user.followers)} followers</p>
               </div>
-            </Link>
+            </ProfileLink>
           ))}
           {query.trim() && !searching && accounts.length === 0 && (
             <p className="text-center text-text-muted py-12 text-sm">No accounts found</p>

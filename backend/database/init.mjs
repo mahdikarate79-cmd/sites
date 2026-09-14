@@ -36,6 +36,12 @@ export function getDatabase() {
     dbInstance.exec("ALTER TABLE users ADD COLUMN profile_customized INTEGER DEFAULT 0");
     dbInstance.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)").run(3, new Date().toISOString());
   }
+  const userCols3 = dbInstance.prepare("PRAGMA table_info(users)").all();
+  if (!userCols3.some((c) => c.name === "age")) {
+    dbInstance.exec("ALTER TABLE users ADD COLUMN age INTEGER");
+    dbInstance.exec("ALTER TABLE users ADD COLUMN orientation TEXT");
+    dbInstance.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)").run(4, new Date().toISOString());
+  }
 
   importJsonStoreIfNeeded(dbInstance);
   return dbInstance;

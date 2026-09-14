@@ -32,6 +32,9 @@ Options -Indexes
   RewriteCond %{DOCUMENT_ROOT}/%1.html -f
   RewriteRule ^ /%1.html [L]
 
+  # Dynamic profile slugs → placeholder shell (client reads pathname)
+  RewriteRule ^profile/[^/]+/?$ profile/placeholder.html [L]
+
   # /route without extension → route.html
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME}.html -f

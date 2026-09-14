@@ -20,6 +20,8 @@ interface AuthContextValue {
   isGuest: boolean;
   loading: boolean;
   accountDeleted: boolean;
+  banned: boolean;
+  bannedAt: string | null;
   canRecreateAt: string | null;
   remainingMs: number | null;
   unlockedPostIds: string[];
@@ -37,6 +39,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [verificationMinFollowers, setVerificationMinFollowers] = useState(10000);
   const [loading, setLoading] = useState(true);
   const [accountDeleted, setAccountDeleted] = useState(false);
+  const [banned, setBanned] = useState(false);
+  const [bannedAt, setBannedAt] = useState<string | null>(null);
   const [canRecreateAt, setCanRecreateAt] = useState<string | null>(null);
   const [remainingMs, setRemainingMs] = useState<number | null>(null);
   const [unlockedPostIds, setUnlockedPostIds] = useState<string[]>([]);
@@ -47,6 +51,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loginMethod: LoginMethod;
     verificationMinFollowers?: number;
     accountDeleted?: boolean;
+    banned?: boolean;
+    bannedAt?: string | null;
     canRecreateAt?: string;
     remainingMs?: number;
   }) => {
@@ -55,6 +61,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoginMethod(data.loginMethod);
     if (data.verificationMinFollowers) setVerificationMinFollowers(data.verificationMinFollowers);
     setAccountDeleted(!!data.accountDeleted);
+    setBanned(!!data.banned);
+    setBannedAt(data.bannedAt ?? null);
     setCanRecreateAt(data.canRecreateAt ?? null);
     setRemainingMs(data.remainingMs ?? null);
   }, []);
@@ -87,6 +95,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const data = await authenticateWithTelegram(initData);
       applyMe(data);
+      if (data.banned) {
+        applyMe({ user: null, loginMethod: "guest", banned: true, bannedAt: data.bannedAt ?? null });
+        lastTelegramId.current = tgUser.id ?? null;
+        return;
+      }
       if (data.accountDeleted) {
         clearLocalUserData();
         lastTelegramId.current = tgUser.id ?? null;
@@ -110,6 +123,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     try {
       const data = await fetchAuthMe();
+      if (data.banned) {
+        applyMe({ user: null, loginMethod: "guest", banned: true, bannedAt: data.bannedAt ?? null });
+        return;
+      }
       if (data.loginMethod === "telegram" && data.user) {
         applyMe(data);
         await refreshUnlocks();
@@ -129,8 +146,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         try {
           const data = await fetchAuthMe();
-          applyMe(data.loginMethod === "telegram" && data.user ? data : { user: null, loginMethod: "guest" });
-          if (data.user) await refreshUnlocks();
+          if (data.banned) {
+            applyMe({ user: null, loginMethod: "guest", banned: true, bannedAt: data.bannedAt ?? null });
+          } else {
+            applyMe(data.loginMethod === "telegram" && data.user ? data : { user: null, loginMethod: "guest" });
+            if (data.user) await refreshUnlocks();
+          }
         } catch {
           applyMe({ user: null, loginMethod: "guest" });
         }
@@ -207,6 +228,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isGuest: loginMethod === "guest" || !user,
         loading,
         accountDeleted,
+        banned,
+        bannedAt,
         canRecreateAt,
         remainingMs,
         unlockedPostIds,

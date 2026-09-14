@@ -5,10 +5,13 @@ import { Send, Loader2 } from "lucide-react";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { Avatar } from "@/components/ui/Avatar";
 import { UserName } from "@/components/ui/UserName";
+import { ProfileLink } from "@/components/ui/ProfileLink";
 import { usePrototype } from "@/lib/hooks/usePrototype";
+import { useAuth } from "@/lib/hooks/useAuth";
 import { useTelegramGate } from "@/lib/hooks/useTelegramGate";
 import { formatTimeAgo } from "@/lib/utils/format";
 import { Comment } from "@/lib/types";
+import { fetchComments, postComment } from "@/lib/api/comments";
 
 interface CommentsSheetProps {
   open: boolean;
@@ -19,17 +22,31 @@ interface CommentsSheetProps {
 }
 
 export function CommentsSheet({ open, onClose, postId, initialCount, onCountChange }: CommentsSheetProps) {
-  const { getComments, getCommentCount, addComment, getCurrentUser } = usePrototype();
+  const { getCurrentUser } = usePrototype();
+  const { isAuthenticated } = useAuth();
   const { requireMiniApp } = useTelegramGate();
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [localComments, setLocalComments] = useState<Comment[]>([]);
+  const [count, setCount] = useState(initialCount);
   const bottomRef = useRef<HTMLDivElement>(null);
   const user = getCurrentUser();
 
   useEffect(() => {
-    if (open) setLocalComments(getComments(postId));
-  }, [open, postId, getComments]);
+    setCount(initialCount);
+  }, [initialCount]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (isAuthenticated) {
+      fetchComments(postId)
+        .then((comments) => {
+          setLocalComments(comments);
+          setCount(comments.length || initialCount);
+        })
+        .catch(() => setLocalComments([]));
+    }
+  }, [open, postId, isAuthenticated, initialCount]);
 
   useEffect(() => {
     if (open) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -58,16 +75,21 @@ export function CommentsSheet({ open, onClose, postId, initialCount, onCountChan
     setSending(true);
     setText("");
     setLocalComments((prev) => [...prev, optimistic]);
-    onCountChange?.(getCommentCount(postId, initialCount) + 1);
+    const nextCount = count + 1;
+    setCount(nextCount);
+    onCountChange?.(nextCount);
 
-    await new Promise((r) => setTimeout(r, 350));
-
-    const saved = addComment(postId, content);
-    setLocalComments((prev) => prev.map((c) => (c.clientId === clientId ? { ...saved, sendStatus: "sent" } : c)));
-    setSending(false);
+    try {
+      const saved = await postComment(postId, content);
+      setLocalComments((prev) => prev.map((c) => (c.clientId === clientId ? { ...saved, sendStatus: "sent" } : c)));
+    } catch {
+      setLocalComments((prev) => prev.filter((c) => c.clientId !== clientId));
+      setCount((c) => Math.max(initialCount, c - 1));
+      onCountChange?.(Math.max(initialCount, count - 1));
+    } finally {
+      setSending(false);
+    }
   };
-
-  const count = getCommentCount(postId, initialCount);
 
   return (
     <BottomSheet open={open} onClose={onClose} title={`Comments · ${count}`}>
@@ -82,13 +104,17 @@ export function CommentsSheet({ open, onClose, postId, initialCount, onCountChan
                 <div className="my-3 h-px bg-gradient-to-r from-transparent via-white/12 to-transparent backdrop-blur-sm" aria-hidden />
               )}
               <div className="flex gap-2.5 py-1">
-                <Avatar src={c.authorAvatar} alt="" size="sm" className="shrink-0 mt-0.5" />
+                <ProfileLink user={{ id: c.authorId, username: c.authorUsername ?? undefined }} className="shrink-0 mt-0.5">
+                  <Avatar src={c.authorAvatar} alt="" size="sm" />
+                </ProfileLink>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1 flex-wrap">
-                    <UserName
-                      user={{ displayName: c.authorName, verified: c.authorVerified, premium: c.authorPremium }}
-                      nameClassName="text-sm font-semibold"
-                    />
+                    <ProfileLink user={{ id: c.authorId, username: c.authorUsername ?? undefined }}>
+                      <UserName
+                        user={{ displayName: c.authorName, verified: c.authorVerified, premium: c.authorPremium }}
+                        nameClassName="text-sm font-semibold"
+                      />
+                    </ProfileLink>
                     <span className="text-xs text-text-muted">{formatTimeAgo(c.createdAt)}</span>
                     {c.sendStatus === "sending" && <Loader2 className="w-3 h-3 animate-spin text-text-muted" />}
                   </div>

@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import { Lock } from "lucide-react";
+import { ProfileLink } from "@/components/ui/ProfileLink";
 import { Post } from "@/lib/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { UserName } from "@/components/ui/UserName";
@@ -60,8 +60,6 @@ export function PostCard({ post, onHide, allPosts }: PostCardProps) {
     [reelSource, user.id, isFollowing, isPostUnlocked]
   );
   const hasReelMedia = post.media?.some((m) => m.type === "video" || m.type === "image" || m.type === "gif");
-  const profileHref = `/profile/${post.author.username || post.author.id}/`;
-
   const openReels = (mediaIndex: number) => {
     if (paidLocked || privateLocked) return;
     setReelMediaIndex(mediaIndex);
@@ -113,15 +111,15 @@ export function PostCard({ post, onHide, allPosts }: PostCardProps) {
     <>
       <article className="px-4 py-3 border-b border-border">
         <div className="flex gap-3">
-          <Link href={profileHref} className="shrink-0">
+          <ProfileLink user={post.author} className="shrink-0">
             <Avatar src={post.author.avatar} alt={post.author.displayName} size="md" />
-          </Link>
+          </ProfileLink>
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-1 min-w-0 flex-wrap">
-                <Link href={profileHref} className="font-semibold text-sm truncate hover:underline">
+                <ProfileLink user={post.author} className="font-semibold text-sm truncate hover:underline">
                   <UserName user={post.author} nameClassName="font-semibold text-sm" />
-                </Link>
+                </ProfileLink>
                 <span className="text-text-muted text-sm">·</span>
                 <span className="text-text-muted text-sm">{formatTimeAgo(post.createdAt)}</span>
                 {!isFollowing(post.author.id) && post.author.id !== user.id && (

@@ -151,15 +151,9 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
     if (authUser) {
       return {
         ...authUser,
-        id: authUser.id,
-        username: authUser.username ?? undefined,
-        displayName: authUser.displayName,
-        avatar: authUser.avatar,
+        ...state.profileEdits,
         premium: authUser.premium,
         verified: authUser.verified,
-        followers: authUser.followers,
-        following: authUser.following,
-        postsCount: authUser.postsCount,
       };
     }
     return { ...GUEST_USER, ...state.profileEdits };

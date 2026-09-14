@@ -226,6 +226,9 @@ export function publicUser(user, { includeTelegramId = false } = {}) {
     postsCount: user.postsCount ?? 0,
     loginMethod: user.loginMethod ?? "telegram",
     verificationRequestPending: !!user.verificationRequestPending,
+    age: user.age ?? null,
+    orientation: user.orientation ?? null,
+    bannedAt: user.bannedAt ?? null,
   };
   if (includeTelegramId) out.telegramId = user.telegramId;
   return out;
@@ -259,5 +262,7 @@ function rowToUser(r) {
     verificationRequestPending: !!r.verification_request_pending,
     usernameSet: !!r.username_set,
     profileCustomized: !!r.profile_customized,
+    age: r.age ?? null,
+    orientation: r.orientation ?? null,
   };
 }

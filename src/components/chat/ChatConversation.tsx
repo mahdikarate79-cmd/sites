@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, MoreVertical, Check, CheckCheck, Search, Trash2, CornerUpRight, Loader2, AlertCircle, RotateCcw } from "lucide-react";
 import { ChatMessage, PinnedMessageInfo } from "@/lib/types";
 import { Avatar } from "@/components/ui/Avatar";
+import { ProfileLink } from "@/components/ui/ProfileLink";
 import { BlockButton } from "@/components/ui/BlockButton";
 import { UserName } from "@/components/ui/UserName";
 import { getChat, getChatMessages, sendMessage, sendAlbumMessage, forwardMessage } from "@/lib/api/chat";
@@ -507,13 +508,13 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
             <ArrowLeft className="w-5 h-5" />
           </Link>
           {chat && (
-            <Link href={`/profile/${chat.participant.username || chat.participant.id}/`} className="flex-1 flex items-center gap-2.5 min-w-0 px-2 py-1 rounded-xl hover:bg-surface/40 transition-colors">
+            <ProfileLink user={chat.participant} className="flex-1 flex items-center gap-2.5 min-w-0 px-2 py-1 rounded-xl hover:bg-surface/40 transition-colors">
               <Avatar src={chat.participant.avatar} alt="" size="sm" />
               <div className="min-w-0 text-left">
                 <UserName user={chat.participant} nameClassName="font-semibold text-sm" />
                 <p className="text-[11px] text-text-muted truncate">{chat.participant.lastSeen ?? "last seen recently"}</p>
               </div>
-            </Link>
+            </ProfileLink>
           )}
           <div className="relative shrink-0">
             <button onClick={() => setMenuOpen(!menuOpen)} className="p-2 rounded-full hover:bg-surface/60 transition-colors" aria-label="More">

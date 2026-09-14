@@ -193,6 +193,8 @@ export function EditProfileContent() {
           bio: payload.bio,
           avatar: avatarUrl,
           cover: coverUrl,
+          age: payload.age,
+          orientation: payload.orientation,
         });
         updateProfile({
           displayName: updated.displayName,
@@ -200,6 +202,8 @@ export function EditProfileContent() {
           bio: updated.bio,
           avatar: updated.avatar,
           cover: updated.cover,
+          age: updated.age,
+          orientation: updated.orientation,
         });
         await refresh();
       } else {

@@ -13,7 +13,10 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw Object.assign(new Error((data as { error?: string }).error ?? `API error ${res.status}`), {
+    const message = (data as { message?: string }).message
+      ?? (data as { error?: string }).error
+      ?? `API error ${res.status}`;
+    throw Object.assign(new Error(message), {
       data,
       status: res.status,
     });

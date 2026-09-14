@@ -101,7 +101,7 @@ export function serializePost(db, post, viewerId = null) {
     likes: displayLikes(post),
     liked,
     comments: post.comments ?? 0,
-    views: post.views ?? 0,
+    views: (post.views ?? 0) + (post.fakeViews ?? 0),
     shares: post.shares ?? 0,
     stars: donation.total ?? 0,
     topDonators: donation.topDonators ?? [],
@@ -189,6 +189,31 @@ export function createPost(db, authorId, body) {
   db.posts[id] = post;
   author.postsCount = (author.postsCount ?? 0) + 1;
   return { ok: true, post: serializePost(db, post, authorId) };
+}
+
+export function incrementPostView(db, postId) {
+  const post = db.posts?.[postId];
+  if (!post) return null;
+  post.views = (post.views ?? 0) + 1;
+  return (post.views ?? 0) + (post.fakeViews ?? 0);
+}
+
+export function adjustPostStats(db, postId, { likesDelta = 0, viewsDelta = 0, fakeLikesDelta = 0, fakeViewsDelta = 0 }) {
+  const post = db.posts?.[postId];
+  if (!post) return { ok: false, error: "Post not found" };
+  if (likesDelta) post.likes = Math.max(0, (post.likes ?? 0) + likesDelta);
+  if (viewsDelta) post.views = Math.max(0, (post.views ?? 0) + viewsDelta);
+  if (fakeLikesDelta) post.fakeLikes = Math.max(0, (post.fakeLikes ?? 0) + fakeLikesDelta);
+  if (fakeViewsDelta) post.fakeViews = Math.max(0, (post.fakeViews ?? 0) + fakeViewsDelta);
+  return {
+    ok: true,
+    likes: displayLikes(post),
+    views: (post.views ?? 0) + (post.fakeViews ?? 0),
+    realLikes: post.likes ?? 0,
+    fakeLikes: post.fakeLikes ?? 0,
+    realViews: post.views ?? 0,
+    fakeViews: post.fakeViews ?? 0,
+  };
 }
 
 export function togglePostLike(db, userId, postId) {
