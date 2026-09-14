@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -18,18 +18,13 @@ import { TelegramStarIcon } from "@/components/ui/TelegramStarIcon";
 import { formatCount, formatStars } from "@/lib/utils/format";
 import { starsToUsd, formatUsd } from "@/lib/constants/stars";
 import { useToast } from "@/components/ui/ToastProvider";
-import { usePrototype } from "@/lib/hooks/usePrototype";
-import { TransactionRecord } from "@/lib/types";
+import { useAuth } from "@/lib/hooks/useAuth";
+import { fetchWallet, requestWithdrawal, WalletInfo } from "@/lib/api/wallet";
+import { TransactionRecord, User } from "@/lib/types";
+import { ProfileLink } from "@/components/ui/ProfileLink";
+import { Avatar } from "@/components/ui/Avatar";
+import { UserName } from "@/components/ui/UserName";
 import { cn } from "@/lib/utils/cn";
-
-const STATS = {
-  views: 2_450_000,
-  likes: 89_000,
-  followers: 12_400,
-  engagement: 4.2,
-};
-
-const STARS_LAST_21_DAYS = 1_250;
 
 const WITHDRAWAL_MIN_STARS = 1000;
 
@@ -43,17 +38,35 @@ export function CreatorStudioContent() {
   const [walletAddress, setWalletAddress] = useState("");
   const [amountInput, setAmountInput] = useState("1000");
   const [selectedTx, setSelectedTx] = useState<TransactionRecord | null>(null);
+  const [wallet, setWallet] = useState<WalletInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const { showToast } = useToast();
-  const { state, withdrawEarnings } = usePrototype();
-  const transactions = state.transactions;
+  const { user, isAuthenticated } = useAuth();
 
-  const available = state.earnings;
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setLoading(false);
+      return;
+    }
+    fetchWallet()
+      .then(setWallet)
+      .catch(() => setWallet(null))
+      .finally(() => setLoading(false));
+  }, [isAuthenticated]);
+
+  const available = wallet?.withdrawable ?? 0;
+  const totalEarnings = wallet?.totalEarnings ?? 0;
+  const starsLast21Days = wallet?.starsLast21Days ?? 0;
+  const meetsMinimum = wallet?.meetsMinimum ?? false;
+  const canWithdraw = wallet?.canWithdraw ?? false;
+  const transactions = wallet?.transactions ?? [];
+
   const amount = Math.max(0, parseInt(amountInput, 10) || 0);
   const usd = starsToUsd(amount);
-  const meetsMinimum = STARS_LAST_21_DAYS >= WITHDRAWAL_MIN_STARS;
   const walletValid = walletAddress.trim() ? isValidTonWallet(walletAddress) : false;
   const amountValid = amount >= 1 && amount <= available;
-  const canSubmitWithdraw = meetsMinimum && walletValid && amountValid;
+  const canSubmitWithdraw = meetsMinimum && walletValid && amountValid && !submitting;
 
   const handleAmountChange = (value: string) => {
     if (value === "") {
@@ -65,35 +78,39 @@ export function CreatorStudioContent() {
     setAmountInput(String(Math.min(available, Math.max(0, num))));
   };
 
-  const handleWithdraw = () => {
-    if (!walletAddress.trim()) {
-      showToast("Enter your TON wallet address");
-      return;
+  const handleWithdraw = async () => {
+    if (!walletValid || !amountValid || submitting) return;
+    setSubmitting(true);
+    try {
+      await requestWithdrawal(amount, walletAddress.trim());
+      showToast("Withdrawal request submitted");
+      setWithdrawOpen(false);
+      setWalletAddress("");
+      setAmountInput("1000");
+      const updated = await fetchWallet();
+      setWallet(updated);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Withdrawal failed");
+    } finally {
+      setSubmitting(false);
     }
-    if (!walletValid) {
-      showToast("Enter a valid TON wallet address");
-      return;
-    }
-    if (!amountValid) {
-      showToast(amount > available ? `Maximum available is ${formatStars(available)}` : "Enter a valid amount");
-      return;
-    }
-    if (!withdrawEarnings(amount)) {
-      showToast("Insufficient balance");
-      return;
-    }
-    showToast("Withdrawal request submitted");
-    setWithdrawOpen(false);
-    setWalletAddress("");
-    setAmountInput("1000");
   };
 
+  const stats = wallet?.stats;
   const statCards = [
-    { label: "Views", value: formatCount(STATS.views), icon: Eye },
-    { label: "Likes", value: formatCount(STATS.likes), icon: Heart },
-    { label: "Followers", value: formatCount(STATS.followers), icon: Users },
-    { label: "Engagement", value: `${STATS.engagement}%`, icon: TrendingUp },
+    { label: "Views", value: formatCount(stats?.views ?? 0), icon: Eye },
+    { label: "Likes", value: formatCount(stats?.likes ?? 0), icon: Heart },
+    { label: "Followers", value: formatCount(stats?.followers ?? user?.followers ?? 0), icon: Users },
+    { label: "Posts", value: formatCount(stats?.posts ?? 0), icon: TrendingUp },
   ];
+
+  if (loading) {
+    return (
+      <div className="min-h-dvh flex items-center justify-center text-text-muted text-sm">
+        Loading wallet…
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-dvh pb-6">
@@ -124,17 +141,20 @@ export function CreatorStudioContent() {
             <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Stars earned</p>
             <TelegramStarIcon size={18} />
           </div>
-          <p className="text-2xl font-bold mb-1 tabular-nums">{formatStars(available)}</p>
+          <p className="text-2xl font-bold mb-1 tabular-nums">{formatStars(totalEarnings)}</p>
+          <p className="text-xs text-text-muted mb-0.5">
+            {formatStars(available)} available to withdraw
+          </p>
           <p className="text-xs text-text-muted">
-            {formatStars(STARS_LAST_21_DAYS)} stars in the last 21 days
+            {formatStars(starsLast21Days)} stars earned in the last 21 days
           </p>
           <button
             type="button"
-            disabled={available <= 0}
+            disabled={!canWithdraw}
             onClick={() => setWithdrawOpen(true)}
             className={cn(
               "flex items-center justify-center gap-2 w-full mt-4 py-2.5 rounded-xl text-sm font-semibold transition-opacity",
-              available > 0
+              canWithdraw
                 ? "bg-text text-bg hover:opacity-90"
                 : "bg-surface text-text-muted cursor-not-allowed opacity-60"
             )}
@@ -147,6 +167,11 @@ export function CreatorStudioContent() {
               Minimum {formatStars(WITHDRAWAL_MIN_STARS)} stars earned in the last 21 days required
             </p>
           )}
+          {meetsMinimum && available <= 0 && totalEarnings > 0 && (
+            <p className="text-xs text-text-muted text-center mt-2">
+              Stars become withdrawable 21 days after they are received
+            </p>
+          )}
         </section>
 
         <section className="glass-nav rounded-2xl overflow-hidden">
@@ -154,9 +179,22 @@ export function CreatorStudioContent() {
             <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Transactions</h2>
           </div>
           <div className="divide-y divide-border">
-            {transactions.map((tx) => {
-              const { id, label, amount: txAmount, date } = tx;
+            {transactions.length === 0 ? (
+              <p className="text-center text-text-muted text-sm py-8">No transactions yet</p>
+            ) : transactions.map((tx) => {
+              const { id, label, amount: txAmount, date, donorId, donorName, donorUsername } = tx;
               const isCredit = txAmount > 0;
+              const donorUser: User | null = donorId && donorName ? {
+                id: donorId,
+                displayName: donorName,
+                username: donorUsername ?? undefined,
+                avatar: "",
+                verified: false,
+                premium: false,
+                followers: 0,
+                following: 0,
+                postsCount: 0,
+              } : null;
               return (
                 <button
                   key={id}
@@ -164,20 +202,32 @@ export function CreatorStudioContent() {
                   onClick={() => setSelectedTx(tx)}
                   className="flex items-center gap-3 px-4 py-3.5 w-full text-left hover:bg-surface/40 transition-colors"
                 >
-                  <div
-                    className={cn(
-                      "w-9 h-9 rounded-full flex items-center justify-center shrink-0",
-                      isCredit ? "bg-green-500/15" : "bg-like/15"
-                    )}
-                  >
-                    {isCredit ? (
-                      <ArrowDownLeft className="w-4 h-4 text-green-500" />
-                    ) : (
-                      <ArrowUpRight className="w-4 h-4 text-like" />
-                    )}
-                  </div>
+                  {donorUser ? (
+                    <ProfileLink user={donorUser} className="shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <Avatar src={donorUser.avatar} alt="" size="sm" />
+                    </ProfileLink>
+                  ) : (
+                    <div
+                      className={cn(
+                        "w-9 h-9 rounded-full flex items-center justify-center shrink-0",
+                        isCredit ? "bg-green-500/15" : "bg-like/15"
+                      )}
+                    >
+                      {isCredit ? (
+                        <ArrowDownLeft className="w-4 h-4 text-green-500" />
+                      ) : (
+                        <ArrowUpRight className="w-4 h-4 text-like" />
+                      )}
+                    </div>
+                  )}
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{label}</p>
+                    <p className="text-sm font-medium truncate">
+                      {donorUser ? (
+                        <ProfileLink user={donorUser} onClick={(e) => e.stopPropagation()} className="hover:underline">
+                          <UserName user={donorUser} nameClassName="text-sm font-medium" />
+                        </ProfileLink>
+                      ) : label}
+                    </p>
                     <p className="text-xs text-text-muted">
                       {new Date(date).toLocaleDateString("en-US", {
                         month: "short",
@@ -207,6 +257,24 @@ export function CreatorStudioContent() {
             <div className="flex justify-between"><span className="text-text-muted">Status</span><span className="capitalize">{selectedTx.status ?? "completed"}</span></div>
             <div className="flex justify-between"><span className="text-text-muted">Date</span><span>{new Date(selectedTx.date).toLocaleString("en-US")}</span></div>
             {selectedTx.hash && <div className="flex justify-between gap-4"><span className="text-text-muted shrink-0">Hash</span><span className="font-mono text-xs truncate">{selectedTx.hash}</span></div>}
+            {selectedTx.donorName && (
+              <div className="flex justify-between gap-4">
+                <span className="text-text-muted shrink-0">From</span>
+                {selectedTx.donorId ? (
+                  <ProfileLink
+                    user={{
+                      id: selectedTx.donorId,
+                      username: selectedTx.donorUsername ?? undefined,
+                    }}
+                    className="hover:underline text-right"
+                  >
+                    {selectedTx.donorName}
+                  </ProfileLink>
+                ) : (
+                  <span>{selectedTx.donorName}</span>
+                )}
+              </div>
+            )}
             <p className="text-text-muted text-xs pt-2 border-t border-border">{selectedTx.label}</p>
           </div>
         )}
@@ -279,7 +347,7 @@ export function CreatorStudioContent() {
             disabled={!canSubmitWithdraw}
             className="w-full py-2.5 rounded-xl bg-text text-bg text-sm font-semibold disabled:opacity-40"
           >
-            Withdraw
+            {submitting ? "Submitting…" : "Withdraw"}
           </button>
         </div>
       </Modal>

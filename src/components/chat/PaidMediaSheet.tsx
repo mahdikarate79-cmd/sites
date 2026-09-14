@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { TelegramStarIcon } from "@/components/ui/TelegramStarIcon";
-import { starsToUsd, formatUsd, MAX_PAID_MEDIA_STARS } from "@/lib/constants/stars";
+import { starsToUsd, formatUsd, MIN_STARS_PAYMENT, MAX_PAID_MEDIA_STARS } from "@/lib/constants/stars";
 
 interface PaidMediaSheetProps {
   open: boolean;
@@ -12,10 +12,10 @@ interface PaidMediaSheetProps {
 }
 
 export function PaidMediaSheet({ open, onClose, onConfirm }: PaidMediaSheetProps) {
-  const [input, setInput] = useState("100");
+  const [input, setInput] = useState(String(MIN_STARS_PAYMENT));
 
   const stars = Math.max(0, parseInt(input, 10) || 0);
-  const valid = stars >= 1 && stars <= MAX_PAID_MEDIA_STARS;
+  const valid = stars >= MIN_STARS_PAYMENT && stars <= MAX_PAID_MEDIA_STARS;
   const usd = starsToUsd(stars);
 
   const handleChange = (value: string) => {

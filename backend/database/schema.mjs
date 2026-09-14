@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS users (
   star_balance INTEGER DEFAULT 0,
   earnings INTEGER DEFAULT 0,
   followers INTEGER DEFAULT 0,
+  fake_followers INTEGER DEFAULT 0,
   following INTEGER DEFAULT 0,
   posts_count INTEGER DEFAULT 0,
   login_method TEXT DEFAULT 'telegram',
