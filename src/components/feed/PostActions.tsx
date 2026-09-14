@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Heart, MessageCircle, Eye, Share2, Bookmark } from "lucide-react";
 import { Post } from "@/lib/types";
 import { formatCount } from "@/lib/utils/format";
@@ -11,6 +11,9 @@ import { cn } from "@/lib/utils/cn";
 import { usePrototype } from "@/lib/hooks/usePrototype";
 import { useTelegramGate } from "@/lib/hooks/useTelegramGate";
 import { useToast } from "@/components/ui/ToastProvider";
+import { toggleLikeApi, recordPostShare } from "@/lib/api/social";
+import { recordPostView } from "@/lib/api/comments";
+import { useAuth } from "@/lib/hooks/useAuth";
 
 interface PostActionsProps {
   post: Post;
@@ -21,6 +24,7 @@ export function PostActions({ post, onDonate }: PostActionsProps) {
   const { isLiked, isBookmarked, toggleLike, toggleBookmark, getDonation, getCommentCount } = usePrototype();
   const { requireMiniApp } = useTelegramGate();
   const { showToast } = useToast();
+  const { isAuthenticated } = useAuth();
   const liked = isLiked(post.id);
   const bookmarked = isBookmarked(post.id);
   const donation = getDonation(post.id, {
@@ -28,20 +32,45 @@ export function PostActions({ post, onDonate }: PostActionsProps) {
     topDonators: post.topDonators ?? [],
   });
   const [likes, setLikes] = useState(post.likes);
+  const [views, setViews] = useState(post.views);
+
+  useEffect(() => {
+    setLikes(post.likes);
+    setViews(post.views);
+  }, [post.id, post.likes, post.views]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    recordPostView(post.id)
+      .then(setViews)
+      .catch(() => {});
+  }, [post.id, isAuthenticated]);
   const [comments, setComments] = useState(getCommentCount(post.id, post.comments));
   const [animating, setAnimating] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(false);
 
-  const handleLike = () => {
+  const handleLike = async () => {
     if (!requireMiniApp()) return;
     setAnimating(true);
     setTimeout(() => setAnimating(false), 200);
     const nowLiked = toggleLike(post.id);
-    setLikes(nowLiked ? likes + 1 : likes - 1);
+    setLikes((n) => (nowLiked ? n + 1 : Math.max(0, n - 1)));
+    try {
+      const result = await toggleLikeApi(post.id);
+      setLikes(result.likes);
+    } catch {
+      toggleLike(post.id);
+      setLikes((n) => (nowLiked ? Math.max(0, n - 1) : n + 1));
+    }
   };
 
-  const handleShare = (chatIds: string[]) => {
+  const handleShare = async (chatIds: string[]) => {
+    try {
+      await recordPostShare(post.id);
+    } catch {
+      /* ignore */
+    }
     showToast(`Shared to ${chatIds.length} chat${chatIds.length > 1 ? "s" : ""}`);
   };
 
@@ -63,7 +92,7 @@ export function PostActions({ post, onDonate }: PostActionsProps) {
 
           <button className="flex items-center gap-1 px-2 py-1.5 rounded-full hover:bg-surface transition-colors" aria-label="Views">
             <Eye className="w-[18px] h-[18px] text-text-muted" />
-            {post.views > 0 && <span className="text-xs text-text-muted">{formatCount(post.views)}</span>}
+            {views > 0 && <span className="text-xs text-text-muted">{formatCount(views)}</span>}
           </button>
 
           <button onClick={() => { if (requireMiniApp()) setShareOpen(true); }} className="flex items-center gap-1 px-2 py-1.5 rounded-full hover:bg-surface transition-colors" aria-label="Share">

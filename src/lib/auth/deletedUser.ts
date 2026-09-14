@@ -1,4 +1,5 @@
 import { User } from "@/lib/types";
+import { clearPrototypeStorage } from "@/lib/store/prototypeStore";
 
 export const DELETED_ACCOUNT_ID = "deleted_account";
 
@@ -45,8 +46,18 @@ export function resolveUser(user: User): User {
   return user;
 }
 
-export function clearLocalUserData(): void {
-  if (typeof window === "undefined") return;
-  localStorage.removeItem("sheytoni-prototype");
-  localStorage.removeItem("sheytoni-chat-messages");
+export function clearDeletedMark(userId: string): void {
+  deletedIds.delete(userId);
+  if (typeof window !== "undefined") {
+    try {
+      const raw = localStorage.getItem("sheytoni-deleted-users");
+      if (!raw) return;
+      const list = JSON.parse(raw).filter((id: string) => id !== userId);
+      localStorage.setItem("sheytoni-deleted-users", JSON.stringify(list));
+    } catch { /* ignore */ }
+  }
+}
+
+export function clearLocalUserData(userId?: string | null): void {
+  clearPrototypeStorage(userId);
 }

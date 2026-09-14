@@ -1,0 +1,60 @@
+import crypto from "crypto";
+import { findUserById, publicUser } from "./db.mjs";
+import { displayLikes } from "./social.mjs";
+import { config } from "./config.mjs";
+
+export function ensureReports(db) {
+  if (!db.reports) db.reports = {};
+}
+
+function mediaUrl(m) {
+  if (!m) return m;
+  if (m.objectKey) {
+    return { ...m, url: `${config.apiUrl}/api/media/${encodeURIComponent(m.objectKey)}` };
+  }
+  return m;
+}
+
+export function createReport(db, reporterId, body) {
+  ensureReports(db);
+  const id = `rp_${crypto.randomBytes(6).toString("hex")}`;
+  const post = body.postId ? db.posts?.[body.postId] : null;
+  const reportedUser = body.userId ? findUserById(db, body.userId) : null;
+  const postAuthor = post ? findUserById(db, post.authorId) : null;
+  const report = {
+    id,
+    reporterId,
+    postId: body.postId ?? null,
+    userId: body.userId ?? null,
+    category: String(body.category ?? ""),
+    subcategory: String(body.subcategory ?? ""),
+    detail: String(body.detail ?? "").slice(0, 2000),
+    postContent: post?.content ?? null,
+    postMedia: post?.media?.map(mediaUrl) ?? [],
+    postCreatedAt: post?.createdAt ?? null,
+    postLikes: post ? displayLikes(post) : 0,
+    postViews: post ? (post.views ?? 0) + (post.fakeViews ?? 0) : 0,
+    postShares: post?.shares ?? 0,
+    postAuthor: postAuthor ? publicUser(postAuthor) : null,
+    reportedUsername: reportedUser?.username ?? null,
+    status: "pending",
+    createdAt: new Date().toISOString(),
+  };
+  db.reports[id] = report;
+  return report;
+}
+
+export function listReports(db) {
+  ensureReports(db);
+  return Object.values(db.reports).sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
+}
+
+export function markReportReviewed(db, reportId) {
+  ensureReports(db);
+  const report = db.reports?.[reportId];
+  if (!report) return { ok: false, error: "Report not found" };
+  delete db.reports[reportId];
+  return { ok: true };
+}

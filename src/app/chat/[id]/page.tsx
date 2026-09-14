@@ -1,9 +1,8 @@
 import { AppLayout } from "@/components/layout/AppLayout";
-import { ChatConversation } from "@/components/chat/ChatConversation";
-import { mockChats } from "@/data/mock/chats";
+import { ChatLoader } from "@/components/chat/ChatLoader";
 
 export function generateStaticParams() {
-  return mockChats.map((c) => ({ id: c.id }));
+  return [{ id: "placeholder" }];
 }
 
 export default async function ChatDetailPage({
@@ -14,7 +13,7 @@ export default async function ChatDetailPage({
   const { id } = await params;
   return (
     <AppLayout hideNav hideHeader noPadding fullHeight>
-      <ChatConversation chatId={id} />
+      <ChatLoader chatId={id} />
     </AppLayout>
   );
 }

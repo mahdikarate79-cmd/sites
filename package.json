@@ -10,6 +10,10 @@
     "start": "node backend/server.mjs",
     "package": "bash scripts/package-deploy.sh",
     "deploy:prepare": "bash scripts/prepare-deploy.sh",
+    "build:frontend:prod": "bash scripts/build-frontend-production.sh",
+    "build:backend:prod": "bash scripts/build-backend-production.sh",
+    "test:backend:prod": "bash scripts/test-backend-production.sh",
+    "build:production": "bash scripts/build-frontend-production.sh && bash scripts/build-backend-production.sh",
     "lint": "eslint"
   },
   "dependencies": {

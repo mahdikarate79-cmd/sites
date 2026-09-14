@@ -93,6 +93,7 @@ export interface Comment {
   postId: string;
   authorId: string;
   authorName: string;
+  authorUsername?: string | null;
   authorAvatar: string;
   authorVerified?: boolean;
   authorPremium?: boolean;
@@ -191,6 +192,9 @@ export interface TransactionRecord {
   hash?: string;
   status?: "completed" | "pending";
   postId?: string;
+  donorId?: string | null;
+  donorName?: string | null;
+  donorUsername?: string | null;
 }
 
 export type NotificationType = "follow" | "like" | "comment" | "donation";

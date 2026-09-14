@@ -1,10 +1,8 @@
 import { AppLayout } from "@/components/layout/AppLayout";
-import { ProfileContent } from "@/components/profile/ProfileContent";
-import { getUserByUsername, mockUsers } from "@/data/mock/users";
-import { notFound } from "next/navigation";
+import { ProfileLoader } from "@/components/profile/ProfileLoader";
 
 export function generateStaticParams() {
-  return mockUsers.map((u) => ({ username: u.username }));
+  return [{ username: "placeholder" }];
 }
 
 export default async function UserProfilePage({
@@ -13,12 +11,9 @@ export default async function UserProfilePage({
   params: Promise<{ username: string }>;
 }) {
   const { username } = await params;
-  const user = getUserByUsername(username);
-  if (!user) notFound();
-
   return (
     <AppLayout hideHeader hideNav>
-      <ProfileContent user={user} />
+      <ProfileLoader username={username} />
     </AppLayout>
   );
 }
