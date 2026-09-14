@@ -39,7 +39,7 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
-  const { isBlocked } = usePrototype();
+  const { isBlocked, getCurrentUser } = usePrototype();
   const { showToast } = useToast();
   const router = useRouter();
 
@@ -49,6 +49,8 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
 
   const displayUser = user;
   const blocked = !isOwnProfile && isBlocked(user.id);
+  const viewer = getCurrentUser();
+  const canViewSocialLists = isOwnProfile || !!viewer.premium;
 
   const filtered = posts.filter((p) => {
     if (tab === "videos") return p.media?.some((m) => m.type === "video" || m.type === "gif");
@@ -150,15 +152,15 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
         {user.bio && <p className="text-sm mb-3 leading-relaxed">{user.bio}</p>}
 
         <div className="flex gap-4 text-sm mb-4">
-          {isOwnProfile ? (
-            <Link href="/settings/following/" className="hover:opacity-80 transition-opacity">
+          {canViewSocialLists ? (
+            <Link href={isOwnProfile ? "/settings/following/" : `/settings/following/?u=${encodeURIComponent(profileSlug(user))}`} className="hover:opacity-80 transition-opacity">
               <strong>{formatCount(user.following)}</strong> <span className="text-text-muted">Following</span>
             </Link>
           ) : (
             <span><strong>{formatCount(user.following)}</strong> <span className="text-text-muted">Following</span></span>
           )}
-          {isOwnProfile ? (
-            <Link href="/settings/followers/" className="hover:opacity-80 transition-opacity">
+          {canViewSocialLists ? (
+            <Link href={isOwnProfile ? "/settings/followers/" : `/settings/followers/?u=${encodeURIComponent(profileSlug(user))}`} className="hover:opacity-80 transition-opacity">
               <strong>{formatCount(user.followers)}</strong> <span className="text-text-muted">Followers</span>
             </Link>
           ) : (

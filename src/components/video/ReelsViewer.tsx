@@ -52,7 +52,8 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
   const tapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrolling = useRef(false);
-  const { isLiked, toggleLike, getDonation, isFollowing, markInterested, markNotInterested, hidePost, toggleBookmark, isBookmarked } = usePrototype();
+  const { isLiked, toggleLike, getDonation, isFollowing, markInterested, markNotInterested, hidePost, toggleBookmark, isBookmarked, getCurrentUser } = usePrototype();
+  const user = getCurrentUser();
   const { requireMiniApp } = useTelegramGate();
   const { showToast } = useToast();
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
@@ -333,7 +334,9 @@ export function ReelsViewer({ open, onClose, items, initialIndex }: ReelsViewerP
                       <ProfileLink user={reelPost.author} onClick={(e) => e.stopPropagation()} className="min-w-0">
                         <UserName user={reelPost.author} nameClassName="text-white font-semibold text-sm drop-shadow" />
                       </ProfileLink>
-                      {!isFollowing(reelPost.author.id) && <FollowButton userId={reelPost.author.id} size="sm" />}
+                      {!isFollowing(reelPost.author.id) && reelPost.author.id !== user.id && (
+                        <FollowButton userId={reelPost.author.id} size="sm" />
+                      )}
                     </div>
                     {reelPost.content && (
                       <button

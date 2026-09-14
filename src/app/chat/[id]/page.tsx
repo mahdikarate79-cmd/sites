@@ -1,5 +1,5 @@
 import { AppLayout } from "@/components/layout/AppLayout";
-import { ChatConversation } from "@/components/chat/ChatConversation";
+import { ChatLoader } from "@/components/chat/ChatLoader";
 
 export function generateStaticParams() {
   return [{ id: "placeholder" }];
@@ -13,7 +13,7 @@ export default async function ChatDetailPage({
   const { id } = await params;
   return (
     <AppLayout hideNav hideHeader noPadding fullHeight>
-      <ChatConversation chatId={id} />
+      <ChatLoader chatId={id} />
     </AppLayout>
   );
 }

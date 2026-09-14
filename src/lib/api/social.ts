@@ -51,3 +51,16 @@ export async function fetchPaidMediaUnlocks(): Promise<string[]> {
   const data = await apiFetch<{ unlocks: string[] }>("/api/user/paid-media-unlocks");
   return data.unlocks ?? [];
 }
+
+export async function recordPostShare(postId: string): Promise<number> {
+  const data = await apiFetch<{ shares: number }>(
+    `/api/posts/${encodeURIComponent(postId)}/share`,
+    { method: "POST" },
+  );
+  return data.shares;
+}
+
+export async function fetchPost(postId: string): Promise<Post> {
+  const data = await apiFetch<{ post: Post }>(`/api/posts/${encodeURIComponent(postId)}`);
+  return data.post;
+}

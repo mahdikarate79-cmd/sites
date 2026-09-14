@@ -12,8 +12,11 @@ export const UPLOAD_VALIDATION: UploadValidation = {
     "image/gif",
     "video/mp4",
     "video/webm",
+    "video/quicktime",
+    "video/x-m4v",
+    "video/mpeg",
   ],
-  allowedExtensions: [".jpg", ".jpeg", ".png", ".webp", ".gif", ".mp4", ".webm"],
+  allowedExtensions: [".jpg", ".jpeg", ".png", ".webp", ".gif", ".mp4", ".webm", ".mov", ".m4v"],
 };
 
 export function generateObjectKey(prefix: string, extension: string): string {
@@ -21,14 +24,32 @@ export function generateObjectKey(prefix: string, extension: string): string {
   return `${prefix}/${random}${extension}`;
 }
 
+function inferMimeType(file: File): string {
+  if (file.type) return file.type;
+  const ext = "." + (file.name.split(".").pop()?.toLowerCase() ?? "");
+  const map: Record<string, string> = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+    ".mp4": "video/mp4",
+    ".webm": "video/webm",
+    ".mov": "video/mp4",
+    ".m4v": "video/mp4",
+  };
+  return map[ext] ?? "";
+}
+
 export function validateUpload(file: File): { valid: boolean; error?: string } {
   if (file.size > UPLOAD_VALIDATION.maxSizeBytes) {
     return { valid: false, error: `File exceeds ${UPLOAD_VALIDATION.maxSizeBytes / 1024 / 1024}MB limit` };
   }
-  if (!UPLOAD_VALIDATION.allowedMimeTypes.includes(file.type)) {
+  const mime = inferMimeType(file);
+  if (!mime || !UPLOAD_VALIDATION.allowedMimeTypes.includes(mime)) {
     return { valid: false, error: "File type not allowed" };
   }
-  const ext = "." + file.name.split(".").pop()?.toLowerCase();
+  const ext = "." + (file.name.split(".").pop()?.toLowerCase() ?? "");
   if (!UPLOAD_VALIDATION.allowedExtensions.includes(ext)) {
     return { valid: false, error: "File extension not allowed" };
   }
@@ -74,12 +95,34 @@ async function compressImageIfNeeded(file: File, maxDim = 2048): Promise<File> {
   return new File([blob], file.name.replace(/\.\w+$/, ".jpg"), { type: "image/jpeg" });
 }
 
+function normalizeVideoMime(file: File): File {
+  const ext = "." + (file.name.split(".").pop()?.toLowerCase() ?? "");
+  if (file.type === "video/quicktime" || ext === ".mov") {
+    return new File([file], file.name.replace(/\.mov$/i, ".mp4") || "video.mp4", { type: "video/mp4" });
+  }
+  if ((file.type === "video/x-m4v" || ext === ".m4v") && file.type !== "video/mp4") {
+    return new File([file], file.name.replace(/\.m4v$/i, ".mp4") || "video.mp4", { type: "video/mp4" });
+  }
+  return file;
+}
+
 /** Upload media to Backblaze B2 via backend — never stored on host disk */
 export async function uploadMedia(
   file: File,
-  category: "avatar" | "cover" | "post" | "chat"
+  category: "avatar" | "cover" | "post" | "chat",
+  options?: { maxImageDim?: number }
 ): Promise<UploadResult> {
-  const prepared = file.type.startsWith("image/") ? await compressImageIfNeeded(file) : file;
+  let prepared = file;
+  if (!prepared.type) {
+    const inferred = inferMimeType(file);
+    if (inferred) prepared = new File([file], file.name, { type: inferred });
+  }
+  if (prepared.type.startsWith("image/")) {
+    const maxDim = options?.maxImageDim ?? (category === "avatar" ? 512 : category === "cover" ? 1600 : 2048);
+    prepared = await compressImageIfNeeded(file, maxDim);
+  } else if (file.type.startsWith("video/") || /\.(mov|m4v|mp4|webm)$/i.test(file.name)) {
+    prepared = normalizeVideoMime(file);
+  }
   const validation = validateUpload(prepared);
   if (!validation.valid) throw new Error(validation.error);
 

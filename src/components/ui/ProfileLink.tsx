@@ -6,7 +6,7 @@ import { profileSlug } from "@/lib/utils/profileSlug";
 import { cn } from "@/lib/utils/cn";
 
 interface ProfileLinkProps {
-  user: Pick<User, "id" | "username">;
+  user: Pick<User, "id" | "username"> & { deleted?: boolean };
   className?: string;
   children: React.ReactNode;
   onClick?: (e: React.MouseEvent) => void;
@@ -18,6 +18,9 @@ export function profilePath(user: Pick<User, "id" | "username">): string {
 }
 
 export function ProfileLink({ user, className, children, onClick }: ProfileLinkProps) {
+  if (user.deleted) {
+    return <span className={cn(className)}>{children}</span>;
+  }
   return (
     <Link href={profilePath(user)} className={cn(className)} onClick={onClick}>
       {children}

@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { findUserById, findUserByUsername, publicUser } from "./db.mjs";
+import { findUserById, findUserByUsername, findDeletedUserById, publicUser } from "./db.mjs";
 import { config } from "./config.mjs";
 import { MIN_STARS_PAYMENT, isValidPaidStars } from "./constants.mjs";
 
@@ -57,12 +57,17 @@ export function unfollowUser(db, followerId, followingId) {
   return { ok: true };
 }
 
+function resolveListUser(db, id) {
+  const user = findUserById(db, id) ?? findDeletedUserById(db, id);
+  return user ? publicUser(user) : null;
+}
+
 export function getFollowersList(db, userId) {
   ensureSocial(db);
   const ids = Object.values(db.follows)
     .filter((f) => f.followingId === userId)
     .map((f) => f.followerId);
-  return ids.map((id) => findUserById(db, id)).filter(Boolean).map(publicUser);
+  return ids.map((id) => resolveListUser(db, id)).filter(Boolean);
 }
 
 export function getFollowingList(db, userId) {
@@ -70,7 +75,7 @@ export function getFollowingList(db, userId) {
   const ids = Object.values(db.follows)
     .filter((f) => f.followerId === userId)
     .map((f) => f.followingId);
-  return ids.map((id) => findUserById(db, id)).filter(Boolean).map(publicUser);
+  return ids.map((id) => resolveListUser(db, id)).filter(Boolean);
 }
 
 export function resolveProfileUser(db, usernameOrId) {
@@ -198,6 +203,30 @@ export function incrementPostView(db, postId) {
   return (post.views ?? 0) + (post.fakeViews ?? 0);
 }
 
+export function incrementPostShare(db, postId) {
+  const post = db.posts?.[postId];
+  if (!post) return null;
+  post.shares = (post.shares ?? 0) + 1;
+  return post.shares ?? 0;
+}
+
+export function getCreatorStats(db, userId) {
+  const user = findUserById(db, userId);
+  const posts = Object.values(db.posts ?? {}).filter((p) => p.authorId === userId);
+  let views = 0;
+  let likes = 0;
+  for (const post of posts) {
+    views += (post.views ?? 0) + (post.fakeViews ?? 0);
+    likes += displayLikes(post);
+  }
+  return {
+    views,
+    likes,
+    followers: user ? displayFollowers(user) : 0,
+    posts: posts.length,
+  };
+}
+
 export function adjustPostStats(db, postId, { likesDelta = 0, viewsDelta = 0, fakeLikesDelta = 0, fakeViewsDelta = 0 }) {
   const post = db.posts?.[postId];
   if (!post) return { ok: false, error: "Post not found" };
@@ -232,10 +261,12 @@ export function togglePostLike(db, userId, postId) {
   return { ok: true, liked: !liked, likes: displayLikes(post) };
 }
 
-export function recordDonation(db, postId, donorId, stars, anonymous, donorUser) {
+export function recordDonation(db, postId, donorId, stars, anonymous) {
   ensureSocial(db);
   const post = db.posts?.[postId];
   if (!post) return;
+  const donorUser = findUserById(db, donorId);
+  if (!donorUser) return;
   if (!db.donations[postId]) {
     db.donations[postId] = { total: 0, topDonators: [], userDonations: {} };
   }
@@ -249,15 +280,17 @@ export function recordDonation(db, postId, donorId, stars, anonymous, donorUser)
         username: donorUser.username,
         displayName: donorUser.displayName,
         avatar: donorUser.avatar,
-        verified: donorUser.verified,
-        premium: donorUser.premium,
+        verified: !!donorUser.verified,
+        premium: !!(donorUser.premium && (!donorUser.premiumExpiresAt || new Date(donorUser.premiumExpiresAt) > new Date())),
       };
   const existing = d.topDonators.find((t) => t.user.id === donor.id);
   if (existing) {
     existing.stars += stars;
+    if (!anonymous) existing.user = donor;
   } else {
     d.topDonators.push({ user: donor, stars });
   }
   d.topDonators.sort((a, b) => b.stars - a.stars);
+  d.topDonators = d.topDonators.slice(0, 10).map((entry, i) => ({ ...entry, rank: i + 1 }));
   d.userDonations[donorId] = (d.userDonations[donorId] ?? 0) + stars;
 }

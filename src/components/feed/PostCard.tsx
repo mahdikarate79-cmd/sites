@@ -24,6 +24,7 @@ import { createPostUnlockInvoice, openTelegramInvoice } from "@/lib/api/payments
 import { useToast } from "@/components/ui/ToastProvider";
 import { buildAccessibleReelItems, findReelIndex } from "@/lib/utils/reels";
 import { hasPrivateAccess, isPostPaid, isPostPrivate, PostAccessContext } from "@/lib/utils/postAccess";
+import { resolveMediaUrl } from "@/lib/utils/mediaUrl";
 
 interface PostCardProps {
   post: Post;
@@ -139,8 +140,8 @@ export function PostCard({ post, onHide, allPosts }: PostCardProps) {
                   <div key={i} className="relative">
                     {m.type === "video" ? (
                       <LazyVideo
-                        src={m.url}
-                        thumbnail={m.thumbnail ?? m.url}
+                        src={resolveMediaUrl(m.url, m.objectKey) || m.url}
+                        thumbnail={m.thumbnail ? resolveMediaUrl(m.thumbnail) : undefined}
                         className="aspect-[9/16] max-h-[480px] cursor-pointer"
                         blurred={showMediaOverlay}
                         onPlay={() => (showMediaOverlay ? handleMediaClick() : openReels(i))}

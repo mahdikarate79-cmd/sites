@@ -60,6 +60,20 @@ export function findUserById(db, id) {
   return r ? cacheUser(db, rowToUser(r)) : null;
 }
 
+export function findDeletedUserById(db, id) {
+  if (db.users?.[id]?.deleted) return db.users[id];
+  const r = getDatabase().prepare("SELECT * FROM users WHERE id = ? AND deleted = 1").get(id);
+  return r ? cacheUser(db, rowToUser(r)) : null;
+}
+
+export function expirePremiumIfNeeded(user) {
+  if (!user?.premium) return;
+  if (user.premiumExpiresAt && new Date(user.premiumExpiresAt) <= new Date()) {
+    user.premium = false;
+    user.premiumExpiresAt = null;
+  }
+}
+
 export function usernameAvailable(db, username) {
   const lower = username.toLowerCase();
   const sqlite = getDatabase();
@@ -90,7 +104,7 @@ export function detachTelegramLeaks(user, tgUser) {
 }
 
 export function createUserFromTelegram(db, tgUser) {
-  const id = `tg_${tgUser.id}`;
+  const id = `tg_${tgUser.id}_${crypto.randomBytes(4).toString("hex")}`;
   // Sheytoni profile is independent from Telegram name/username/photo
   const displayName = "User";
   return {
@@ -154,7 +168,7 @@ export function deleteSessionsExcept(db, keepSessionId) {
 
 export function deleteAccount(db, userId) {
   const user = findUserById(db, userId) ?? db.users[userId];
-  if (!user) return false;
+  if (!user || user.deleted) return false;
 
   if (user.username) {
     const lower = user.username.toLowerCase();
@@ -166,16 +180,43 @@ export function deleteAccount(db, userId) {
     if (post.authorId === userId) delete db.posts[postId];
   }
 
-  for (const key of Object.keys(db.follows ?? {})) {
-    if (key.startsWith(`${userId}:`) || key.endsWith(`:${userId}`)) delete db.follows[key];
-  }
-
   for (const key of Object.keys(db.postLikes ?? {})) {
     if (key.startsWith(`${userId}:`)) delete db.postLikes[key];
   }
 
   delete db.notifications?.[userId];
-  purgeDeletedUser(db, userId);
+  delete db.earningsLedger?.[userId];
+  deleteSessionsForUser(db, userId);
+
+  user.deleted = true;
+  user.deletedAt = new Date().toISOString();
+  user.displayName = "Deleted Account";
+  user.username = null;
+  user.usernameSet = false;
+  user.bio = null;
+  user.cover = null;
+  user.avatar = "";
+  user.premium = false;
+  user.premiumExpiresAt = null;
+  user.verified = false;
+  user.starBalance = 0;
+  user.earnings = 0;
+  user.banned = false;
+  user.verificationRequestPending = false;
+  // Keep telegram_id during cooldown so re-registration can be blocked
+
+  if (!db.deletedUserIds) db.deletedUserIds = [];
+  if (!db.deletedUserIds.includes(userId)) db.deletedUserIds.push(userId);
+
+  const sqlite = getDatabase();
+  sqlite.prepare(`
+    UPDATE users SET
+      display_name = ?, username = NULL, bio = NULL, cover = NULL, avatar = '',
+      premium = 0, premium_expires_at = NULL, verified = 0, star_balance = 0, earnings = 0,
+      deleted = 1, deleted_at = ?, username_set = 0, verification_request_pending = 0, banned = 0
+    WHERE id = ?
+  `).run(user.displayName, user.deletedAt, userId);
+
   return true;
 }
 
@@ -205,6 +246,25 @@ export function isDeletedUserId(db, userId) {
 
 export function publicUser(user, { includeTelegramId = false } = {}) {
   if (!user) return null;
+  if (user.deleted) {
+    return {
+      id: user.id,
+      username: null,
+      displayName: "Deleted Account",
+      usernameSet: false,
+      avatar: "",
+      cover: undefined,
+      bio: undefined,
+      verified: false,
+      premium: false,
+      banned: false,
+      deleted: true,
+      followers: 0,
+      following: 0,
+      postsCount: 0,
+    };
+  }
+  expirePremiumIfNeeded(user);
   const premiumActive = user.premium && (!user.premiumExpiresAt || new Date(user.premiumExpiresAt) > new Date());
   const out = {
     id: user.id,

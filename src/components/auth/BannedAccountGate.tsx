@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { ShieldBan } from "lucide-react";
 import { useAuth } from "@/lib/hooks/useAuth";
+import { formatDateTimeEn } from "@/lib/utils/dateFormat";
 
 export function BannedAccountGate({ children }: { children: React.ReactNode }) {
   const { banned, bannedAt, loading } = useAuth();
 
   if (!loading && banned) {
-    const when = bannedAt ? new Date(bannedAt).toLocaleString() : "—";
+    const when = formatDateTimeEn(bannedAt);
     return (
       <div className="min-h-dvh flex flex-col items-center justify-center px-6 bg-gradient-to-b from-[#450a0a]/40 via-bg to-bg">
         <div className="w-full max-w-sm rounded-3xl border border-red-500/25 bg-red-950/30 backdrop-blur-xl p-8 text-center shadow-[0_0_60px_rgba(239,68,68,0.12)]">

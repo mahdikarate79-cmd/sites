@@ -20,7 +20,10 @@ import { starsToUsd, formatUsd } from "@/lib/constants/stars";
 import { useToast } from "@/components/ui/ToastProvider";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { fetchWallet, requestWithdrawal, WalletInfo } from "@/lib/api/wallet";
-import { TransactionRecord } from "@/lib/types";
+import { TransactionRecord, User } from "@/lib/types";
+import { ProfileLink } from "@/components/ui/ProfileLink";
+import { Avatar } from "@/components/ui/Avatar";
+import { UserName } from "@/components/ui/UserName";
 import { cn } from "@/lib/utils/cn";
 
 const WITHDRAWAL_MIN_STARS = 1000;
@@ -93,11 +96,12 @@ export function CreatorStudioContent() {
     }
   };
 
+  const stats = wallet?.stats;
   const statCards = [
-    { label: "Views", value: formatCount(0), icon: Eye },
-    { label: "Likes", value: formatCount(0), icon: Heart },
-    { label: "Followers", value: formatCount(user?.followers ?? 0), icon: Users },
-    { label: "Engagement", value: "—", icon: TrendingUp },
+    { label: "Views", value: formatCount(stats?.views ?? 0), icon: Eye },
+    { label: "Likes", value: formatCount(stats?.likes ?? 0), icon: Heart },
+    { label: "Followers", value: formatCount(stats?.followers ?? user?.followers ?? 0), icon: Users },
+    { label: "Posts", value: formatCount(stats?.posts ?? 0), icon: TrendingUp },
   ];
 
   if (loading) {
@@ -178,8 +182,19 @@ export function CreatorStudioContent() {
             {transactions.length === 0 ? (
               <p className="text-center text-text-muted text-sm py-8">No transactions yet</p>
             ) : transactions.map((tx) => {
-              const { id, label, amount: txAmount, date } = tx;
+              const { id, label, amount: txAmount, date, donorId, donorName, donorUsername } = tx;
               const isCredit = txAmount > 0;
+              const donorUser: User | null = donorId && donorName ? {
+                id: donorId,
+                displayName: donorName,
+                username: donorUsername ?? undefined,
+                avatar: "",
+                verified: false,
+                premium: false,
+                followers: 0,
+                following: 0,
+                postsCount: 0,
+              } : null;
               return (
                 <button
                   key={id}
@@ -187,20 +202,32 @@ export function CreatorStudioContent() {
                   onClick={() => setSelectedTx(tx)}
                   className="flex items-center gap-3 px-4 py-3.5 w-full text-left hover:bg-surface/40 transition-colors"
                 >
-                  <div
-                    className={cn(
-                      "w-9 h-9 rounded-full flex items-center justify-center shrink-0",
-                      isCredit ? "bg-green-500/15" : "bg-like/15"
-                    )}
-                  >
-                    {isCredit ? (
-                      <ArrowDownLeft className="w-4 h-4 text-green-500" />
-                    ) : (
-                      <ArrowUpRight className="w-4 h-4 text-like" />
-                    )}
-                  </div>
+                  {donorUser ? (
+                    <ProfileLink user={donorUser} className="shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <Avatar src={donorUser.avatar} alt="" size="sm" />
+                    </ProfileLink>
+                  ) : (
+                    <div
+                      className={cn(
+                        "w-9 h-9 rounded-full flex items-center justify-center shrink-0",
+                        isCredit ? "bg-green-500/15" : "bg-like/15"
+                      )}
+                    >
+                      {isCredit ? (
+                        <ArrowDownLeft className="w-4 h-4 text-green-500" />
+                      ) : (
+                        <ArrowUpRight className="w-4 h-4 text-like" />
+                      )}
+                    </div>
+                  )}
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{label}</p>
+                    <p className="text-sm font-medium truncate">
+                      {donorUser ? (
+                        <ProfileLink user={donorUser} onClick={(e) => e.stopPropagation()} className="hover:underline">
+                          <UserName user={donorUser} nameClassName="text-sm font-medium" />
+                        </ProfileLink>
+                      ) : label}
+                    </p>
                     <p className="text-xs text-text-muted">
                       {new Date(date).toLocaleDateString("en-US", {
                         month: "short",
@@ -230,6 +257,24 @@ export function CreatorStudioContent() {
             <div className="flex justify-between"><span className="text-text-muted">Status</span><span className="capitalize">{selectedTx.status ?? "completed"}</span></div>
             <div className="flex justify-between"><span className="text-text-muted">Date</span><span>{new Date(selectedTx.date).toLocaleString("en-US")}</span></div>
             {selectedTx.hash && <div className="flex justify-between gap-4"><span className="text-text-muted shrink-0">Hash</span><span className="font-mono text-xs truncate">{selectedTx.hash}</span></div>}
+            {selectedTx.donorName && (
+              <div className="flex justify-between gap-4">
+                <span className="text-text-muted shrink-0">From</span>
+                {selectedTx.donorId ? (
+                  <ProfileLink
+                    user={{
+                      id: selectedTx.donorId,
+                      username: selectedTx.donorUsername ?? undefined,
+                    }}
+                    className="hover:underline text-right"
+                  >
+                    {selectedTx.donorName}
+                  </ProfileLink>
+                ) : (
+                  <span>{selectedTx.donorName}</span>
+                )}
+              </div>
+            )}
             <p className="text-text-muted text-xs pt-2 border-t border-border">{selectedTx.label}</p>
           </div>
         )}

@@ -1,6 +1,13 @@
 import { TransactionRecord } from "@/lib/types";
 import { apiFetch } from "./fetch";
 
+export interface CreatorStats {
+  views: number;
+  likes: number;
+  followers: number;
+  posts: number;
+}
+
 export interface WalletInfo {
   totalEarnings: number;
   withdrawable: number;
@@ -8,6 +15,7 @@ export interface WalletInfo {
   meetsMinimum: boolean;
   canWithdraw: boolean;
   transactions: TransactionRecord[];
+  stats?: CreatorStats;
 }
 
 export async function fetchWallet(): Promise<WalletInfo> {

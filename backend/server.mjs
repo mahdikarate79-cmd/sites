@@ -11,9 +11,9 @@ import {
   findUserByTelegramIdIncludingDeleted,
   findUserById,
   getDeletionCooldown,
-  purgeDeletedUser,
   createUserFromTelegram,
   detachTelegramLeaks,
+  expirePremiumIfNeeded,
   isPostUnlocked,
   unlockPost,
   createSession,
@@ -42,7 +42,7 @@ import {
   ensureWebhookConfigured,
 } from "./telegramBot.mjs";
 import { getPostComments, createComment, ensureComments } from "./comments.mjs";
-import { createReport, ensureReports } from "./reports.mjs";
+import { createReport, ensureReports, markReportReviewed } from "./reports.mjs";
 import { createNotification, getUserNotifications } from "./notifications.mjs";
 import { startCleanupScheduler } from "./mediaCleanup.mjs";
 import { serveStatic, staticDirExists } from "./static.mjs";
@@ -73,6 +73,7 @@ import {
   searchUsers,
   displayFollowers,
   incrementPostView,
+  incrementPostShare,
 } from "./social.mjs";
 import {
   listChats,
@@ -90,7 +91,12 @@ const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET ?? "";
 const COOKIE_NAME = USER_SESSION_COOKIE;
 const ORIGINS = config.corsOrigins;
 
-const PLANS = { "1m": { months: 1, stars: 100 }, "6m": { months: 6, stars: 300 }, "1y": { months: 12, stars: 500 } };
+const PLANS = {
+  "1m": { months: 1, stars: 100 },
+  "6m": { months: 6, stars: 300 },
+  "1y": { months: 12, stars: 500 },
+  lifetime: { months: 0, stars: 1200, permanent: true },
+};
 
 function parseCookies(header) {
   const out = {};
@@ -202,6 +208,7 @@ function requireUser(req, db) {
   if (!session) return null;
   const user = findUserById(db, session.userId);
   if (!user || user.banned || session.telegramId !== user.telegramId) return null;
+  expirePremiumIfNeeded(user);
   touchUserActivity(db, user.id);
   return user;
 }
@@ -241,11 +248,24 @@ async function handleTelegramAuth(req, res, secure) {
 
   let user = findUserByTelegramId(db, tgUser.id);
   if (!user) {
-    const deletedUser = findUserByTelegramIdIncludingDeleted(db, tgUser.id);
-    if (deletedUser) purgeDeletedUser(db, deletedUser.id);
+    const deletedGhost = findUserByTelegramIdIncludingDeleted(db, tgUser.id);
+    if (deletedGhost?.deleted) {
+      const cooldown = getDeletionCooldown(deletedGhost);
+      if (cooldown) {
+        return json(res, 403, {
+          error: "Account recently deleted",
+          accountDeleted: true,
+          canRecreateAt: cooldown.canRecreateAt,
+          remainingMs: cooldown.remainingMs,
+        }, corsHeaders(req.headers.origin));
+      }
+      deletedGhost.telegramId = null;
+      getDatabase().prepare("UPDATE users SET telegram_id = NULL WHERE id = ?").run(deletedGhost.id);
+    }
     user = createUserFromTelegram(db, tgUser);
     db.users[user.id] = user;
   } else {
+    expirePremiumIfNeeded(user);
     detachTelegramLeaks(user, tgUser);
     touchUserActivity(db, user.id);
   }
@@ -295,6 +315,7 @@ function handleMe(req, res) {
     return json(res, 200, { user: null, loginMethod: "guest" }, corsHeaders(req.headers.origin));
   }
 
+  expirePremiumIfNeeded(user);
   touchUserActivity(db, user.id);
   saveDb(db);
   return json(res, 200, {
@@ -506,7 +527,7 @@ async function handleTelegramWebhook(req, res) {
   }
 
   const message = update.message;
-  if (message?.text?.startsWith("/start") && message.chat?.id) {
+  if (message?.chat?.id) {
     try {
       await sendWelcomeMessage(message.chat.id);
     } catch (e) {
@@ -531,9 +552,13 @@ async function handleTelegramWebhook(req, res) {
         if (intent.meta?.type === "premium") {
           const plan = PLANS[intent.meta.planId] ?? PLANS["6m"];
           user.premium = true;
-          const exp = new Date();
-          exp.setMonth(exp.getMonth() + plan.months);
-          user.premiumExpiresAt = exp.toISOString();
+          if (plan.permanent) {
+            user.premiumExpiresAt = null;
+          } else {
+            const exp = new Date();
+            exp.setMonth(exp.getMonth() + plan.months);
+            user.premiumExpiresAt = exp.toISOString();
+          }
         } else if (intent.meta?.type === "post_unlock") {
           unlockPost(db, user.id, intent.meta.postId);
           const post = db.posts?.[intent.meta.postId];
@@ -542,8 +567,13 @@ async function handleTelegramWebhook(req, res) {
         } else if (intent.meta?.type === "donation") {
           const recipient = findUserById(db, intent.meta.recipientId);
           if (recipient) {
-            addEarningsCredit(db, recipient.id, intent.stars, "donation", { postId: intent.meta.postId });
-            recordDonation(db, intent.meta.postId, user.id, intent.stars, intent.meta.anonymous, user);
+            addEarningsCredit(db, recipient.id, intent.stars, "donation", {
+              postId: intent.meta.postId,
+              donorId: user.id,
+              donorName: user.displayName,
+              donorUsername: user.username ?? null,
+            });
+            recordDonation(db, intent.meta.postId, user.id, intent.stars, intent.meta.anonymous);
           }
         } else if (intent.meta?.type === "paid_media") {
           if (!db.unlockedPaidMedia) db.unlockedPaidMedia = {};
@@ -828,6 +858,15 @@ async function handleSocial(req, res, url) {
     return true;
   }
 
+  const shareMatch = url.match(/^\/api\/posts\/([^/]+)\/share$/);
+  if (shareMatch && req.method === "POST") {
+    const postId = decodeURIComponent(shareMatch[1]);
+    const shares = incrementPostShare(db, postId);
+    if (shares == null) json(res, 404, { error: "Not found" }, corsHeaders(origin));
+    else { saveDb(db); json(res, 200, { shares }, corsHeaders(origin)); }
+    return true;
+  }
+
   const postMatch = url.match(/^\/api\/posts\/([^/]+)$/);
   if (postMatch && req.method === "GET") {
     const post = getPostById(db, decodeURIComponent(postMatch[1]), user?.id ?? null);
@@ -873,7 +912,9 @@ async function handleSocial(req, res, url) {
   if (followersMatch && req.method === "GET") {
     const profile = resolveProfileUser(db, followersMatch[1]);
     if (!profile) json(res, 404, { error: "Not found" }, corsHeaders(origin));
-    else json(res, 200, { users: getFollowersList(db, profile.id) }, corsHeaders(origin));
+    else if (user && profile.id !== user.id && !user.premium) {
+      json(res, 403, { error: "Premium required" }, corsHeaders(origin));
+    } else json(res, 200, { users: getFollowersList(db, profile.id) }, corsHeaders(origin));
     return true;
   }
 
@@ -881,7 +922,9 @@ async function handleSocial(req, res, url) {
   if (followingMatch && req.method === "GET") {
     const profile = resolveProfileUser(db, followingMatch[1]);
     if (!profile) json(res, 404, { error: "Not found" }, corsHeaders(origin));
-    else json(res, 200, { users: getFollowingList(db, profile.id) }, corsHeaders(origin));
+    else if (user && profile.id !== user.id && !user.premium) {
+      json(res, 403, { error: "Premium required" }, corsHeaders(origin));
+    } else json(res, 200, { users: getFollowingList(db, profile.id) }, corsHeaders(origin));
     return true;
   }
 

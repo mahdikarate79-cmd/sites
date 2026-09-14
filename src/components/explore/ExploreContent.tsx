@@ -185,7 +185,11 @@ export function ExploreContent() {
       {tab === "reels" && (
         <div className="grid grid-cols-3 gap-0.5 p-0.5">
           {reels.map((item, i) => {
-            const thumb = item.media.thumbnail ?? item.media.url;
+            const thumb = item.media.thumbnail
+              ? (item.media.thumbnail)
+              : item.media.type !== "video"
+                ? item.media.url
+                : undefined;
             const Icon = item.media.type === "video" ? Video : item.media.type === "gif" ? Film : ImageIcon;
             return (
               <button

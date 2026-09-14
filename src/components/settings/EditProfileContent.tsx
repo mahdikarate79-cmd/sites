@@ -12,6 +12,7 @@ import { useAuth } from "@/lib/hooks/useAuth";
 import { updateProfile as updateProfileApi } from "@/lib/auth/client";
 import { uploadMedia } from "@/lib/api/storage";
 import { validateUsername } from "@/lib/utils/username";
+import { resolveMediaUrl } from "@/lib/utils/mediaUrl";
 import { cn } from "@/lib/utils/cn";
 
 const ORIENTATIONS: { value: Orientation; label: string }[] = [
@@ -155,6 +156,8 @@ export function EditProfileContent() {
 
   const canSave = hasChanges && usernameValid && !dobError && displayName.trim().length > 0;
 
+  const isLocalMediaUrl = (url?: string) => !!url && (url.startsWith("data:") || url.startsWith("blob:"));
+
   const handleSave = async () => {
     if (!canSave) return;
     if (!displayName.trim()) {
@@ -177,13 +180,25 @@ export function EditProfileContent() {
     try {
       let avatarUrl = avatar;
       let coverUrl = cover || undefined;
-      if (isAuthenticated && avatarFile) {
-        const up = await uploadMedia(avatarFile, "avatar");
-        avatarUrl = up.media.url ?? avatarUrl;
-      }
-      if (isAuthenticated && coverFile) {
-        const up = await uploadMedia(coverFile, "cover");
-        coverUrl = up.media.url ?? coverUrl;
+      if (isAuthenticated) {
+        if (avatarFile || isLocalMediaUrl(avatar)) {
+          if (!avatarFile) {
+            showToast("Please re-select your profile photo");
+            setSaving(false);
+            return;
+          }
+          const up = await uploadMedia(avatarFile, "avatar", { maxImageDim: 512 });
+          avatarUrl = up.media.url ?? avatarUrl;
+        }
+        if (coverFile || (cover && isLocalMediaUrl(cover))) {
+          if (!coverFile) {
+            showToast("Please re-select your cover photo");
+            setSaving(false);
+            return;
+          }
+          const up = await uploadMedia(coverFile, "cover", { maxImageDim: 1600 });
+          coverUrl = up.media.url ?? coverUrl;
+        }
       }
 
       if (isAuthenticated) {
@@ -245,6 +260,8 @@ export function EditProfileContent() {
     "w-full px-3 py-2.5 rounded-xl bg-surface border border-border text-sm outline-none focus:border-text-muted transition-colors";
 
   const showUsernameStatus = username.length > 0 || initialUsername.length > 0;
+  const coverPreview = resolveMediaUrl(cover) || cover;
+  const avatarPreview = resolveMediaUrl(avatar) || avatar;
 
   return (
     <div className="min-h-dvh pb-8">
@@ -275,8 +292,8 @@ export function EditProfileContent() {
 
       <div className="max-w-2xl mx-auto">
         <div className="relative h-32 sm:h-40 bg-surface">
-          {cover && (
-            <Image src={cover} alt="Cover" fill className="object-cover" sizes="100vw" unoptimized={cover.startsWith("data:")} />
+          {coverPreview && (
+            <Image src={coverPreview} alt="Cover" fill className="object-cover" sizes="100vw" unoptimized={coverPreview.startsWith("data:") || coverPreview.startsWith("blob:")} />
           )}
           <button
             type="button"
@@ -290,7 +307,7 @@ export function EditProfileContent() {
 
         <div className="px-4 -mt-10 mb-6">
           <div className="relative inline-block">
-            <Avatar src={avatar} alt={displayName} size="xl" className="border-4 border-bg" />
+            <Avatar src={avatarPreview} alt={displayName} size="xl" className="border-4 border-bg" />
             <button
               type="button"
               className="absolute bottom-1 right-1 p-1.5 rounded-full glass-nav"

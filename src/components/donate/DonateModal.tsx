@@ -15,6 +15,7 @@ import { useTelegramGate } from "@/lib/hooks/useTelegramGate";
 import { useToast } from "@/components/ui/ToastProvider";
 import { computeDonationRank } from "@/lib/store/prototypeStore";
 import { createDonationInvoice, openTelegramInvoice } from "@/lib/api/payments";
+import { fetchPost } from "@/lib/api/social";
 import { cn } from "@/lib/utils/cn";
 import { Check, Glasses } from "lucide-react";
 
@@ -28,7 +29,7 @@ export function DonateModal({ open, onClose, post }: DonateModalProps) {
   const [stars, setStars] = useState(64);
   const [showInTop, setShowInTop] = useState(true);
   const [donating, setDonating] = useState(false);
-  const { getDonation, getCurrentUser } = usePrototype();
+  const { getDonation, getCurrentUser, syncDonation } = usePrototype();
   const { isAuthenticated, refresh } = useAuth();
   const { requireMiniApp } = useTelegramGate();
   const { showToast } = useToast();
@@ -62,6 +63,16 @@ export function DonateModal({ open, onClose, post }: DonateModalProps) {
       const opened = openTelegramInvoice(invoice.invoiceUrl, async (status) => {
         if (status === "paid") {
           await refresh();
+          try {
+            const updated = await fetchPost(post.id);
+            syncDonation(post.id, {
+              total: updated.stars ?? 0,
+              topDonators: updated.topDonators ?? [],
+              userDonated: true,
+            });
+          } catch {
+            /* feed will refresh on next load */
+          }
           showToast(`Sent ${formatStars(stars)} Stars`);
           onClose();
         } else if (status === "failed") {

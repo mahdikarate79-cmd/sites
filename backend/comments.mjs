@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { findUserById, publicUser } from "./db.mjs";
+import { findUserById, findDeletedUserById, publicUser } from "./db.mjs";
 
 export function ensureComments(db) {
   if (!db.comments) db.comments = {};
@@ -37,7 +37,7 @@ export function createComment(db, postId, userId, content) {
 }
 
 function serializeComment(db, comment) {
-  const author = findUserById(db, comment.authorId);
+  const author = findUserById(db, comment.authorId) ?? findDeletedUserById(db, comment.authorId);
   const pub = publicUser(author);
   return {
     id: comment.id,

@@ -5,6 +5,7 @@ export function resolveMediaUrl(url?: string | null, objectKey?: string | null):
   if (objectKey) {
     return `${getApiBase()}/api/media/${encodeURIComponent(objectKey)}`;
   }
-  if (!url || url.startsWith("blob:") || url.startsWith("data:")) return "";
+  if (!url) return "";
+  if (url.startsWith("blob:") || url.startsWith("data:")) return url;
   return url;
 }

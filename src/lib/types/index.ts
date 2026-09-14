@@ -192,6 +192,9 @@ export interface TransactionRecord {
   hash?: string;
   status?: "completed" | "pending";
   postId?: string;
+  donorId?: string | null;
+  donorName?: string | null;
+  donorUsername?: string | null;
 }
 
 export type NotificationType = "follow" | "like" | "comment" | "donation";

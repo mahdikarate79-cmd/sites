@@ -26,6 +26,8 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { profilePath } from "@/components/ui/ProfileLink";
+import { formatDateTimeEn, formatDateShortEn } from "@/lib/utils/dateFormat";
+import { getSiteUrl } from "@/lib/utils/siteUrl";
 
 type Tab = "dashboard" | "users" | "posts" | "reports" | "verifications" | "withdrawals" | "notify" | "settings";
 
@@ -115,8 +117,8 @@ export function AdminPanel() {
         setMsg(`Followers updated → ${result.displayFollowers}`);
       } else if (action === "add_fake_likes" && result.displayLikes != null) {
         setMsg(`Likes updated → ${result.displayLikes}`);
-      } else if (action === "adjust_stars" && result.starBalance != null) {
-        setMsg(`Stars balance → ${result.starBalance}`);
+      } else if (action === "adjust_stars" && result.earnings != null) {
+        setMsg(`Creator earnings → ${result.earnings}`);
       } else if (action === "send_notification") {
         setMsg("Notification sent");
       } else {
@@ -289,7 +291,7 @@ export function AdminPanel() {
                 <div key={w.id} className="glass-nav rounded-xl p-3 space-y-2">
                   <p className="font-medium">@{w.username} — {formatStars(w.stars)} ({w.usd} USD)</p>
                   <p className="text-xs text-text-muted break-all">Wallet: {w.wallet}</p>
-                  <p className="text-xs text-text-muted">{new Date(w.createdAt).toLocaleString()}</p>
+                  <p className="text-xs text-text-muted">{formatDateTimeEn(w.createdAt)}</p>
                   <div className="flex gap-2">
                     <ActionButton
                       label="Complete"
@@ -383,7 +385,10 @@ function UserActions({ users, onAct, pendingAction }: { users: Array<{ username:
         <ActionButton label="Unban" pending={isPending("unban_user")} onClick={() => runAction("unban_user")} className="px-3 py-1.5 rounded-full bg-surface text-xs" />
         <ActionButton label="Verify" pending={isPending("set_verified", { verified: true })} onClick={() => runAction("set_verified", { verified: true })} className="px-3 py-1.5 rounded-full bg-[#2AABEE]/20 text-[#2AABEE] text-xs" />
         <ActionButton label="Remove verify" pending={isPending("set_verified", { verified: false })} onClick={() => runAction("set_verified", { verified: false })} className="px-3 py-1.5 rounded-full bg-surface text-xs" />
-        <ActionButton label="Give premium" pending={isPending("set_premium", { premium: true, months: 6 })} onClick={() => runAction("set_premium", { premium: true, months: 6 })} className="px-3 py-1.5 rounded-full bg-surface text-xs" />
+        <ActionButton label="Premium 1m" pending={isPending("set_premium", { premium: true, months: 1 })} onClick={() => runAction("set_premium", { premium: true, months: 1 })} className="px-3 py-1.5 rounded-full bg-surface text-xs" />
+        <ActionButton label="Premium 6m" pending={isPending("set_premium", { premium: true, months: 6 })} onClick={() => runAction("set_premium", { premium: true, months: 6 })} className="px-3 py-1.5 rounded-full bg-surface text-xs" />
+        <ActionButton label="Premium 1y" pending={isPending("set_premium", { premium: true, months: 12 })} onClick={() => runAction("set_premium", { premium: true, months: 12 })} className="px-3 py-1.5 rounded-full bg-surface text-xs" />
+        <ActionButton label="Premium lifetime" pending={isPending("set_premium", { premium: true, lifetime: true })} onClick={() => runAction("set_premium", { premium: true, lifetime: true })} className="px-3 py-1.5 rounded-full bg-surface text-xs" />
         <ActionButton label="Remove premium" pending={isPending("set_premium", { premium: false })} onClick={() => runAction("set_premium", { premium: false })} className="px-3 py-1.5 rounded-full bg-surface text-xs" />
       </div>
       <div className="flex gap-2 items-center flex-wrap">
@@ -392,7 +397,7 @@ function UserActions({ users, onAct, pendingAction }: { users: Array<{ username:
       </div>
       <div className="flex gap-2 items-center">
         <input value={stars} onChange={(e) => setStars(e.target.value)} className="w-24 px-2 py-1.5 rounded-lg bg-surface border border-border text-sm" />
-        <ActionButton label="Adjust stars" pending={isPending("adjust_stars", { delta: Number(stars) })} onClick={() => runAction("adjust_stars", { delta: Number(stars) })} className="px-3 py-1.5 rounded-full bg-surface text-xs" />
+        <ActionButton label="Adjust creator earnings" pending={isPending("adjust_stars", { delta: Number(stars) })} onClick={() => runAction("adjust_stars", { delta: Number(stars) })} className="px-3 py-1.5 rounded-full bg-surface text-xs" />
       </div>
       <button type="button" onClick={() => onAct("unban_all")} className="text-xs text-like">Unban all users</button>
 
@@ -409,7 +414,13 @@ function UserActions({ users, onAct, pendingAction }: { users: Array<{ username:
   );
 }
 
-function PostActions({ posts, onAct, pendingAction }: { posts: Array<{ id: string; authorId: string; content: string; media?: Array<{ type: string; url?: string | null }>; mediaExpired?: boolean; likes?: number; fakeLikes?: number; views?: number; fakeViews?: number; displayLikes?: number; displayViews?: number; authorUsername?: string | null; authorDisplayName?: string | null }>; onAct: (a: string, d?: Record<string, unknown>) => Promise<Record<string, unknown> | null>; pendingAction: string | null }) {
+function AdminMediaPreview({ media }: { media?: { type: string; url?: string | null; thumbnail?: string | null } }) {
+  if (!media?.url) return null;
+  const src = media.type === "video" ? (media.thumbnail ?? media.url) : media.url;
+  return <img src={src} alt="" className="rounded-lg max-h-40 w-full object-cover" />;
+}
+
+function PostActions({ posts, onAct, pendingAction }: { posts: Array<{ id: string; authorId: string; content: string; media?: Array<{ type: string; url?: string | null; thumbnail?: string | null }>; mediaExpired?: boolean; likes?: number; fakeLikes?: number; views?: number; fakeViews?: number; displayLikes?: number; displayViews?: number; authorUsername?: string | null; authorDisplayName?: string | null }>; onAct: (a: string, d?: Record<string, unknown>) => Promise<Record<string, unknown> | null>; pendingAction: string | null }) {
   const [postId, setPostId] = useState("");
   const [likeCount, setLikeCount] = useState("100");
   const [viewCount, setViewCount] = useState("100");
@@ -438,7 +449,7 @@ function PostActions({ posts, onAct, pendingAction }: { posts: Array<{ id: strin
           <p className="font-semibold">{selected.authorDisplayName ?? selected.authorId} @{selected.authorUsername ?? "—"}</p>
           <p className="text-text-muted whitespace-pre-wrap">{selected.content?.slice(0, 300) || "(no caption)"}</p>
           {selected.media?.[0]?.url && !selected.mediaExpired && (
-            <img src={selected.media[0].url} alt="" className="rounded-lg max-h-40 w-full object-cover" />
+            <AdminMediaPreview media={selected.media[0]} />
           )}
           <p className="text-text-muted">
             Likes {selected.displayLikes ?? ((selected.likes ?? 0) + (selected.fakeLikes ?? 0))} · Views {selected.displayViews ?? ((selected.views ?? 0) + (selected.fakeViews ?? 0))}
@@ -469,37 +480,65 @@ function PostActions({ posts, onAct, pendingAction }: { posts: Array<{ id: strin
   );
 }
 
-function ReportActions({ reports, onAct, pendingAction }: { reports: Array<{ id: string; postId?: string | null; userId?: string | null; category: string; subcategory?: string; detail?: string; postContent?: string | null; postMedia?: Array<{ type: string; url?: string | null }>; reportedUsername?: string | null; createdAt: string; status: string }>; onAct: (a: string, d?: Record<string, unknown>) => Promise<Record<string, unknown> | null>; pendingAction: string | null }) {
+function ReportActions({ reports, onAct, pendingAction }: { reports: Array<{ id: string; postId?: string | null; userId?: string | null; category: string; subcategory?: string; detail?: string; postContent?: string | null; postMedia?: Array<{ type: string; url?: string | null; thumbnail?: string | null }>; reportedUsername?: string | null; createdAt: string; status: string; postCreatedAt?: string | null; postLikes?: number; postViews?: number; postShares?: number; postAuthor?: { id: string; displayName: string; username?: string | null; avatar?: string } | null }>; onAct: (a: string, d?: Record<string, unknown>) => Promise<Record<string, unknown> | null>; pendingAction: string | null }) {
   const pending = reports.filter((r) => r.status === "pending");
 
   return (
     <div className="space-y-3">
       <p className="text-xs text-text-muted">{pending.length} pending reports</p>
       {pending.length === 0 && <p className="text-sm text-text-muted text-center py-8">No pending reports</p>}
-      {pending.map((r) => (
-        <div key={r.id} className="glass-nav rounded-xl p-3 space-y-2">
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <p className="text-sm font-semibold">{r.category}{r.subcategory ? ` · ${r.subcategory}` : ""}</p>
-              <p className="text-xs text-text-muted">{new Date(r.createdAt).toLocaleString()}</p>
-              {r.reportedUsername && <p className="text-xs text-text-muted">User @{r.reportedUsername}</p>}
+      {pending.map((r) => {
+        const postUrl = r.postId ? `${getSiteUrl()}/post/${r.postId}/` : null;
+        return (
+          <div key={r.id} className="glass-nav rounded-xl p-3 space-y-3">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold">{r.category}{r.subcategory ? ` · ${r.subcategory}` : ""}</p>
+                <p className="text-xs text-text-muted">Reported {formatDateTimeEn(r.createdAt)}</p>
+              </div>
+              <span className="text-[10px] uppercase tracking-wide text-amber-400">{r.status}</span>
             </div>
-            <span className="text-[10px] uppercase tracking-wide text-amber-400">{r.status}</span>
+
+            {r.postAuthor && (
+              <div className="flex items-center gap-2 text-xs">
+                {r.postAuthor.avatar && <img src={r.postAuthor.avatar} alt="" className="w-8 h-8 rounded-full object-cover" />}
+                <div>
+                  <p className="font-semibold">{r.postAuthor.displayName}</p>
+                  <p className="text-text-muted">@{r.postAuthor.username ?? "—"}</p>
+                </div>
+              </div>
+            )}
+
+            {r.postId && (
+              <div className="grid grid-cols-2 gap-2 text-[11px] text-text-muted">
+                <span>Post ID: <span className="font-mono text-text">{r.postId}</span></span>
+                <span>Published: {formatDateShortEn(r.postCreatedAt)}</span>
+                <span>Likes: {r.postLikes ?? 0}</span>
+                <span>Views: {r.postViews ?? 0}</span>
+                <span>Shares: {r.postShares ?? 0}</span>
+                {postUrl && (
+                  <a href={postUrl} target="_blank" rel="noopener noreferrer" className="text-[#2AABEE] underline col-span-2">
+                    Open post
+                  </a>
+                )}
+              </div>
+            )}
+
+            {r.postContent && <p className="text-xs whitespace-pre-wrap">{r.postContent.slice(0, 500)}</p>}
+            {r.detail && <p className="text-xs text-text-muted italic">{r.detail}</p>}
+            {r.postMedia?.[0]?.url && <AdminMediaPreview media={r.postMedia[0]} />}
+
+            {r.postId && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                  <ActionButton label="Delete post" pending={pendingAction === `delete_post:${JSON.stringify({ postId: r.postId, notify: true, banAuthor: false })}`} onClick={() => onAct("delete_post", { postId: r.postId, notify: true })} className="px-3 py-1.5 rounded-full bg-like/20 text-like text-xs" />
+                  <ActionButton label="Strip media" pending={pendingAction === `strip_post_media:${JSON.stringify({ postId: r.postId, notify: true })}`} onClick={() => onAct("strip_post_media", { postId: r.postId, notify: true })} className="px-3 py-1.5 rounded-full bg-surface text-xs" />
+                  <ActionButton label="Ban author" pending={pendingAction === `delete_post:${JSON.stringify({ postId: r.postId, notify: true, banAuthor: true })}`} onClick={() => onAct("delete_post", { postId: r.postId, notify: true, banAuthor: true })} className="px-3 py-1.5 rounded-full bg-like/20 text-like text-xs" />
+                  <ActionButton label="Mark reviewed" pending={pendingAction === `mark_report_reviewed:${JSON.stringify({ reportId: r.id })}`} onClick={() => onAct("mark_report_reviewed", { reportId: r.id })} className="px-3 py-1.5 rounded-full bg-emerald-500/20 text-emerald-400 text-xs" />
+              </div>
+            )}
           </div>
-          {r.postContent && <p className="text-xs whitespace-pre-wrap">{r.postContent.slice(0, 400)}</p>}
-          {r.detail && <p className="text-xs text-text-muted italic">{r.detail}</p>}
-          {r.postMedia?.[0]?.url && (
-            <img src={r.postMedia[0].url} alt="" className="rounded-lg max-h-36 w-full object-cover" />
-          )}
-          {r.postId && (
-            <div className="flex flex-wrap gap-2 pt-1">
-              <ActionButton label="Delete post" pending={pendingAction === `delete_post:${JSON.stringify({ postId: r.postId, notify: true, banAuthor: false })}`} onClick={() => onAct("delete_post", { postId: r.postId, notify: true })} className="px-3 py-1.5 rounded-full bg-like/20 text-like text-xs" />
-              <ActionButton label="Strip media" pending={pendingAction === `strip_post_media:${JSON.stringify({ postId: r.postId, notify: true })}`} onClick={() => onAct("strip_post_media", { postId: r.postId, notify: true })} className="px-3 py-1.5 rounded-full bg-surface text-xs" />
-              <ActionButton label="Ban author" pending={pendingAction === `delete_post:${JSON.stringify({ postId: r.postId, notify: true, banAuthor: true })}`} onClick={() => onAct("delete_post", { postId: r.postId, notify: true, banAuthor: true })} className="px-3 py-1.5 rounded-full bg-like/20 text-like text-xs" />
-            </div>
-          )}
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

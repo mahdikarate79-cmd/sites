@@ -14,7 +14,8 @@ import { config } from "./config.mjs";
 import { envStr } from "./env.mjs";
 import { ADMIN_SESSION_COOKIE, resolveSessionId } from "./sessionAuth.mjs";
 import { adjustPostStats, displayLikes } from "./social.mjs";
-import { listReports } from "./reports.mjs";
+import { listReports, markReportReviewed } from "./reports.mjs";
+import { addEarningsCredit } from "./wallet.mjs";
 
 const ADMIN_COOKIE = ADMIN_SESSION_COOKIE;
 const SESSION_TTL = 12 * 60 * 60 * 1000;
@@ -263,7 +264,9 @@ export async function handleAdminAction(req, res, db, json, corsHeaders) {
       const user = resolveUser(db, body);
       if (!user) return json(res, 404, { error: "User not found" }, corsHeaders(req.headers.origin));
       user.premium = !!body.premium;
-      if (body.premium && body.months) {
+      if (body.premium && body.lifetime) {
+        user.premiumExpiresAt = null;
+      } else if (body.premium && body.months) {
         const exp = new Date();
         exp.setMonth(exp.getMonth() + Number(body.months));
         user.premiumExpiresAt = exp.toISOString();
@@ -319,9 +322,20 @@ export async function handleAdminAction(req, res, db, json, corsHeaders) {
       const user = resolveUser(db, body);
       if (!user) return json(res, 404, { error: "User not found" }, corsHeaders(req.headers.origin));
       const delta = Number(body.delta) || 0;
-      user.starBalance = Math.max(0, (user.starBalance ?? 0) + delta);
+      if (delta > 0) {
+        addEarningsCredit(db, user.id, delta, "admin_adjustment", { label: "Admin earnings adjustment" });
+      } else if (delta < 0) {
+        user.earnings = Math.max(0, (user.earnings ?? 0) + delta);
+      }
       saveDb(db);
-      return json(res, 200, { ok: true, user: publicUser(user), starBalance: user.starBalance }, corsHeaders(req.headers.origin));
+      return json(res, 200, { ok: true, user: publicUser(user), earnings: user.earnings ?? 0 }, corsHeaders(req.headers.origin));
+    }
+
+    case "mark_report_reviewed": {
+      const result = markReportReviewed(db, body.reportId);
+      if (!result.ok) return json(res, 404, { error: result.error }, corsHeaders(req.headers.origin));
+      saveDb(db);
+      return json(res, 200, { ok: true }, corsHeaders(req.headers.origin));
     }
 
     case "send_notification": {

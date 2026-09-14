@@ -8,6 +8,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { usePrototype } from "@/lib/hooks/usePrototype";
 import { createPostApi } from "@/lib/api/social";
 import { uploadMedia } from "@/lib/api/storage";
+import { captureVideoThumbnail } from "@/lib/utils/videoThumbnail";
 import { useToast } from "@/components/ui/ToastProvider";
 import { Post, PostMedia } from "@/lib/types";
 import {
@@ -98,11 +99,22 @@ export default function NewPostPage() {
       let uploadedMedia: PostMedia[] = [];
       if (media && mediaFile) {
         const uploaded = await uploadMedia(mediaFile, "post");
+        let thumbnailUrl = media.type === "image" ? uploaded.media.url : undefined;
+        if (media.type === "video") {
+          try {
+            const thumbBlob = await captureVideoThumbnail(mediaFile);
+            const thumbFile = new File([thumbBlob], "thumb.jpg", { type: "image/jpeg" });
+            const thumbUp = await uploadMedia(thumbFile, "post", { maxImageDim: 720 });
+            thumbnailUrl = thumbUp.media.url;
+          } catch {
+            thumbnailUrl = undefined;
+          }
+        }
         uploadedMedia = [{
           type: media.type,
           url: uploaded.media.url,
           objectKey: uploaded.objectKey,
-          thumbnail: media.type === "image" ? uploaded.media.url : undefined,
+          thumbnail: thumbnailUrl,
         }];
       }
       const post = await createPostApi({

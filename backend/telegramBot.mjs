@@ -78,6 +78,7 @@ export async function sendWelcomeMessage(chatId) {
         text: "Let's Go",
         icon_custom_emoji_id: "5447602197439218445",
         web_app: { url: SITE_URL },
+        style: "primary",
       }]],
     },
   });

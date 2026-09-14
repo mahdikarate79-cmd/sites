@@ -25,6 +25,7 @@ interface PrototypeContextValue {
   markNotInterested: (post: Post) => void;
   hidePost: (postId: string) => void;
   getDonation: (postId: string, initial?: PostDonationState) => PostDonationState;
+  syncDonation: (postId: string, data: PostDonationState) => void;
   donate: (postId: string, stars: number, anonymous: boolean, authorId: string) => void;
   toggleLike: (postId: string) => boolean;
   toggleBookmark: (postId: string) => boolean;
@@ -158,6 +159,13 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
     }
     return { ...GUEST_USER, ...state.profileEdits };
   }, [authUser, state.profileEdits]);
+
+  const syncDonation = useCallback((postId: string, data: PostDonationState) => {
+    update((s) => ({
+      ...s,
+      donations: { ...s.donations, [postId]: data },
+    }));
+  }, [update]);
 
   const donate = useCallback((postId: string, stars: number, anonymous: boolean, authorId: string) => {
     update((s) => {
@@ -494,6 +502,7 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
         markNotInterested,
         hidePost,
         getDonation,
+        syncDonation,
         donate,
         toggleLike,
         toggleBookmark,

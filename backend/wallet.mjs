@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { getCreatorStats } from "./social.mjs";
 
 export const HOLD_MS = 21 * 24 * 60 * 60 * 1000;
 export const MIN_STARS_21_DAYS = 1000;
@@ -91,6 +92,10 @@ export function getWalletInfo(db, userId) {
       label: entry.label ?? formatLedgerLabel(entry),
       date: entry.createdAt,
       status: "completed",
+      donorId: entry.donorId ?? null,
+      donorName: entry.donorName ?? null,
+      donorUsername: entry.donorUsername ?? null,
+      postId: entry.postId ?? null,
     });
   }
   for (const w of db.withdrawalRequests ?? []) {
@@ -107,6 +112,8 @@ export function getWalletInfo(db, userId) {
   }
   transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
+  const stats = getCreatorStats(db, userId);
+
   return {
     totalEarnings,
     withdrawable,
@@ -114,12 +121,16 @@ export function getWalletInfo(db, userId) {
     meetsMinimum,
     canWithdraw: meetsMinimum && withdrawable > 0,
     transactions,
+    stats,
   };
 }
 
 function formatLedgerLabel(entry) {
   switch (entry.type) {
-    case "donation": return "Star donation received";
+    case "donation": {
+      if (entry.donorName) return `${entry.donorName} donated Stars`;
+      return "Star donation received";
+    }
     case "post_unlock": return "Paid post unlock";
     case "paid_media": return "Paid media unlock";
     case "withdrawal_refund": return "Withdrawal refund";

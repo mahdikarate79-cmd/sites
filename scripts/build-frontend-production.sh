@@ -35,6 +35,9 @@ Options -Indexes
   # Dynamic profile slugs → placeholder shell (client reads pathname)
   RewriteRule ^profile/[^/]+/?$ profile/placeholder.html [L]
 
+  # Dynamic chat threads → placeholder shell (client reads pathname)
+  RewriteRule ^chat/[^/]+/?$ chat/placeholder.html [L]
+
   # /route without extension → route.html
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME}.html -f
