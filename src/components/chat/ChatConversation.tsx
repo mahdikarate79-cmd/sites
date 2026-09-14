@@ -5,12 +5,16 @@ import Link from "next/link";
 import { ArrowLeft, MoreVertical, Check, CheckCheck, Search, Trash2, CornerUpRight, Loader2, AlertCircle, RotateCcw } from "lucide-react";
 import { ChatMessage, PinnedMessageInfo } from "@/lib/types";
 import { Avatar } from "@/components/ui/Avatar";
+import { ProfileLink } from "@/components/ui/ProfileLink";
 import { BlockButton } from "@/components/ui/BlockButton";
 import { UserName } from "@/components/ui/UserName";
-import { getChatMessages, sendMessage, sendAlbumMessage, forwardMessage } from "@/lib/api/chat";
+import { getChat, getChatMessages, sendMessage, sendAlbumMessage, forwardMessage, expireChatMessage } from "@/lib/api/chat";
+import { uploadMedia } from "@/lib/api/storage";
 import { SelectedMedia } from "./MediaGalleryPicker";
-import { currentUser } from "@/data/mock/users";
-import { mockChats } from "@/data/mock/chats";
+import { Chat } from "@/lib/types";
+import { useAuth } from "@/lib/hooks/useAuth";
+import { createPaidMediaInvoice, openTelegramInvoice } from "@/lib/api/payments";
+import { fetchPaidMediaUnlocks } from "@/lib/api/social";
 import { formatChatTime } from "@/lib/utils/format";
 import { ChatInput } from "./ChatInput";
 import { PinnedMessageBar } from "./PinnedMessageBar";
@@ -28,11 +32,6 @@ interface ChatConversationProps {
   chatId: string;
 }
 
-const INITIAL_PINNED: Record<string, PinnedMessageInfo> = {
-  c1: { messageId: "c1m2", scope: "both" },
-  c2: { messageId: "c2m1", scope: "me" },
-};
-
 function mediaTransform(rotation?: number, mirrored?: boolean) {
   const parts: string[] = [];
   if (rotation) parts.push(`rotate(${rotation}deg)`);
@@ -42,6 +41,32 @@ function mediaTransform(rotation?: number, mirrored?: boolean) {
 
 function makeOptimisticId() {
   return `opt_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+async function uploadSelectedMedia(item: SelectedMedia) {
+  if (item.item.objectKey) {
+    return {
+      type: item.item.type,
+      url: item.croppedUrl ?? item.item.url,
+      objectKey: item.item.objectKey,
+    };
+  }
+  const file = item.item.sourceFile;
+  if (file) {
+    const uploaded = await uploadMedia(file, "chat");
+    return { type: item.item.type, url: uploaded.media.url, objectKey: uploaded.objectKey };
+  }
+  const displayUrl = item.croppedUrl ?? item.item.url;
+  if (displayUrl.startsWith("blob:")) {
+    const res = await fetch(displayUrl);
+    const blob = await res.blob();
+    const ext = item.item.type === "video" ? ".mp4" : ".jpg";
+    const mime = blob.type || (item.item.type === "video" ? "video/mp4" : "image/jpeg");
+    const f = new File([blob], `chat${ext}`, { type: mime });
+    const uploaded = await uploadMedia(f, "chat");
+    return { type: item.item.type, url: uploaded.media.url, objectKey: uploaded.objectKey };
+  }
+  throw new Error("Upload media via gallery");
 }
 
 function getViewerMedia(msg: ChatMessage) {
@@ -59,6 +84,7 @@ function getViewerMedia(msg: ChatMessage) {
 }
 
 export function ChatConversation({ chatId }: ChatConversationProps) {
+  const [chat, setChat] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -67,20 +93,22 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
   const [viewerAlbumIndex, setViewerAlbumIndex] = useState(0);
   const [showUnlockAnim, setShowUnlockAnim] = useState(false);
   const [, setTimerTick] = useState(0);
-  const [pinned, setPinned] = useState<PinnedMessageInfo | null>(INITIAL_PINNED[chatId] ?? null);
+  const [pinned, setPinned] = useState<PinnedMessageInfo | null>(null);
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [contextMsg, setContextMsg] = useState<ChatMessage | null>(null);
   const [forwardMsg, setForwardMsg] = useState<ChatMessage | null>(null);
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const chat = mockChats.find((c) => c.id === chatId);
   const {
     deleteChat, isBlocked, isPaidMediaUnlocked, unlockPaidMediaMessage,
     isTempMediaExpired, isTempMediaViewed, markTempMediaViewed, expireTempMedia,
-    startTempMediaTimer, getTempMediaRemaining, spendStars, unlockPaidMedia,
+    startTempMediaTimer, getTempMediaRemaining, getCurrentUser,
   } = usePrototype();
+  const currentUser = getCurrentUser();
   const { showToast } = useToast();
+  const { isAuthenticated } = useAuth();
+  const [paying, setPaying] = useState(false);
   const blocked = chat ? isBlocked(chat.participant.id) : false;
 
   useEffect(() => {
@@ -88,12 +116,25 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
     return () => unlockScroll();
   }, []);
 
-  useEffect(() => {
+  const syncMessages = useCallback(() => {
     getChatMessages(chatId).then((data) => {
-      setMessages(data.filter((m) => !isTempMediaExpired(chatId, m.id)));
-      setLoading(false);
-    });
+      setMessages(data.filter((m) => !m.expired && !isTempMediaExpired(chatId, m.id)));
+    }).catch(() => {});
   }, [chatId, isTempMediaExpired]);
+
+  useEffect(() => {
+    setLoading(true);
+    getChat(chatId).then(setChat);
+    getChatMessages(chatId).then((data) => {
+      setMessages(data.filter((m) => !m.expired && !isTempMediaExpired(chatId, m.id)));
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [chatId, isTempMediaExpired]);
+
+  useEffect(() => {
+    const interval = setInterval(syncMessages, 8000);
+    return () => clearInterval(interval);
+  }, [syncMessages]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -107,6 +148,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
         if (!isTempMediaViewed(chatId, msg.id)) return;
         const remaining = getTempMediaRemaining(chatId, msg.id, msg.temporary);
         if (remaining !== null && remaining <= 0) {
+          expireChatMessage(chatId, msg.id).catch(() => {});
           expireTempMedia(chatId, msg.id);
           setMessages((prev) => prev.filter((m) => m.id !== msg.id));
           if (viewerMsg?.id === msg.id) setViewerMsg(null);
@@ -219,13 +261,33 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
     setReplyTo(null);
 
     try {
-      await new Promise((r) => setTimeout(r, 250));
+      const uploaded = await Promise.all(items.map(uploadSelectedMedia));
+      if (uploaded.length === 1 && uploaded[0].type !== "gif") {
+        const single = uploaded[0];
+        const msg = await sendMessage(chatId, {
+          chatId,
+          senderId: currentUser.id,
+          type: single.type,
+          content: single.url,
+          objectKey: single.objectKey,
+          caption: caption || undefined,
+          spoiler: items.some((m) => m.spoiler),
+          paidStars: first?.paidStars,
+          replyTo: replyId,
+          temporary: first?.temporary,
+          rotation: first?.rotation,
+          mirrored: first?.mirrored,
+        });
+        upsertMessage(clientId, { ...msg, sendStatus: "sent", clientId });
+        return;
+      }
       const msg = await sendAlbumMessage(chatId, {
         senderId: currentUser.id,
-        album: items.map((m) => ({
-          type: m.item.type,
-          url: m.item.url,
-          rotation: m.rotation,
+        album: uploaded.map((m, i) => ({
+          type: m.type,
+          url: m.url,
+          objectKey: m.objectKey,
+          rotation: items[i]?.rotation,
         })),
         caption: caption || undefined,
         spoiler: items.some((m) => m.spoiler),
@@ -238,6 +300,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
       upsertMessage(clientId, { ...msg, sendStatus: "sent", clientId });
     } catch {
       upsertMessage(clientId, { ...optimistic, sendStatus: "failed" });
+      showToast("Failed to send media");
     }
   };
 
@@ -297,8 +360,8 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
   const isPaidLocked = (msg: ChatMessage, isMe: boolean) =>
     !!msg.paidStars && !isMe && !isPaidMediaUnlocked(chatId, msg.id) && !msg.paidUnlocked;
 
-  const isTempLocked = (msg: ChatMessage) =>
-    !!msg.temporary && !isTempMediaViewed(chatId, msg.id) && !isTempMediaExpired(chatId, msg.id);
+  const isTempLocked = (msg: ChatMessage, isMe: boolean) =>
+    !!msg.temporary && !isMe && !isTempMediaViewed(chatId, msg.id) && !isTempMediaExpired(chatId, msg.id);
 
   const getViewerAlbum = (msg: ChatMessage) => {
     if (msg.type === "album" && msg.album) {
@@ -317,7 +380,8 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
     const album = getViewerAlbum(msg);
     if (album.length === 0) return;
 
-    if (isTempLocked(msg)) {
+    const isMe = msg.senderId === currentUser.id;
+    if (isTempLocked(msg, isMe)) {
       markTempMediaViewed(chatId, msg.id);
       if (msg.temporary && msg.temporary !== "view_once") {
         startTempMediaTimer(chatId, msg.id);
@@ -329,7 +393,8 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
   };
 
   const closeMediaViewer = () => {
-    if (viewerMsg?.temporary === "view_once") {
+    if (viewerMsg?.temporary === "view_once" && viewerMsg.senderId !== currentUser.id) {
+      expireChatMessage(chatId, viewerMsg.id).catch(() => {});
       expireTempMedia(chatId, viewerMsg.id);
       removeMessage(viewerMsg.id);
     }
@@ -338,12 +403,41 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
     setShowUnlockAnim(false);
   };
 
-  const handlePayInViewer = () => {
-    if (!viewerMsg?.paidStars) return;
-    if (!spendStars(viewerMsg.paidStars, "Paid media unlock", "paid_media")) return;
-    unlockPaidMedia(viewerMsg.paidStars);
-    unlockPaidMediaMessage(chatId, viewerMsg.id);
-    setShowUnlockAnim(true);
+  const handlePayInViewer = async () => {
+    if (!viewerMsg?.paidStars || paying || !chat) return;
+    if (!isAuthenticated) return;
+    setPaying(true);
+    try {
+      const invoice = await createPaidMediaInvoice(
+        chatId,
+        viewerMsg.id,
+        chat.participant.id,
+        viewerMsg.paidStars,
+      );
+      if (!invoice.invoiceUrl) {
+        showToast("Payment unavailable");
+        setPaying(false);
+        return;
+      }
+      const opened = openTelegramInvoice(invoice.invoiceUrl, async (status) => {
+        if (status === "paid") {
+          unlockPaidMediaMessage(chatId, viewerMsg.id);
+          await fetchPaidMediaUnlocks();
+          setShowUnlockAnim(true);
+          showToast("Media unlocked");
+        } else if (status === "failed") {
+          showToast("Payment failed");
+        }
+        setPaying(false);
+      });
+      if (!opened) {
+        showToast("Open in Telegram to pay with Stars");
+        setPaying(false);
+      }
+    } catch {
+      showToast("Payment failed");
+      setPaying(false);
+    }
   };
 
   const renderStatusIcon = (msg: ChatMessage, isMe: boolean) => {
@@ -360,6 +454,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
   };
 
   if (loading) return <div className="flex-1 flex items-center justify-center text-text-muted h-dvh">Loading...</div>;
+  if (!chat) return <div className="flex-1 flex items-center justify-center text-text-muted h-dvh">Chat not found</div>;
 
   const renderForwarded = (msg: ChatMessage) => {
     if (!msg.forwardedFrom) return null;
@@ -376,7 +471,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
 
   const renderMedia = (msg: ChatMessage, isMe: boolean) => {
     const paid = isPaidLocked(msg, isMe);
-    const tempLocked = isTempLocked(msg);
+    const tempLocked = isTempLocked(msg, isMe);
     const locked = paid || tempLocked;
     const transform = mediaTransform(msg.rotation, msg.mirrored);
     const isMediaType = msg.type === "image" || msg.type === "gif" || msg.type === "video" || msg.type === "album";
@@ -462,7 +557,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
   const viewerMedia = viewerAlbum[viewerAlbumIndex] ?? (viewerMsg ? getViewerMedia(viewerMsg) : null);
   const viewerIsMe = viewerMsg ? viewerMsg.senderId === currentUser.id : false;
   const viewerPaidLocked = viewerMsg ? isPaidLocked(viewerMsg, viewerIsMe) && !showUnlockAnim : false;
-  const viewerTempRestricted = viewerMsg ? !!viewerMsg.temporary : false;
+  const viewerTempRestricted = viewerMsg ? !!viewerMsg.temporary && !viewerIsMe : false;
   const viewerTimerRemaining = viewerMsg?.temporary && viewerMsg.temporary !== "view_once"
     ? getTempMediaRemaining(chatId, viewerMsg.id, viewerMsg.temporary)
     : null;
@@ -475,13 +570,22 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
             <ArrowLeft className="w-5 h-5" />
           </Link>
           {chat && (
-            <Link href={`/profile/${chat.participant.username}/`} className="flex-1 flex items-center gap-2.5 min-w-0 px-2 py-1 rounded-xl hover:bg-surface/40 transition-colors">
-              <Avatar src={chat.participant.avatar} alt="" size="sm" />
-              <div className="min-w-0 text-left">
-                <UserName user={chat.participant} nameClassName="font-semibold text-sm" />
-                <p className="text-[11px] text-text-muted truncate">{chat.participant.lastSeen ?? "last seen recently"}</p>
+            chat.participant.deleted ? (
+              <div className="flex-1 flex items-center gap-2.5 min-w-0 px-2 py-1">
+                <Avatar src="" alt="" size="sm" />
+                <div className="min-w-0 text-left">
+                  <p className="font-semibold text-sm text-text-muted">Deleted Account</p>
+                </div>
               </div>
-            </Link>
+            ) : (
+              <ProfileLink user={chat.participant} className="flex-1 flex items-center gap-2.5 min-w-0 px-2 py-1 rounded-xl hover:bg-surface/40 transition-colors">
+                <Avatar src={chat.participant.avatar} alt="" size="sm" />
+                <div className="min-w-0 text-left">
+                  <UserName user={chat.participant} nameClassName="font-semibold text-sm" />
+                  <p className="text-[11px] text-text-muted truncate">{chat.participant.lastSeen ?? "last seen recently"}</p>
+                </div>
+              </ProfileLink>
+            )
           )}
           <div className="relative shrink-0">
             <button onClick={() => setMenuOpen(!menuOpen)} className="p-2 rounded-full hover:bg-surface/60 transition-colors" aria-label="More">
@@ -516,7 +620,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
       )}
 
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 py-2 space-y-3">
-        {messages.filter((m) => !isTempMediaExpired(chatId, m.id)).map((msg) => {
+        {messages.filter((m) => !m.expired && !isTempMediaExpired(chatId, m.id)).map((msg) => {
           const isMe = msg.senderId === currentUser.id;
           const replySource = msg.replyTo ? messages.find((m) => m.id === msg.replyTo) : null;
 

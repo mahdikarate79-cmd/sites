@@ -10,6 +10,8 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "api.dicebear.com" },
       { protocol: "https", hostname: "images.unsplash.com" },
       { protocol: "https", hostname: "commondatastorage.googleapis.com" },
+      { protocol: "https", hostname: "api.venify.xyz" },
+      { protocol: "https", hostname: "x.venify.xyz" },
     ],
   },
   ...(isGithubPages

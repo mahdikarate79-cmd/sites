@@ -1,39 +1,61 @@
 import { AuthMeResponse, AuthUser } from "./types";
 import { getApiBase } from "@/lib/api/base";
-
-async function authFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${getApiBase()}${path}`, {
-    ...options,
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers ?? {}),
-    },
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error ?? `Auth error ${res.status}`);
-  }
-  return res.json() as Promise<T>;
-}
+import { apiFetch } from "@/lib/api/fetch";
+import { clearSessionToken, setSessionToken } from "@/lib/api/tokens";
 
 export async function authenticateWithTelegram(initData: string): Promise<AuthMeResponse> {
-  return authFetch<AuthMeResponse>("/api/auth/telegram", {
+  const res = await fetch(`${getApiBase()}/api/auth/telegram`, {
     method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ initData }),
   });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 403 && data.banned) {
+    clearSessionToken();
+    return {
+      user: null,
+      loginMethod: "guest",
+      banned: true,
+      bannedAt: data.bannedAt ?? null,
+    };
+  }
+  if (res.status === 403 && data.error === "account_deleted") {
+    clearSessionToken();
+    return {
+      user: null,
+      loginMethod: "guest",
+      accountDeleted: true,
+      canRecreateAt: data.canRecreateAt,
+      remainingMs: data.remainingMs,
+    };
+  }
+  if (!res.ok) throw new Error(data.error ?? `Auth error ${res.status}`);
+  if (data.sessionToken) setSessionToken(data.sessionToken);
+  return data as AuthMeResponse;
 }
 
 export async function fetchAuthMe(): Promise<AuthMeResponse> {
-  return authFetch<AuthMeResponse>("/api/auth/me");
+  const data = await apiFetch<AuthMeResponse>("/api/auth/me");
+  if (data.sessionToken) setSessionToken(data.sessionToken);
+  else if (!data.user) clearSessionToken();
+  return data;
 }
 
 export async function logoutAuth(): Promise<void> {
-  await authFetch("/api/auth/logout", { method: "POST" });
+  try {
+    await apiFetch("/api/auth/logout", { method: "POST" });
+  } finally {
+    clearSessionToken();
+  }
 }
 
 export async function deleteAuthAccount(): Promise<void> {
-  await authFetch("/api/auth/delete-account", { method: "POST" });
+  try {
+    await apiFetch("/api/auth/delete-account", { method: "POST" });
+  } finally {
+    clearSessionToken();
+  }
 }
 
 export async function updateProfile(data: {
@@ -42,8 +64,10 @@ export async function updateProfile(data: {
   bio?: string;
   avatar?: string;
   cover?: string;
+  age?: number;
+  orientation?: string;
 }): Promise<AuthUser> {
-  const res = await authFetch<{ user: AuthUser }>("/api/profile/update", {
+  const res = await apiFetch<{ user: AuthUser }>("/api/profile/update", {
     method: "POST",
     body: JSON.stringify(data),
   });

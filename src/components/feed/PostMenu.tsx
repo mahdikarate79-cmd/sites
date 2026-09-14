@@ -9,6 +9,7 @@ import { usePrototype } from "@/lib/hooks/usePrototype";
 import { useToast } from "@/components/ui/ToastProvider";
 import { PremiumBurst } from "@/components/ui/PremiumParticles";
 import { cn } from "@/lib/utils/cn";
+import { getPostShareUrl } from "@/lib/utils/siteUrl";
 
 interface PostMenuProps {
   post: Post;
@@ -23,8 +24,14 @@ export function PostMenu({ post, onHide }: PostMenuProps) {
   const { showToast } = useToast();
 
   const copyLink = async () => {
-    await navigator.clipboard.writeText(`https://sheytoni.app/post/${post.id}`);
+    await navigator.clipboard.writeText(getPostShareUrl(post.id));
     showToast("Link copied");
+    setOpen(false);
+  };
+
+  const copyPostId = async () => {
+    await navigator.clipboard.writeText(post.id);
+    showToast(`Post ID copied: ${post.id}`);
     setOpen(false);
   };
 
@@ -55,6 +62,7 @@ export function PostMenu({ post, onHide }: PostMenuProps) {
     { icon: ThumbsDown, label: "I don't like this", action: handleNotInterested },
     { icon: Bookmark, label: isBookmarked(post.id) ? "Unsave" : "Save", action: () => { toggleBookmark(post.id); setOpen(false); } },
     { icon: Link2, label: "Copy link", action: copyLink },
+    { icon: Link2, label: `Post ID: ${post.id}`, action: copyPostId },
     { icon: Flag, label: "Report", action: () => { setReportOpen(true); setOpen(false); }, danger: true },
     { icon: Ban, label: "Block user", action: handleBlock, danger: true },
   ];
