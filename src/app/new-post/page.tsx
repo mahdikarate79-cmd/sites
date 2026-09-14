@@ -8,6 +8,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { usePrototype } from "@/lib/hooks/usePrototype";
 import { createPostApi } from "@/lib/api/social";
 import { uploadMedia } from "@/lib/api/storage";
+import { UploadProgressOverlay } from "@/components/ui/UploadProgressOverlay";
 import { captureVideoThumbnail } from "@/lib/utils/videoThumbnail";
 import { useToast } from "@/components/ui/ToastProvider";
 import { Post, PostMedia } from "@/lib/types";
@@ -52,6 +53,8 @@ export default function NewPostPage() {
   const [followingOnly, setFollowingOnly] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [posting, setPosting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadLabel, setUploadLabel] = useState("");
 
   const canPost = content.trim().length > 0 || !!media;
   const tagsValid = tags.length >= 3;
@@ -95,16 +98,22 @@ export default function NewPostPage() {
     }
 
     setPosting(true);
+    setUploadProgress(0);
     try {
       let uploadedMedia: PostMedia[] = [];
       if (media && mediaFile) {
-        const uploaded = await uploadMedia(mediaFile, "post");
+        setUploadLabel(media.type === "video" ? "Uploading video…" : "Uploading media…");
+        const uploaded = await uploadMedia(mediaFile, "post", {
+          isPremium: !!user.premium,
+          onProgress: setUploadProgress,
+        });
         let thumbnailUrl = media.type === "image" ? uploaded.media.url : undefined;
         if (media.type === "video") {
           try {
+            setUploadLabel("Creating thumbnail…");
             const thumbBlob = await captureVideoThumbnail(mediaFile);
             const thumbFile = new File([thumbBlob], "thumb.jpg", { type: "image/jpeg" });
-            const thumbUp = await uploadMedia(thumbFile, "post", { maxImageDim: 720 });
+            const thumbUp = await uploadMedia(thumbFile, "post", { maxImageDim: 480, isPremium: !!user.premium });
             thumbnailUrl = thumbUp.media.url;
           } catch {
             thumbnailUrl = undefined;
@@ -117,6 +126,8 @@ export default function NewPostPage() {
           thumbnail: thumbnailUrl,
         }];
       }
+      setUploadLabel("Publishing post…");
+      setUploadProgress(100);
       const post = await createPostApi({
         content: content.trim(),
         media: uploadedMedia,
@@ -133,11 +144,14 @@ export default function NewPostPage() {
       showToast(e instanceof Error ? e.message : "Failed to publish post");
     } finally {
       setPosting(false);
+      setUploadProgress(0);
+      setUploadLabel("");
     }
   };
 
   return (
     <MiniAppGuard>
+    <UploadProgressOverlay open={posting && !!uploadLabel} progress={uploadProgress} label={uploadLabel} />
     <AppLayout title="New Post">
       <div className="px-4 py-4 pb-8 max-w-lg mx-auto">
         <div className="flex gap-3 mb-4">

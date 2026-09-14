@@ -261,7 +261,7 @@ export function AdminPanel() {
         )}
 
         {tab === "reports" && (
-          <ReportActions onAct={act} pendingAction={pendingAction} reports={reports as Array<{ id: string; postId?: string | null; userId?: string | null; category: string; subcategory?: string; detail?: string; postContent?: string | null; postMedia?: Array<{ type: string; url?: string | null; thumbnail?: string | null }>; reportedUsername?: string | null; createdAt: string; status: string; postCreatedAt?: string | null; postLikes?: number; postViews?: number; postShares?: number; postAuthor?: { id: string; displayName: string; username?: string | null; avatar?: string } | null }>} />
+          <ReportActions onAct={act} pendingAction={pendingAction} reports={reports as Array<{ id: string; reporterId?: string; reporterUsername?: string | null; reporterDisplayName?: string | null; postId?: string | null; userId?: string | null; category: string; subcategory?: string; detail?: string; postContent?: string | null; postMedia?: Array<{ type: string; url?: string | null; thumbnail?: string | null }>; reportedUsername?: string | null; reportedUser?: { id: string; displayName: string; username?: string | null; avatar?: string } | null; createdAt: string; status: string; postCreatedAt?: string | null; postLikes?: number; postViews?: number; postShares?: number; postAuthor?: { id: string; displayName: string; username?: string | null; avatar?: string } | null }>} />
         )}
 
         {tab === "verifications" && (
@@ -568,7 +568,30 @@ function ChatMediaActions({ media, onAct, pendingAction }: { media: Array<{ chat
   );
 }
 
-function ReportActions({ reports, onAct, pendingAction }: { reports: Array<{ id: string; postId?: string | null; userId?: string | null; category: string; subcategory?: string; detail?: string; postContent?: string | null; postMedia?: Array<{ type: string; url?: string | null; thumbnail?: string | null }>; reportedUsername?: string | null; createdAt: string; status: string; postCreatedAt?: string | null; postLikes?: number; postViews?: number; postShares?: number; postAuthor?: { id: string; displayName: string; username?: string | null; avatar?: string } | null }>; onAct: (a: string, d?: Record<string, unknown>) => Promise<Record<string, unknown> | null>; pendingAction: string | null }) {
+type AdminReport = {
+  id: string;
+  reporterId?: string;
+  reporterUsername?: string | null;
+  reporterDisplayName?: string | null;
+  postId?: string | null;
+  userId?: string | null;
+  category: string;
+  subcategory?: string;
+  detail?: string;
+  postContent?: string | null;
+  postMedia?: Array<{ type: string; url?: string | null; thumbnail?: string | null }>;
+  reportedUsername?: string | null;
+  reportedUser?: { id: string; displayName: string; username?: string | null; avatar?: string } | null;
+  createdAt: string;
+  status: string;
+  postCreatedAt?: string | null;
+  postLikes?: number;
+  postViews?: number;
+  postShares?: number;
+  postAuthor?: { id: string; displayName: string; username?: string | null; avatar?: string } | null;
+};
+
+function ReportActions({ reports, onAct, pendingAction }: { reports: AdminReport[]; onAct: (a: string, d?: Record<string, unknown>) => Promise<Record<string, unknown> | null>; pendingAction: string | null }) {
   const pending = reports.filter((r) => String(r.status).toLowerCase() === "pending");
 
   return (
@@ -577,27 +600,34 @@ function ReportActions({ reports, onAct, pendingAction }: { reports: Array<{ id:
       {pending.length === 0 && <p className="text-sm text-text-muted text-center py-8">No pending reports</p>}
       {pending.map((r) => {
         const postUrl = r.postId ? `${getSiteUrl()}/post/${r.postId}/` : null;
+        const targetUser = r.postAuthor ?? r.reportedUser;
+        const targetUserId = r.postAuthor?.id ?? r.userId ?? null;
+        const targetUsername = r.postAuthor?.username ?? r.reportedUsername ?? r.reportedUser?.username ?? null;
         return (
           <div key={r.id} className="glass-nav rounded-xl p-3 space-y-3">
             <div className="flex items-start justify-between gap-2">
               <div>
                 <p className="text-sm font-semibold">{r.category}{r.subcategory ? ` · ${r.subcategory}` : ""}</p>
                 <p className="text-xs text-text-muted">Reported {formatDateTimeEn(r.createdAt)}</p>
+                <p className="text-[11px] text-text-muted mt-0.5">
+                  By {r.reporterDisplayName ?? "Unknown"}{r.reporterUsername ? ` @${r.reporterUsername}` : ""}
+                </p>
               </div>
               <span className="text-[10px] uppercase tracking-wide text-amber-400">{r.status}</span>
             </div>
 
-            {r.postAuthor && (
-              <div className="flex items-center gap-2 text-xs">
-                {r.postAuthor.avatar && <img src={r.postAuthor.avatar} alt="" className="w-8 h-8 rounded-full object-cover" />}
+            {targetUser && (
+              <div className="flex items-center gap-2 text-xs rounded-lg bg-surface/50 p-2">
+                {targetUser.avatar && <img src={targetUser.avatar} alt="" className="w-8 h-8 rounded-full object-cover" />}
                 <div>
-                  <p className="font-semibold">{r.postAuthor.displayName}</p>
-                  <p className="text-text-muted">@{r.postAuthor.username ?? "—"}</p>
+                  <p className="text-[10px] text-text-muted uppercase">{r.postId ? "Post author" : "Reported user"}</p>
+                  <p className="font-semibold">{targetUser.displayName}</p>
+                  <p className="text-text-muted">@{targetUsername ?? "—"}</p>
                 </div>
               </div>
             )}
 
-            {r.postId && (
+            {r.postId ? (
               <div className="grid grid-cols-2 gap-2 text-[11px] text-text-muted">
                 <span>Post ID: <span className="font-mono text-text">{r.postId}</span></span>
                 <span>Published: {formatDateShortEn(r.postCreatedAt)}</span>
@@ -610,20 +640,35 @@ function ReportActions({ reports, onAct, pendingAction }: { reports: Array<{ id:
                   </a>
                 )}
               </div>
-            )}
+            ) : r.userId ? (
+              <p className="text-[11px] text-text-muted">User report · ID <span className="font-mono text-text">{r.userId}</span></p>
+            ) : null}
 
-            {r.postContent && <p className="text-xs whitespace-pre-wrap">{r.postContent.slice(0, 500)}</p>}
-            {r.detail && <p className="text-xs text-text-muted italic">{r.detail}</p>}
+            {r.postContent ? (
+              <p className="text-xs whitespace-pre-wrap bg-surface/40 rounded-lg p-2">{r.postContent.slice(0, 500)}</p>
+            ) : (
+              <p className="text-xs text-text-muted italic">No post caption stored</p>
+            )}
+            {r.detail && <p className="text-xs text-text-muted italic">Reporter note: {r.detail}</p>}
             {r.postMedia?.[0]?.url && <AdminMediaPreview media={r.postMedia[0]} />}
 
-            {r.postId && (
-              <div className="flex flex-wrap gap-2 pt-1">
+            <div className="flex flex-wrap gap-2 pt-1">
+              {r.postId && (
+                <>
                   <ActionButton label="Delete post" pending={pendingAction === `delete_post:${JSON.stringify({ postId: r.postId, notify: true, banAuthor: false })}`} onClick={() => onAct("delete_post", { postId: r.postId, notify: true })} className="px-3 py-1.5 rounded-full bg-like/20 text-like text-xs" />
                   <ActionButton label="Strip media" pending={pendingAction === `strip_post_media:${JSON.stringify({ postId: r.postId, notify: true })}`} onClick={() => onAct("strip_post_media", { postId: r.postId, notify: true })} className="px-3 py-1.5 rounded-full bg-surface text-xs" />
-                  <ActionButton label="Ban author" pending={pendingAction === `delete_post:${JSON.stringify({ postId: r.postId, notify: true, banAuthor: true })}`} onClick={() => onAct("delete_post", { postId: r.postId, notify: true, banAuthor: true })} className="px-3 py-1.5 rounded-full bg-like/20 text-like text-xs" />
-                  <ActionButton label="Mark reviewed" pending={pendingAction === `mark_report_reviewed:${JSON.stringify({ reportId: r.id })}`} onClick={() => onAct("mark_report_reviewed", { reportId: r.id })} className="px-3 py-1.5 rounded-full bg-emerald-500/20 text-emerald-400 text-xs" />
-              </div>
-            )}
+                </>
+              )}
+              {targetUserId && (
+                <ActionButton
+                  label="Ban user"
+                  pending={pendingAction === `ban_user:${JSON.stringify({ query: targetUsername ? `@${targetUsername}` : targetUserId })}`}
+                  onClick={() => onAct("ban_user", { query: targetUsername ? `@${targetUsername}` : targetUserId })}
+                  className="px-3 py-1.5 rounded-full bg-like/20 text-like text-xs"
+                />
+              )}
+              <ActionButton label="Mark reviewed" pending={pendingAction === `mark_report_reviewed:${JSON.stringify({ reportId: r.id })}`} onClick={() => onAct("mark_report_reviewed", { reportId: r.id })} className="px-3 py-1.5 rounded-full bg-emerald-500/20 text-emerald-400 text-xs" />
+            </div>
           </div>
         );
       })}

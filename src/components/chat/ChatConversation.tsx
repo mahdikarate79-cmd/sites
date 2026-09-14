@@ -43,7 +43,7 @@ function makeOptimisticId() {
   return `opt_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
-async function uploadSelectedMedia(item: SelectedMedia) {
+async function uploadSelectedMedia(item: SelectedMedia, isPremium = false) {
   if (item.item.objectKey) {
     return {
       type: item.item.type,
@@ -53,7 +53,7 @@ async function uploadSelectedMedia(item: SelectedMedia) {
   }
   const file = item.item.sourceFile;
   if (file) {
-    const uploaded = await uploadMedia(file, "chat");
+    const uploaded = await uploadMedia(file, "chat", { isPremium });
     return { type: item.item.type, url: uploaded.media.url, objectKey: uploaded.objectKey };
   }
   const displayUrl = item.croppedUrl ?? item.item.url;
@@ -63,7 +63,7 @@ async function uploadSelectedMedia(item: SelectedMedia) {
     const ext = item.item.type === "video" ? ".mp4" : ".jpg";
     const mime = blob.type || (item.item.type === "video" ? "video/mp4" : "image/jpeg");
     const f = new File([blob], `chat${ext}`, { type: mime });
-    const uploaded = await uploadMedia(f, "chat");
+    const uploaded = await uploadMedia(f, "chat", { isPremium });
     return { type: item.item.type, url: uploaded.media.url, objectKey: uploaded.objectKey };
   }
   throw new Error("Upload media via gallery");
@@ -107,7 +107,8 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
   } = usePrototype();
   const currentUser = getCurrentUser();
   const { showToast } = useToast();
-  const { isAuthenticated } = useAuth();
+  const { user: authUser, isAuthenticated } = useAuth();
+  const viewerId = authUser?.id ?? currentUser.id;
   const [paying, setPaying] = useState(false);
   const blocked = chat ? isBlocked(chat.participant.id) : false;
 
@@ -185,13 +186,13 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
     type: "text" | "image" | "video" | "gif" = "text",
     extras?: Partial<ChatMessage>
   ) => {
-    if (blocked) return;
+    if (blocked || !viewerId || !isAuthenticated) return;
     const clientId = makeOptimisticId();
     const optimistic: ChatMessage = {
       id: clientId,
       clientId,
       chatId,
-      senderId: currentUser.id,
+      senderId: viewerId,
       type,
       content,
       createdAt: new Date().toISOString(),
@@ -206,14 +207,15 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
       await new Promise((r) => setTimeout(r, 200));
       const msg = await sendMessage(chatId, {
         chatId,
-        senderId: currentUser.id,
+        senderId: viewerId,
         type,
         content,
         ...extras,
       });
       upsertMessage(clientId, { ...msg, sendStatus: "sent", clientId });
-    } catch {
+    } catch (e) {
       upsertMessage(clientId, { ...optimistic, sendStatus: "failed" });
+      showToast(e instanceof Error ? e.message : "Failed to send");
     }
   };
 
@@ -223,7 +225,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
     try {
       const sent = await sendMessage(chatId, {
         chatId,
-        senderId: currentUser.id,
+        senderId: viewerId,
         type: msg.type,
         content: msg.content,
         replyTo: msg.replyTo,
@@ -235,7 +237,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
   };
 
   const handleSendAlbum = async (items: SelectedMedia[], caption: string) => {
-    if (blocked || items.length === 0) return;
+    if (blocked || items.length === 0 || !viewerId || !isAuthenticated) return;
     const replyId = replyTo?.id;
     const clientId = makeOptimisticId();
     const first = items[0];
@@ -243,7 +245,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
       id: clientId,
       clientId,
       chatId,
-      senderId: currentUser.id,
+      senderId: viewerId,
       type: "album",
       content: caption,
       album: items.map((m) => ({ type: m.item.type, url: m.croppedUrl ?? m.item.url, rotation: m.rotation })),
@@ -261,12 +263,12 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
     setReplyTo(null);
 
     try {
-      const uploaded = await Promise.all(items.map(uploadSelectedMedia));
+      const uploaded = await Promise.all(items.map((item) => uploadSelectedMedia(item, !!authUser?.premium)));
       if (uploaded.length === 1 && uploaded[0].type !== "gif") {
         const single = uploaded[0];
         const msg = await sendMessage(chatId, {
           chatId,
-          senderId: currentUser.id,
+          senderId: viewerId,
           type: single.type,
           content: single.url,
           objectKey: single.objectKey,
@@ -282,7 +284,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
         return;
       }
       const msg = await sendAlbumMessage(chatId, {
-        senderId: currentUser.id,
+        senderId: viewerId,
         album: uploaded.map((m, i) => ({
           type: m.type,
           url: m.url,
@@ -298,15 +300,15 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
         mirrored: first?.mirrored,
       });
       upsertMessage(clientId, { ...msg, sendStatus: "sent", clientId });
-    } catch {
+    } catch (e) {
       upsertMessage(clientId, { ...optimistic, sendStatus: "failed" });
-      showToast("Failed to send media");
+      showToast(e instanceof Error ? e.message : "Failed to send media");
     }
   };
 
   const handleForward = async (targetChatIds: string[]) => {
     if (!forwardMsg || targetChatIds.length === 0) return;
-    const sourceUser = forwardMsg.senderId === currentUser.id ? currentUser : chat?.participant;
+    const sourceUser = forwardMsg.senderId === viewerId ? currentUser : chat?.participant;
     const forwardedFrom = {
       userId: sourceUser?.id ?? forwardMsg.senderId,
       displayName: sourceUser?.displayName ?? "User",
@@ -315,7 +317,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
     };
     for (const targetId of targetChatIds) {
       const msg = await forwardMessage(targetId, {
-        senderId: currentUser.id,
+        senderId: viewerId,
         source: forwardMsg,
         forwardedFrom,
       });
@@ -380,7 +382,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
     const album = getViewerAlbum(msg);
     if (album.length === 0) return;
 
-    const isMe = msg.senderId === currentUser.id;
+    const isMe = msg.senderId === viewerId;
     if (isTempLocked(msg, isMe)) {
       markTempMediaViewed(chatId, msg.id);
       if (msg.temporary && msg.temporary !== "view_once") {
@@ -393,7 +395,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
   };
 
   const closeMediaViewer = () => {
-    if (viewerMsg?.temporary === "view_once" && viewerMsg.senderId !== currentUser.id) {
+    if (viewerMsg?.temporary === "view_once" && viewerMsg.senderId !== viewerId) {
       expireChatMessage(chatId, viewerMsg.id).catch(() => {});
       expireTempMedia(chatId, viewerMsg.id);
       removeMessage(viewerMsg.id);
@@ -555,7 +557,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
 
   const viewerAlbum = viewerMsg ? getViewerAlbum(viewerMsg) : [];
   const viewerMedia = viewerAlbum[viewerAlbumIndex] ?? (viewerMsg ? getViewerMedia(viewerMsg) : null);
-  const viewerIsMe = viewerMsg ? viewerMsg.senderId === currentUser.id : false;
+  const viewerIsMe = viewerMsg ? viewerMsg.senderId === viewerId : false;
   const viewerPaidLocked = viewerMsg ? isPaidLocked(viewerMsg, viewerIsMe) && !showUnlockAnim : false;
   const viewerTempRestricted = viewerMsg ? !!viewerMsg.temporary && !viewerIsMe : false;
   const viewerTimerRemaining = viewerMsg?.temporary && viewerMsg.temporary !== "view_once"
@@ -621,7 +623,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
 
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 py-2 space-y-3">
         {messages.filter((m) => !m.expired && !isTempMediaExpired(chatId, m.id)).map((msg) => {
-          const isMe = msg.senderId === currentUser.id;
+          const isMe = msg.senderId === viewerId;
           const replySource = msg.replyTo ? messages.find((m) => m.id === msg.replyTo) : null;
 
           return (

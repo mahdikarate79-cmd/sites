@@ -224,7 +224,7 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
         </div>
       )}
 
-      <ReportModal open={reportOpen} onClose={() => setReportOpen(false)} />
+      <ReportModal open={reportOpen} onClose={() => setReportOpen(false)} userId={user.id} />
     </div>
   );
 }

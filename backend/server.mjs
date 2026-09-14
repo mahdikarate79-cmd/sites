@@ -118,7 +118,7 @@ function corsHeaders(origin) {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Credentials": "true",
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Upload-Category",
     Vary: "Origin",
   };
 }
@@ -128,7 +128,7 @@ function json(res, status, body, extraHeaders = {}) {
   res.end(JSON.stringify(body));
 }
 
-function readBody(req, maxBytes = 64 * 1024 * 1024) {
+function readBodyBuffer(req, maxBytes = 128 * 1024 * 1024) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
@@ -150,7 +150,7 @@ function readBody(req, maxBytes = 64 * 1024 * 1024) {
     req.on("end", () => {
       if (settled) return;
       settled = true;
-      resolve(Buffer.concat(chunks).toString("utf8"));
+      resolve(Buffer.concat(chunks));
     });
     req.on("error", fail);
     req.on("aborted", () => fail(new Error("Request aborted")));
@@ -158,6 +158,21 @@ function readBody(req, maxBytes = 64 * 1024 * 1024) {
       if (!settled && !req.complete) fail(new Error("Connection closed"));
     });
   });
+}
+
+function readBody(req, maxBytes = 64 * 1024 * 1024) {
+  return readBodyBuffer(req, maxBytes).then((buf) => buf.toString("utf8"));
+}
+
+function uploadMaxBytes(user, category) {
+  const cat = String(category ?? "post");
+  if (cat === "chat") return user.premium ? 1024 * 1024 * 1024 : 10 * 1024 * 1024;
+  if (cat === "avatar" || cat === "cover") return 3 * 1024 * 1024;
+  return user.premium ? 1024 * 1024 * 1024 : 10 * 1024 * 1024;
+}
+
+function resolveObjectKeyUrl(objectKey) {
+  return `${config.apiUrl}/api/media/${encodeURIComponent(objectKey)}`;
 }
 
 function isSecureRequest(req) {
@@ -606,16 +621,18 @@ async function handleStorageUpload(req, res) {
 
   const buffer = Buffer.from(data, "base64");
   const cat = String(category ?? "post");
-  const maxSize = cat === "chat"
-    ? (user.premium ? 1024 * 1024 * 1024 : 10 * 1024 * 1024)
-    : (user.premium ? 50 * 1024 * 1024 : 15 * 1024 * 1024);
+  const maxSize = uploadMaxBytes(user, cat);
   if (buffer.length > maxSize) {
     return json(res, 400, { error: `File too large (max ${Math.round(maxSize / 1024 / 1024)}MB)` }, corsHeaders(req.headers.origin));
   }
 
+  return persistUploadedBuffer(req, res, db, user, cat, buffer, contentType);
+}
+
+async function persistUploadedBuffer(req, res, db, user, category, buffer, contentType) {
   const ext = contentType.includes("video") ? ".mp4" : contentType.includes("gif") ? ".gif" : ".jpg";
-  const objectKey = `${category ?? "post"}/${user.id}/${crypto.randomBytes(16).toString("hex")}${ext}`;
-  const proxyUrl = `${config.apiUrl}/api/media/${encodeURIComponent(objectKey)}`;
+  const objectKey = `${category}/${user.id}/${crypto.randomBytes(16).toString("hex")}${ext}`;
+  const proxyUrl = resolveObjectKeyUrl(objectKey);
 
   try {
     const uploaded = await uploadToB2(objectKey, buffer, contentType);
@@ -627,10 +644,40 @@ async function handleStorageUpload(req, res) {
       url: proxyUrl,
     };
     saveDb(db);
-    return json(res, 200, { objectKey, url: proxyUrl, size: uploaded.size, storage: "b2" }, corsHeaders(req.headers.origin));
+    return json(res, 200, { objectKey, url: proxyUrl, size: uploaded.size ?? buffer.length, storage: "b2" }, corsHeaders(req.headers.origin));
   } catch (e) {
     console.error("B2 upload failed:", e.message);
     return json(res, 503, { error: "b2_upload_failed", message: e.message }, corsHeaders(req.headers.origin));
+  }
+}
+
+async function handleStorageUploadBinary(req, res) {
+  const db = loadDb();
+  const user = requireUser(req, db);
+  if (!user) return json(res, 401, { error: "Unauthorized" }, corsHeaders(req.headers.origin));
+  if (!isB2Configured()) {
+    return json(res, 503, { error: "B2 storage required — configure B2 credentials" }, corsHeaders(req.headers.origin));
+  }
+
+  const category = String(req.headers["x-upload-category"] ?? "post");
+  const contentType = String(req.headers["content-type"] ?? "application/octet-stream");
+  const maxSize = uploadMaxBytes(user, category);
+
+  try {
+    const buffer = await readBodyBuffer(req, maxSize + 1024);
+    if (buffer.length > maxSize) {
+      return json(res, 400, { error: `File too large (max ${Math.round(maxSize / 1024 / 1024)}MB)` }, corsHeaders(req.headers.origin));
+    }
+    if (!buffer.length) {
+      return json(res, 400, { error: "Empty upload" }, corsHeaders(req.headers.origin));
+    }
+    return persistUploadedBuffer(req, res, db, user, category, buffer, contentType);
+  } catch (e) {
+    if (e.message === "Body too large") {
+      return json(res, 413, { error: `File too large (max ${Math.round(maxSize / 1024 / 1024)}MB)` }, corsHeaders(req.headers.origin));
+    }
+    console.error("Binary upload error:", e.message);
+    return json(res, 500, { error: "upload_failed" }, corsHeaders(req.headers.origin));
   }
 }
 
@@ -678,14 +725,31 @@ async function handleProfileUpdate(req, res) {
   }
 
   if (body.bio !== undefined) user.bio = String(body.bio).slice(0, 500);
-  if (body.avatar) {
+
+  if (body.avatarObjectKey) {
+    const key = String(body.avatarObjectKey);
+    if (!key.startsWith("avatar/") || !db.mediaObjects?.[key]) {
+      return json(res, 400, { error: "Invalid avatar upload" }, corsHeaders(req.headers.origin));
+    }
+    user.avatar = resolveObjectKeyUrl(key);
+  } else if (body.avatar) {
     const av = String(body.avatar);
     if (av.startsWith("blob:") || av.startsWith("data:")) {
       return json(res, 400, { error: "Upload avatar via storage API" }, corsHeaders(req.headers.origin));
     }
     user.avatar = av;
   }
-  if (body.cover !== undefined) {
+
+  if (body.coverObjectKey !== undefined) {
+    const key = body.coverObjectKey ? String(body.coverObjectKey) : "";
+    if (!key) {
+      user.cover = undefined;
+    } else if (key.startsWith("cover/") && db.mediaObjects?.[key]) {
+      user.cover = resolveObjectKeyUrl(key);
+    } else {
+      return json(res, 400, { error: "Invalid cover upload" }, corsHeaders(req.headers.origin));
+    }
+  } else if (body.cover !== undefined) {
     const cv = body.cover ? String(body.cover) : "";
     if (cv && (cv.startsWith("blob:") || cv.startsWith("data:"))) {
       return json(res, 400, { error: "Upload cover via storage API" }, corsHeaders(req.headers.origin));
@@ -1093,6 +1157,7 @@ const server = http.createServer(async (req, res) => {
     if (url === "/api/profile/update" && req.method === "POST") return await handleProfileUpdate(req, res);
     if (url === "/api/telegram/webhook" && req.method === "POST") return await handleTelegramWebhook(req, res);
     if (url === "/api/storage/upload" && req.method === "POST") return await handleStorageUpload(req, res);
+    if (url === "/api/storage/upload/binary" && req.method === "POST") return await handleStorageUploadBinary(req, res);
     if (url === "/api/wallet" && req.method === "GET") return handleWallet(req, res);
     if (url === "/api/withdrawals/request" && req.method === "POST") return await handleWithdrawalRequest(req, res);
 

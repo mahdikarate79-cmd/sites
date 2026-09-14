@@ -11,6 +11,7 @@ import { usePrototype } from "@/lib/hooks/usePrototype";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { updateProfile as updateProfileApi } from "@/lib/auth/client";
 import { uploadMedia } from "@/lib/api/storage";
+import { UploadProgressOverlay } from "@/components/ui/UploadProgressOverlay";
 import { validateUsername } from "@/lib/utils/username";
 import { resolveMediaUrl } from "@/lib/utils/mediaUrl";
 import { cn } from "@/lib/utils/cn";
@@ -90,6 +91,8 @@ export function EditProfileContent() {
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadLabel, setUploadLabel] = useState("");
 
   const years = useMemo(() => {
     const currentYear = new Date().getFullYear();
@@ -177,9 +180,10 @@ export function EditProfileContent() {
       cover: cover || undefined,
     };
     setSaving(true);
+    setUploadProgress(0);
     try {
-      let avatarUrl = avatar;
-      let coverUrl = cover || undefined;
+      let avatarObjectKey: string | undefined;
+      let coverObjectKey: string | undefined | null;
       if (isAuthenticated) {
         if (avatarFile || isLocalMediaUrl(avatar)) {
           if (!avatarFile) {
@@ -187,30 +191,42 @@ export function EditProfileContent() {
             setSaving(false);
             return;
           }
-          const up = await uploadMedia(avatarFile, "avatar", { maxImageDim: 512 });
-          avatarUrl = up.media.url ?? avatarUrl;
+          setUploadLabel("Uploading avatar…");
+          const up = await uploadMedia(avatarFile, "avatar", {
+            maxImageDim: 256,
+            onProgress: setUploadProgress,
+          });
+          avatarObjectKey = up.objectKey;
         }
-        if (coverFile || (cover && isLocalMediaUrl(cover))) {
+        if (coverFile || isLocalMediaUrl(cover)) {
           if (!coverFile) {
             showToast("Please re-select your cover photo");
             setSaving(false);
             return;
           }
-          const up = await uploadMedia(coverFile, "cover", { maxImageDim: 1600 });
-          coverUrl = up.media.url ?? coverUrl;
+          setUploadLabel("Uploading cover…");
+          setUploadProgress(0);
+          const up = await uploadMedia(coverFile, "cover", {
+            maxImageDim: 960,
+            onProgress: setUploadProgress,
+          });
+          coverObjectKey = up.objectKey;
         }
       }
 
       if (isAuthenticated) {
-        const updated = await updateProfileApi({
+        setUploadLabel("Saving profile…");
+        setUploadProgress(100);
+        const apiPayload: Parameters<typeof updateProfileApi>[0] = {
           displayName: payload.displayName,
           username: payload.username,
           bio: payload.bio,
-          avatar: avatarUrl,
-          cover: coverUrl,
           age: payload.age,
           orientation: payload.orientation,
-        });
+        };
+        if (avatarObjectKey) apiPayload.avatarObjectKey = avatarObjectKey;
+        if (coverObjectKey !== undefined) apiPayload.coverObjectKey = coverObjectKey;
+        const updated = await updateProfileApi(apiPayload);
         updateProfile({
           displayName: updated.displayName,
           username: updated.username ?? undefined,
@@ -222,7 +238,7 @@ export function EditProfileContent() {
         });
         await refresh();
       } else {
-        updateProfile({ ...payload, avatar: avatarUrl, cover: coverUrl });
+        updateProfile({ ...payload });
       }
       setAvatarFile(null);
       setCoverFile(null);
@@ -231,6 +247,8 @@ export function EditProfileContent() {
       showToast(e instanceof Error ? e.message : "Could not save to server");
     } finally {
       setSaving(false);
+      setUploadProgress(0);
+      setUploadLabel("");
     }
   };
 
@@ -265,6 +283,7 @@ export function EditProfileContent() {
 
   return (
     <div className="min-h-dvh pb-8">
+      <UploadProgressOverlay open={saving && uploadLabel.length > 0} progress={uploadProgress} label={uploadLabel} />
       <div className="sticky top-0 z-30 bg-bg/90 backdrop-blur-sm border-b border-border safe-top">
         <div className="flex items-center justify-between gap-3 px-4 h-14 max-w-2xl mx-auto">
           <div className="flex items-center gap-3">

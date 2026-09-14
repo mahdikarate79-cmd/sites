@@ -20,10 +20,13 @@ export function createReport(db, reporterId, body) {
   const id = `rp_${crypto.randomBytes(6).toString("hex")}`;
   const post = body.postId ? db.posts?.[body.postId] : null;
   const reportedUser = body.userId ? findUserById(db, body.userId) : null;
+  const reporter = findUserById(db, reporterId);
   const postAuthor = post ? findUserById(db, post.authorId) : null;
   const report = {
     id,
     reporterId,
+    reporterUsername: reporter?.username ?? null,
+    reporterDisplayName: reporter?.displayName ?? null,
     postId: body.postId ?? null,
     userId: body.userId ?? null,
     category: String(body.category ?? ""),
@@ -36,6 +39,7 @@ export function createReport(db, reporterId, body) {
     postViews: post ? (post.views ?? 0) + (post.fakeViews ?? 0) : 0,
     postShares: post?.shares ?? 0,
     postAuthor: postAuthor ? publicUser(postAuthor) : null,
+    reportedUser: reportedUser ? publicUser(reportedUser) : null,
     reportedUsername: reportedUser?.username ?? null,
     status: "pending",
     createdAt: new Date().toISOString(),
@@ -47,8 +51,12 @@ export function createReport(db, reporterId, body) {
 function enrichReport(db, report) {
   const post = report.postId ? db.posts?.[report.postId] : null;
   const postAuthor = post ? findUserById(db, post.authorId) : null;
+  const reporter = findUserById(db, report.reporterId);
+  const reportedUser = report.userId ? findUserById(db, report.userId) : null;
   return {
     ...report,
+    reporterUsername: reporter?.username ?? report.reporterUsername ?? null,
+    reporterDisplayName: reporter?.displayName ?? report.reporterDisplayName ?? null,
     postContent: post?.content ?? report.postContent ?? null,
     postMedia: post?.media?.map(mediaUrl) ?? report.postMedia ?? [],
     postCreatedAt: post?.createdAt ?? report.postCreatedAt ?? null,
@@ -56,6 +64,8 @@ function enrichReport(db, report) {
     postViews: post ? (post.views ?? 0) + (post.fakeViews ?? 0) : (report.postViews ?? 0),
     postShares: post?.shares ?? report.postShares ?? 0,
     postAuthor: postAuthor ? publicUser(postAuthor) : (report.postAuthor ?? null),
+    reportedUser: reportedUser ? publicUser(reportedUser) : (report.reportedUser ?? null),
+    reportedUsername: reportedUser?.username ?? report.reportedUsername ?? null,
   };
 }
 

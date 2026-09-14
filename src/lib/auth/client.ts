@@ -64,6 +64,8 @@ export async function updateProfile(data: {
   bio?: string;
   avatar?: string;
   cover?: string;
+  avatarObjectKey?: string;
+  coverObjectKey?: string | null;
   age?: number;
   orientation?: string;
 }): Promise<AuthUser> {

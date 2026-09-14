@@ -93,7 +93,7 @@ export function PostMenu({ post, onHide }: PostMenuProps) {
         </div>
       </BottomSheet>
 
-      <ReportModal open={reportOpen} onClose={() => setReportOpen(false)} />
+      <ReportModal open={reportOpen} onClose={() => setReportOpen(false)} postId={post.id} userId={post.author.id} />
     </>
   );
 }
