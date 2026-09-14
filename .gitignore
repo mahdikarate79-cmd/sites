@@ -38,6 +38,7 @@ sheytoni-frontend-production.zip
 sheytoni-backend-production.zip
 dist-frontend/
 dist-backend/
+/data/
 
 # vercel
 .vercel

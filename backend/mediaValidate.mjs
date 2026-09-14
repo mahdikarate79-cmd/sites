@@ -28,7 +28,7 @@ export function validateMediaBuffer(buffer, declaredType, category) {
   if (!b.length) return { ok: false, error: "Empty upload" };
   const sniffed = sniffMediaType(b, declaredType);
   if (!sniffed) {
-    return { ok: false, error: "The image could not be decoded" };
+    return { ok: false, error: "Unsupported or corrupted image file" };
   }
   const isVideo = sniffed.contentType.startsWith("video/");
   const isImage = sniffed.contentType.startsWith("image/");

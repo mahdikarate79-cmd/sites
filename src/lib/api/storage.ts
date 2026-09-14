@@ -134,6 +134,13 @@ async function prepareUploadFile(
     const inferred = inferMimeType(file);
     if (inferred) prepared = new File([file], file.name, { type: inferred });
   }
+  // Post/chat: upload original bytes — re-encoding causes decode failures on some images
+  if (category === "post" || category === "chat") {
+    if (prepared.type.startsWith("video/") || /\.(mov|m4v|mp4|webm)$/i.test(file.name)) {
+      return normalizeVideoMime(prepared);
+    }
+    return prepared;
+  }
   if (prepared.type.startsWith("image/")) {
     const maxDim = options?.maxImageDim ?? IMAGE_DIMS[category] ?? 1600;
     const quality = category === "avatar" ? 0.8 : category === "cover" ? 0.78 : 0.82;
@@ -269,7 +276,9 @@ export async function uploadMedia(
   const validation = validateUpload(prepared, category, options?.isPremium);
   if (!validation.valid) throw new Error(validation.error);
 
-  const result = await uploadWithFallback(prepared, category, options?.onProgress);
+  const uploadFile =
+    prepared.size > 0 ? prepared : new File([file], file.name, { type: file.type || prepared.type || "application/octet-stream" });
+  const result = await uploadWithFallback(uploadFile, category, options?.onProgress);
   return {
     objectKey: result.objectKey,
     media: {

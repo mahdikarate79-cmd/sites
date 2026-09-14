@@ -38,6 +38,12 @@ Options -Indexes
   # Dynamic chat threads → placeholder shell (client reads pathname)
   RewriteRule ^chat/[^/]+/?$ chat/placeholder.html [L]
 
+  # Dynamic post pages → placeholder shell (client reads pathname)
+  RewriteRule ^post/[^/]+/?$ post/placeholder.html [L]
+
+  # SEO sitemap hosted on API
+  RewriteRule ^sitemap\.xml$ https://api.venify.xyz/sitemap.xml [R=302,L]
+
   # /route without extension → route.html
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME}.html -f

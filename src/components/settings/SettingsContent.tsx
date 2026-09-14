@@ -26,6 +26,7 @@ import { formatCount } from "@/lib/utils/format";
 import { useTheme, type Theme } from "@/lib/hooks/useTheme";
 import { cn } from "@/lib/utils/cn";
 import { DeleteAccountModal } from "./DeleteAccountModal";
+import { SHEYTONI_BUILD } from "@/lib/version";
 
 const THEME_OPTIONS: { value: Theme; label: string; icon: typeof Monitor }[] = [
   { value: "system", label: "System", icon: Monitor },
@@ -164,6 +165,8 @@ export function SettingsContent() {
             Delete account
           </button>
         )}
+
+        <p className="text-center text-xs text-text-muted pt-2">Build {SHEYTONI_BUILD}</p>
       </div>
 
       <DeleteAccountModal

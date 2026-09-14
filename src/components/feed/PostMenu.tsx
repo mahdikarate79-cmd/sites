@@ -16,23 +16,25 @@ import { deletePostApi } from "@/lib/api/social";
 
 interface PostMenuProps {
   post: Post;
+  isOwner?: boolean;
   onHide?: () => void;
   onDeleted?: () => void;
   onUpdated?: (post: Post) => void;
 }
 
-export function PostMenu({ post, onHide, onDeleted, onUpdated }: PostMenuProps) {
+export function PostMenu({ post, isOwner: isOwnerProp, onHide, onDeleted, onUpdated }: PostMenuProps) {
   const [open, setOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [burst, setBurst] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const { markInterested, markNotInterested, blockUser, hidePost, toggleBookmark, isBookmarked } = usePrototype();
-  const { user: authUser } = useAuth();
+  const { user: authUser, isAuthenticated } = useAuth();
+  const { getCurrentUser } = usePrototype();
   const { showToast } = useToast();
 
-  const ownerId = authUser?.id;
-  const isOwner = !!ownerId && post.author.id === ownerId;
+  const viewerId = authUser?.id ?? (isAuthenticated ? getCurrentUser().id : null);
+  const isOwner = isOwnerProp ?? (!!viewerId && viewerId !== "guest" && post.author.id === viewerId);
 
   const copyLink = async () => {
     await navigator.clipboard.writeText(getPostShareUrl(post.id));

@@ -126,7 +126,7 @@ function corsHeaders(origin) {
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Credentials": "true",
-    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Upload-Category",
     Vary: "Origin",
   };
@@ -994,20 +994,24 @@ async function handleSocial(req, res, url) {
     return true;
   }
 
-  if (postMatch && req.method === "DELETE") {
+  const postDeleteMatch = url.match(/^\/api\/posts\/([^/]+)\/delete$/);
+  if ((postMatch && req.method === "DELETE") || (postDeleteMatch && req.method === "POST")) {
     if (!user) { json(res, 401, { error: "Unauthorized" }, corsHeaders(origin)); return true; }
-    const result = await deleteUserPost(db, decodeURIComponent(postMatch[1]), user.id);
+    const pid = decodeURIComponent((postDeleteMatch ?? postMatch)[1]);
+    const result = await deleteUserPost(db, pid, user.id);
     if (!result.ok) json(res, result.error === "Forbidden" ? 403 : 404, { error: result.error }, corsHeaders(origin));
     else { saveDb(db); json(res, 200, { ok: true }, corsHeaders(origin)); }
     return true;
   }
 
-  if (postMatch && req.method === "PATCH") {
+  const postUpdateMatch = url.match(/^\/api\/posts\/([^/]+)\/update$/);
+  if ((postMatch && req.method === "PATCH") || (postUpdateMatch && req.method === "POST")) {
     if (!user) { json(res, 401, { error: "Unauthorized" }, corsHeaders(origin)); return true; }
     const raw = await readBody(req);
     let body = {};
     try { body = JSON.parse(raw || "{}"); } catch { /* */ }
-    const result = updateUserPost(db, decodeURIComponent(postMatch[1]), user.id, body);
+    const pid = decodeURIComponent((postUpdateMatch ?? postMatch)[1]);
+    const result = updateUserPost(db, pid, user.id, body);
     if (!result.ok) json(res, result.error === "Forbidden" ? 403 : 404, { error: result.error }, corsHeaders(origin));
     else { saveDb(db); json(res, 200, { post: result.post }, corsHeaders(origin)); }
     return true;

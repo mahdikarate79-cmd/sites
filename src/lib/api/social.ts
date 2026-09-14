@@ -66,15 +66,15 @@ export async function fetchPost(postId: string): Promise<Post> {
 }
 
 export async function deletePostApi(postId: string): Promise<void> {
-  await apiFetch(`/api/posts/${encodeURIComponent(postId)}`, { method: "DELETE" });
+  await apiFetch(`/api/posts/${encodeURIComponent(postId)}/delete`, { method: "POST" });
 }
 
 export async function updatePostApi(
   postId: string,
   body: { content?: string; tags?: string[]; privacy?: Post["privacy"] }
 ): Promise<Post> {
-  const data = await apiFetch<{ post: Post }>(`/api/posts/${encodeURIComponent(postId)}`, {
-    method: "PATCH",
+  const data = await apiFetch<{ post: Post }>(`/api/posts/${encodeURIComponent(postId)}/update`, {
+    method: "POST",
     body: JSON.stringify(body),
   });
   return data.post;

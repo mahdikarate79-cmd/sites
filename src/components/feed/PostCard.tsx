@@ -127,7 +127,7 @@ export function PostCard({ post, onHide, allPosts }: PostCardProps) {
                   <FollowButton userId={post.author.id} size="sm" className="ml-1" />
                 )}
               </div>
-              <PostMenu post={post} onHide={onHide} />
+              <PostMenu post={post} isOwner={isAuthor} onHide={onHide} />
             </div>
 
             {post.content && (
