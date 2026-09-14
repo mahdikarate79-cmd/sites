@@ -74,6 +74,7 @@ export interface Donator {
 export interface ChatMediaItem {
   type: "image" | "video" | "gif";
   url: string;
+  objectKey?: string;
   rotation?: number;
 }
 
@@ -93,9 +94,11 @@ export interface Comment {
   postId: string;
   authorId: string;
   authorName: string;
+  authorUsername?: string | null;
   authorAvatar: string;
   authorVerified?: boolean;
   authorPremium?: boolean;
+  authorDeleted?: boolean;
   content: string;
   createdAt: string;
   sendStatus?: SendStatus;
@@ -129,6 +132,7 @@ export interface ChatMessage {
   temporary?: TemporaryMode;
   viewed?: boolean;
   expiresAt?: number;
+  expired?: boolean;
   forwardedFrom?: ForwardInfo;
 }
 
@@ -150,6 +154,8 @@ export interface GalleryItem {
   type: "image" | "video" | "gif";
   url: string;
   thumbnail?: string;
+  sourceFile?: File;
+  objectKey?: string;
 }
 
 export interface MediaObject {
@@ -191,6 +197,9 @@ export interface TransactionRecord {
   hash?: string;
   status?: "completed" | "pending";
   postId?: string;
+  donorId?: string | null;
+  donorName?: string | null;
+  donorUsername?: string | null;
 }
 
 export type NotificationType = "follow" | "like" | "comment" | "donation";

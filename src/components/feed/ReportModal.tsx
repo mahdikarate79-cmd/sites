@@ -3,10 +3,14 @@
 import { useState } from "react";
 import { ArrowLeft, X, Shield } from "lucide-react";
 import { BottomSheet } from "@/components/ui/BottomSheet";
+import { submitReport } from "@/lib/api/reports";
+import { useToast } from "@/components/ui/ToastProvider";
 
 interface ReportModalProps {
   open: boolean;
   onClose: () => void;
+  postId?: string;
+  userId?: string;
 }
 
 const CATEGORIES: Record<string, string[]> = {
@@ -20,11 +24,13 @@ const CATEGORIES: Record<string, string[]> = {
 
 type Step = "main" | "sub" | "detail" | "success";
 
-export function ReportModal({ open, onClose }: ReportModalProps) {
+export function ReportModal({ open, onClose, postId, userId }: ReportModalProps) {
   const [step, setStep] = useState<Step>("main");
   const [category, setCategory] = useState("");
   const [subcategory, setSubcategory] = useState("");
   const [detail, setDetail] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const { showToast } = useToast();
 
   const reset = () => {
     setStep("main");
@@ -44,9 +50,23 @@ export function ReportModal({ open, onClose }: ReportModalProps) {
     else handleClose();
   };
 
-  const handleSubmit = () => {
-    setStep("success");
-    setTimeout(() => handleClose(), 2200);
+  const handleSubmit = async () => {
+    setSubmitting(true);
+    try {
+      await submitReport({
+        postId,
+        userId,
+        category,
+        subcategory,
+        detail,
+      });
+      setStep("success");
+      setTimeout(() => handleClose(), 2200);
+    } catch {
+      showToast("Could not submit report");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const title =
@@ -135,9 +155,10 @@ export function ReportModal({ open, onClose }: ReportModalProps) {
             />
             <button
               onClick={handleSubmit}
-              className="w-full mt-4 py-3 rounded-xl bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] text-white font-medium text-sm"
+              disabled={submitting}
+              className="w-full mt-4 py-3 rounded-xl bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] text-white font-medium text-sm disabled:opacity-50"
             >
-              Submit report
+              {submitting ? "Submitting…" : "Submit report"}
             </button>
           </div>
         )}

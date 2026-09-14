@@ -3,6 +3,7 @@
 import { TelegramStarIcon } from "@/components/ui/TelegramStarIcon";
 import { formatStars } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
+import { MIN_STARS_PAYMENT } from "@/lib/constants/stars";
 
 interface StarsSliderProps {
   value: number;
@@ -14,7 +15,7 @@ interface StarsSliderProps {
   wide?: boolean;
 }
 
-export function StarsSlider({ value, min = 1, max = 10000, topThreshold = 0, onChange, compact, wide }: StarsSliderProps) {
+export function StarsSlider({ value, min = MIN_STARS_PAYMENT, max = 10000, topThreshold = 0, onChange, compact, wide }: StarsSliderProps) {
   const percent = ((value - min) / (max - min)) * 100;
 
   return (

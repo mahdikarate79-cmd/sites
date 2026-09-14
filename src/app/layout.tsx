@@ -6,6 +6,8 @@ import { AuthProvider } from "@/lib/hooks/useAuth";
 import { PrototypeProvider } from "@/lib/hooks/usePrototype";
 import { TelegramGateProvider } from "@/lib/hooks/useTelegramGate";
 import { ToastProvider } from "@/components/ui/ToastProvider";
+import { DeletedAccountGate } from "@/components/auth/DeletedAccountGate";
+import { BannedAccountGate } from "@/components/auth/BannedAccountGate";
 import "./globals.css";
 
 const inter = Inter({
@@ -45,7 +47,11 @@ export default function RootLayout({
           <AuthProvider>
             <PrototypeProvider>
               <TelegramGateProvider>
-                <ToastProvider>{children}</ToastProvider>
+                <ToastProvider>
+                  <BannedAccountGate>
+                    <DeletedAccountGate>{children}</DeletedAccountGate>
+                  </BannedAccountGate>
+                </ToastProvider>
               </TelegramGateProvider>
             </PrototypeProvider>
           </AuthProvider>
