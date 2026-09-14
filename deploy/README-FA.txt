@@ -17,7 +17,8 @@
 
 3) سایت را باز کنید: https://x.venify.xyz
 
-فایل .env از قبل پر شده — نیازی به تنظیم دستی نیست.
+برای Deploy جداگانه Frontend و Backend، فایل DEPLOY-CPANEL.md را ببینید.
+ZIPهای آماده: sheytoni-frontend-production.zip و sheytoni-backend-production.zip
 
 دیتابیس: backend/data/sheytoni.db (حذف نکنید)
 

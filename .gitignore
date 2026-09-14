@@ -33,8 +33,12 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 !.env.example
-!deploy/.env
 sheytoni-deploy.zip
+sheytoni-frontend-production.zip
+sheytoni-backend-production.zip
+dist-frontend/
+dist-backend/
+/data/
 
 # vercel
 .vercel

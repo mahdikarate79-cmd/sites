@@ -42,6 +42,7 @@ function fileToGalleryItem(file: File, index: number): GalleryItem {
     type: isVideo ? "video" : isGif ? "gif" : "image",
     url,
     thumbnail: isVideo ? url : undefined,
+    sourceFile: file,
   };
 }
 

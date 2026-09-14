@@ -6,6 +6,10 @@ import { useRouter } from "next/navigation";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Avatar } from "@/components/ui/Avatar";
 import { usePrototype } from "@/lib/hooks/usePrototype";
+import { createPostApi } from "@/lib/api/social";
+import { uploadMedia } from "@/lib/api/storage";
+import { UploadProgressOverlay } from "@/components/ui/UploadProgressOverlay";
+import { captureVideoThumbnail } from "@/lib/utils/videoThumbnail";
 import { useToast } from "@/components/ui/ToastProvider";
 import { Post, PostMedia } from "@/lib/types";
 import {
@@ -31,6 +35,7 @@ export default function NewPostPage() {
   const { getCurrentUser, addPost } = usePrototype();
   const { showToast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
+  const previewUrlRef = useRef<string | null>(null);
 
   const user = getCurrentUser();
   const uploadLimit = getUploadLimitBytes(!!user.premium);
@@ -38,6 +43,7 @@ export default function NewPostPage() {
 
   const [content, setContent] = useState("");
   const [media, setMedia] = useState<PostMedia | null>(null);
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [mediaPreview, setMediaPreview] = useState<string | null>(null);
   const [tagInput, setTagInput] = useState("");
   const [tags, setTags] = useState<string[]>([]);
@@ -48,6 +54,8 @@ export default function NewPostPage() {
   const [followingOnly, setFollowingOnly] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [posting, setPosting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadLabel, setUploadLabel] = useState("");
 
   const canPost = content.trim().length > 0 || !!media;
   const tagsValid = tags.length >= 3;
@@ -61,14 +69,20 @@ export default function NewPostPage() {
       );
       return;
     }
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
     const url = URL.createObjectURL(file);
+    previewUrlRef.current = url;
     const type = file.type.startsWith("video/") ? "video" : "image";
     setMediaPreview(url);
+    setMediaFile(file);
     setMedia({
       type,
       url,
       thumbnail: type === "image" ? url : undefined,
-      objectKey: `posts/user/${Date.now()}_${file.name}`,
+      objectKey: "",
     });
   };
 
@@ -90,31 +104,60 @@ export default function NewPostPage() {
     }
 
     setPosting(true);
-    const post: Post = {
-      id: `up_${Date.now()}`,
-      author: user,
-      content: content.trim(),
-      media: media ? [media] : undefined,
-      tags,
-      paidStars: paidEnabled && media ? paidStars : undefined,
-      privacy: noUsername || privacyEnabled
-        ? { enabled: true, followersOnly: noUsername ? true : followersOnly, followingOnly: noUsername ? true : followingOnly }
-        : undefined,
-      createdAt: new Date().toISOString(),
-      likes: 0,
-      comments: 0,
-      views: 0,
-      shares: 0,
-      stars: 0,
-    };
-
-    addPost(post);
-    showToast("Post published");
-    router.push("/");
+    setUploadProgress(0);
+    try {
+      let uploadedMedia: PostMedia[] = [];
+      if (media && mediaFile) {
+        setUploadLabel(media.type === "video" ? "Uploading video…" : "Uploading media…");
+        const uploaded = await uploadMedia(mediaFile, "post", {
+          isPremium: !!user.premium,
+          onProgress: setUploadProgress,
+        });
+        let thumbnailUrl = media.type === "image" ? uploaded.media.url : undefined;
+        if (media.type === "video") {
+          try {
+            setUploadLabel("Creating thumbnail…");
+            const thumbBlob = await captureVideoThumbnail(mediaFile);
+            const thumbFile = new File([thumbBlob], "thumb.jpg", { type: "image/jpeg" });
+            const thumbUp = await uploadMedia(thumbFile, "post", { maxImageDim: 480, isPremium: !!user.premium });
+            thumbnailUrl = thumbUp.media.url;
+          } catch {
+            thumbnailUrl = undefined;
+          }
+        }
+        uploadedMedia = [{
+          type: media.type,
+          url: uploaded.media.url,
+          objectKey: uploaded.objectKey,
+          thumbnail: thumbnailUrl,
+        }];
+      }
+      setUploadLabel("Publishing post…");
+      setUploadProgress(100);
+      const post = await createPostApi({
+        content: content.trim(),
+        media: uploadedMedia,
+        tags,
+        paidStars: paidEnabled && media ? paidStars : undefined,
+        privacy: noUsername || privacyEnabled
+          ? { enabled: true, followersOnly: noUsername ? true : followersOnly, followingOnly: noUsername ? true : followingOnly }
+          : undefined,
+      });
+      addPost(post);
+      showToast("Post published");
+      router.push("/");
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Failed to publish post");
+    } finally {
+      setPosting(false);
+      setUploadProgress(0);
+      setUploadLabel("");
+    }
   };
 
   return (
     <MiniAppGuard>
+    <UploadProgressOverlay open={posting && !!uploadLabel} progress={uploadProgress} label={uploadLabel} />
     <AppLayout title="New Post">
       <div className="px-4 py-4 pb-8 max-w-lg mx-auto">
         <div className="flex gap-3 mb-4">
@@ -137,7 +180,15 @@ export default function NewPostPage() {
             )}
             <button
               type="button"
-              onClick={() => { setMedia(null); setMediaPreview(null); }}
+              onClick={() => {
+                if (previewUrlRef.current) {
+                  URL.revokeObjectURL(previewUrlRef.current);
+                  previewUrlRef.current = null;
+                }
+                setMedia(null);
+                setMediaFile(null);
+                setMediaPreview(null);
+              }}
               className="absolute top-2 right-2 p-1.5 rounded-full glass-nav"
               aria-label="Remove media"
             >
@@ -230,7 +281,7 @@ export default function NewPostPage() {
                   </button>
                   {paidEnabled && (
                     <div className="mt-3 px-1">
-                      <StarsSlider value={paidStars} min={1} max={25000} onChange={setPaidStars} compact />
+                      <StarsSlider value={paidStars} min={5} max={25000} onChange={setPaidStars} compact />
                     </div>
                   )}
                 </div>

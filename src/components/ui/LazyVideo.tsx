@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { Play } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
+import { resolveMediaUrl } from "@/lib/utils/mediaUrl";
 
 interface LazyVideoProps {
   src: string;
@@ -16,7 +17,9 @@ export function LazyVideo({ src, thumbnail, className, onPlay, blurred }: LazyVi
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
   const [thumbFailed, setThumbFailed] = useState(false);
-  const poster = thumbnail && !thumbFailed ? thumbnail : undefined;
+  const resolvedThumb = thumbnail ? resolveMediaUrl(thumbnail) || thumbnail : undefined;
+  const resolvedSrc = resolveMediaUrl(src) || src;
+  const poster = resolvedThumb && !thumbFailed ? resolvedThumb : undefined;
 
   const handleClick = () => {
     if (onPlay) {
@@ -56,7 +59,7 @@ export function LazyVideo({ src, thumbnail, className, onPlay, blurred }: LazyVi
       )}
       <video
         ref={videoRef}
-        src={playing ? src : undefined}
+        src={playing ? resolvedSrc : undefined}
         poster={poster}
         className={cn("w-full h-full object-contain bg-black", !playing && "hidden")}
         controls={playing}
