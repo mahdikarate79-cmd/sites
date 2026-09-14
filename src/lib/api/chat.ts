@@ -88,6 +88,13 @@ export async function sendAlbumMessage(
   });
 }
 
+export async function expireChatMessage(chatId: string, messageId: string): Promise<void> {
+  await apiFetch(
+    `/api/chats/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(messageId)}/expire`,
+    { method: "POST" },
+  );
+}
+
 export async function forwardMessage(
   targetChatId: string,
   payload: {

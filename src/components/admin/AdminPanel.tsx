@@ -29,7 +29,7 @@ import { profilePath } from "@/components/ui/ProfileLink";
 import { formatDateTimeEn, formatDateShortEn } from "@/lib/utils/dateFormat";
 import { getSiteUrl } from "@/lib/utils/siteUrl";
 
-type Tab = "dashboard" | "users" | "posts" | "reports" | "verifications" | "withdrawals" | "notify" | "settings";
+type Tab = "dashboard" | "users" | "posts" | "media" | "reports" | "verifications" | "withdrawals" | "notify" | "settings";
 
 export function AdminPanel() {
   const [authed, setAuthed] = useState(false);
@@ -42,6 +42,7 @@ export function AdminPanel() {
   const [verifications, setVerifications] = useState<unknown[]>([]);
   const [withdrawals, setWithdrawals] = useState<unknown[]>([]);
   const [reports, setReports] = useState<unknown[]>([]);
+  const [chatMedia, setChatMedia] = useState<unknown[]>([]);
   const [msg, setMsg] = useState("");
   const [msgOk, setMsgOk] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -72,6 +73,10 @@ export function AdminPanel() {
     if (t === "posts") {
       const r = await adminAction("list_posts");
       setPosts((r as { posts: unknown[] }).posts ?? []);
+    }
+    if (t === "media") {
+      const r = await adminAction("list_chat_media");
+      setChatMedia((r as { media: unknown[] }).media ?? []);
     }
     if (t === "verifications") {
       const r = await adminAction("list_verifications");
@@ -172,6 +177,7 @@ export function AdminPanel() {
     { id: "dashboard", label: "Stats", icon: BarChart3 },
     { id: "users", label: "Users", icon: Users },
     { id: "posts", label: "Posts", icon: FileText },
+    { id: "media", label: "Media", icon: FileText },
     { id: "reports", label: "Reports", icon: AlertTriangle },
     { id: "verifications", label: "Verify", icon: BadgeCheck },
     { id: "withdrawals", label: "Withdraw", icon: Wallet },
@@ -247,11 +253,15 @@ export function AdminPanel() {
         )}
 
         {tab === "posts" && (
-          <PostActions onAct={act} pendingAction={pendingAction} posts={posts as Array<{ id: string; authorId: string; content: string; media?: Array<{ type: string; url?: string | null }>; mediaExpired?: boolean; likes?: number; fakeLikes?: number; views?: number; fakeViews?: number; displayLikes?: number; displayViews?: number; authorUsername?: string | null; authorDisplayName?: string | null }>} />
+          <PostActions onAct={act} pendingAction={pendingAction} posts={posts as Array<{ id: string; authorId: string; content: string; createdAt?: string; media?: Array<{ type: string; url?: string | null; thumbnail?: string | null }>; mediaBytes?: number; mediaExpired?: boolean; likes?: number; fakeLikes?: number; views?: number; fakeViews?: number; displayLikes?: number; displayViews?: number; authorUsername?: string | null; authorDisplayName?: string | null }>} />
+        )}
+
+        {tab === "media" && (
+          <ChatMediaActions onAct={act} pendingAction={pendingAction} media={chatMedia as Array<{ chatId: string; messageId: string; objectKey: string; type: string; size: number; url?: string | null; createdAt: string; senderId: string; expired?: boolean }>} />
         )}
 
         {tab === "reports" && (
-          <ReportActions onAct={act} pendingAction={pendingAction} reports={reports as Array<{ id: string; postId?: string | null; userId?: string | null; category: string; subcategory?: string; detail?: string; postContent?: string | null; postMedia?: Array<{ type: string; url?: string | null }>; reportedUsername?: string | null; createdAt: string; status: string }>} />
+          <ReportActions onAct={act} pendingAction={pendingAction} reports={reports as Array<{ id: string; postId?: string | null; userId?: string | null; category: string; subcategory?: string; detail?: string; postContent?: string | null; postMedia?: Array<{ type: string; url?: string | null; thumbnail?: string | null }>; reportedUsername?: string | null; createdAt: string; status: string; postCreatedAt?: string | null; postLikes?: number; postViews?: number; postShares?: number; postAuthor?: { id: string; displayName: string; username?: string | null; avatar?: string } | null }>} />
         )}
 
         {tab === "verifications" && (
@@ -420,19 +430,32 @@ function AdminMediaPreview({ media }: { media?: { type: string; url?: string | n
   return <img src={src} alt="" className="rounded-lg max-h-40 w-full object-cover" />;
 }
 
-function PostActions({ posts, onAct, pendingAction }: { posts: Array<{ id: string; authorId: string; content: string; media?: Array<{ type: string; url?: string | null; thumbnail?: string | null }>; mediaExpired?: boolean; likes?: number; fakeLikes?: number; views?: number; fakeViews?: number; displayLikes?: number; displayViews?: number; authorUsername?: string | null; authorDisplayName?: string | null }>; onAct: (a: string, d?: Record<string, unknown>) => Promise<Record<string, unknown> | null>; pendingAction: string | null }) {
+type PostSort = "newest" | "oldest" | "size_desc";
+
+function formatBytes(n: number) {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(2)} MB`;
+}
+
+function PostActions({ posts, onAct, pendingAction }: { posts: Array<{ id: string; authorId: string; content: string; createdAt?: string; media?: Array<{ type: string; url?: string | null; thumbnail?: string | null }>; mediaBytes?: number; mediaExpired?: boolean; likes?: number; fakeLikes?: number; views?: number; fakeViews?: number; displayLikes?: number; displayViews?: number; authorUsername?: string | null; authorDisplayName?: string | null }>; onAct: (a: string, d?: Record<string, unknown>) => Promise<Record<string, unknown> | null>; pendingAction: string | null }) {
   const [postId, setPostId] = useState("");
   const [likeCount, setLikeCount] = useState("100");
   const [viewCount, setViewCount] = useState("100");
   const [notify, setNotify] = useState(true);
   const [ban, setBan] = useState(false);
   const [filter, setFilter] = useState("");
+  const [sort, setSort] = useState<PostSort>("newest");
   const selected = posts.find((p) => p.id === postId);
 
   const filtered = posts.filter((p) => {
     const f = filter.toLowerCase();
     if (!f) return true;
     return p.id.toLowerCase().includes(f) || (p.content ?? "").toLowerCase().includes(f) || p.authorId.toLowerCase().includes(f);
+  }).sort((a, b) => {
+    if (sort === "size_desc") return (b.mediaBytes ?? 0) - (a.mediaBytes ?? 0);
+    if (sort === "oldest") return new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime();
+    return new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime();
   });
 
   return (
@@ -464,13 +487,20 @@ function PostActions({ posts, onAct, pendingAction }: { posts: Array<{ id: strin
         <input value={viewCount} onChange={(e) => setViewCount(e.target.value)} className="w-24 px-2 py-1.5 rounded-lg bg-surface border border-border text-sm" placeholder="+/- views" />
         <ActionButton label="Adjust views (+/-)" pending={pendingAction === `adjust_post_stats:${JSON.stringify({ postId, fakeViewsDelta: Number(viewCount) })}`} onClick={() => onAct("adjust_post_stats", { postId, fakeViewsDelta: Number(viewCount) })} className="px-3 py-1.5 rounded-full bg-surface text-xs" />
       </div>
+      <div className="flex gap-2 flex-wrap">
+        {(["newest", "oldest", "size_desc"] as PostSort[]).map((s) => (
+          <button key={s} type="button" onClick={() => setSort(s)} className={cn("px-3 py-1.5 rounded-full text-xs", sort === s ? "bg-[#2AABEE] text-white" : "bg-surface")}>
+            {s === "newest" ? "Newest" : s === "oldest" ? "Oldest" : "Largest"}
+          </button>
+        ))}
+      </div>
       <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter posts by ID, author, caption…" className="w-full px-3 py-2 rounded-xl bg-surface border border-border text-sm" />
       <div className="space-y-1 max-h-64 overflow-y-auto">
         {filtered.slice(0, 50).map((p) => (
           <button key={p.id} type="button" onClick={() => setPostId(p.id)} className="w-full text-left text-xs p-2 rounded-lg hover:bg-surface">
             <span className="font-mono text-[#2AABEE]">{p.id}</span>
             <span className="text-text-muted"> · @{p.authorUsername ?? p.authorId}</span>
-            <p className="truncate">{p.content?.slice(0, 80) || "(no caption)"} {p.mediaExpired ? "[media expired]" : p.media?.length ? "[media]" : ""}</p>
+            <p className="truncate">{p.content?.slice(0, 80) || "(no caption)"} {p.mediaExpired ? "[media expired]" : p.media?.length ? `[media ${formatBytes(p.mediaBytes ?? 0)}]` : ""}</p>
             <p className="text-text-muted">♥ {p.displayLikes ?? ((p.likes ?? 0) + (p.fakeLikes ?? 0))} · 👁 {p.displayViews ?? ((p.views ?? 0) + (p.fakeViews ?? 0))}</p>
           </button>
         ))}
@@ -480,8 +510,66 @@ function PostActions({ posts, onAct, pendingAction }: { posts: Array<{ id: strin
   );
 }
 
+type MediaSort = "newest" | "oldest" | "size_desc";
+
+function ChatMediaActions({ media, onAct, pendingAction }: { media: Array<{ chatId: string; messageId: string; objectKey: string; type: string; size: number; url?: string | null; createdAt: string; senderId: string; expired?: boolean }>; onAct: (a: string, d?: Record<string, unknown>) => Promise<Record<string, unknown> | null>; pendingAction: string | null }) {
+  const [sort, setSort] = useState<MediaSort>("size_desc");
+  const [filter, setFilter] = useState("");
+
+  const sorted = media
+    .filter((m) => {
+      const f = filter.toLowerCase();
+      if (!f) return true;
+      return m.chatId.toLowerCase().includes(f) || m.objectKey.toLowerCase().includes(f) || m.senderId.toLowerCase().includes(f);
+    })
+    .sort((a, b) => {
+      if (sort === "size_desc") return (b.size ?? 0) - (a.size ?? 0);
+      if (sort === "oldest") return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-text-muted">{media.length} chat media objects</p>
+      <div className="flex gap-2 flex-wrap">
+        {(["newest", "oldest", "size_desc"] as MediaSort[]).map((s) => (
+          <button key={s} type="button" onClick={() => setSort(s)} className={cn("px-3 py-1.5 rounded-full text-xs", sort === s ? "bg-[#2AABEE] text-white" : "bg-surface")}>
+            {s === "newest" ? "Newest" : s === "oldest" ? "Oldest" : "Largest"}
+          </button>
+        ))}
+      </div>
+      <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter by chat, object key, sender…" className="w-full px-3 py-2 rounded-xl bg-surface border border-border text-sm" />
+      <div className="space-y-2 max-h-[70dvh] overflow-y-auto">
+        {sorted.slice(0, 80).map((m) => (
+          <div key={`${m.chatId}:${m.objectKey}`} className="glass-nav rounded-xl p-3 flex gap-3">
+            {m.url && !m.expired ? (
+              <img src={m.url} alt="" className="w-16 h-16 rounded-lg object-cover shrink-0 bg-surface" />
+            ) : (
+              <div className="w-16 h-16 rounded-lg bg-surface shrink-0 flex items-center justify-center text-[10px] text-text-muted">gone</div>
+            )}
+            <div className="flex-1 min-w-0 space-y-1">
+              <p className="text-xs font-mono truncate">{m.objectKey}</p>
+              <p className="text-[11px] text-text-muted">{m.type} · {formatBytes(m.size)} · {formatDateTimeEn(m.createdAt)}</p>
+              <p className="text-[11px] text-text-muted truncate">Chat {m.chatId} · Msg {m.messageId}</p>
+              {!m.expired && (
+                <ActionButton
+                  label="Strip"
+                  pending={pendingAction === `strip_chat_media:${JSON.stringify({ chatId: m.chatId, messageId: m.messageId, objectKey: m.objectKey })}`}
+                  onClick={() => onAct("strip_chat_media", { chatId: m.chatId, messageId: m.messageId, objectKey: m.objectKey })}
+                  className="px-3 py-1 rounded-full bg-like/20 text-like text-xs"
+                />
+              )}
+            </div>
+          </div>
+        ))}
+        {sorted.length === 0 && <p className="text-sm text-text-muted text-center py-8">No chat media</p>}
+      </div>
+    </div>
+  );
+}
+
 function ReportActions({ reports, onAct, pendingAction }: { reports: Array<{ id: string; postId?: string | null; userId?: string | null; category: string; subcategory?: string; detail?: string; postContent?: string | null; postMedia?: Array<{ type: string; url?: string | null; thumbnail?: string | null }>; reportedUsername?: string | null; createdAt: string; status: string; postCreatedAt?: string | null; postLikes?: number; postViews?: number; postShares?: number; postAuthor?: { id: string; displayName: string; username?: string | null; avatar?: string } | null }>; onAct: (a: string, d?: Record<string, unknown>) => Promise<Record<string, unknown> | null>; pendingAction: string | null }) {
-  const pending = reports.filter((r) => r.status === "pending");
+  const pending = reports.filter((r) => String(r.status).toLowerCase() === "pending");
 
   return (
     <div className="space-y-3">

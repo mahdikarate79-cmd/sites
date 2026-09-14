@@ -44,11 +44,26 @@ export function createReport(db, reporterId, body) {
   return report;
 }
 
+function enrichReport(db, report) {
+  const post = report.postId ? db.posts?.[report.postId] : null;
+  const postAuthor = post ? findUserById(db, post.authorId) : null;
+  return {
+    ...report,
+    postContent: post?.content ?? report.postContent ?? null,
+    postMedia: post?.media?.map(mediaUrl) ?? report.postMedia ?? [],
+    postCreatedAt: post?.createdAt ?? report.postCreatedAt ?? null,
+    postLikes: post ? displayLikes(post) : (report.postLikes ?? 0),
+    postViews: post ? (post.views ?? 0) + (post.fakeViews ?? 0) : (report.postViews ?? 0),
+    postShares: post?.shares ?? report.postShares ?? 0,
+    postAuthor: postAuthor ? publicUser(postAuthor) : (report.postAuthor ?? null),
+  };
+}
+
 export function listReports(db) {
   ensureReports(db);
-  return Object.values(db.reports).sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-  );
+  return Object.values(db.reports)
+    .map((r) => enrichReport(db, r))
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
 export function markReportReviewed(db, reportId) {

@@ -74,6 +74,7 @@ export interface Donator {
 export interface ChatMediaItem {
   type: "image" | "video" | "gif";
   url: string;
+  objectKey?: string;
   rotation?: number;
 }
 
@@ -97,6 +98,7 @@ export interface Comment {
   authorAvatar: string;
   authorVerified?: boolean;
   authorPremium?: boolean;
+  authorDeleted?: boolean;
   content: string;
   createdAt: string;
   sendStatus?: SendStatus;
@@ -130,6 +132,7 @@ export interface ChatMessage {
   temporary?: TemporaryMode;
   viewed?: boolean;
   expiresAt?: number;
+  expired?: boolean;
   forwardedFrom?: ForwardInfo;
 }
 
@@ -151,6 +154,8 @@ export interface GalleryItem {
   type: "image" | "video" | "gif";
   url: string;
   thumbnail?: string;
+  sourceFile?: File;
+  objectKey?: string;
 }
 
 export interface MediaObject {

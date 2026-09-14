@@ -8,9 +8,7 @@ import {
   loadDb,
   saveDb,
   findUserByTelegramId,
-  findUserByTelegramIdIncludingDeleted,
   findUserById,
-  getDeletionCooldown,
   createUserFromTelegram,
   detachTelegramLeaks,
   expirePremiumIfNeeded,
@@ -82,6 +80,8 @@ import {
   sendChatMessage,
   startChat,
   ensureChats,
+  expireChatMessage,
+  listChatMediaForAdmin,
 } from "./chat.mjs";
 import { USER_SESSION_COOKIE, resolveSessionId } from "./sessionAuth.mjs";
 import { MIN_STARS_PAYMENT, MAX_STARS_PAYMENT, isValidPaidStars } from "./constants.mjs";
@@ -248,20 +248,6 @@ async function handleTelegramAuth(req, res, secure) {
 
   let user = findUserByTelegramId(db, tgUser.id);
   if (!user) {
-    const deletedGhost = findUserByTelegramIdIncludingDeleted(db, tgUser.id);
-    if (deletedGhost?.deleted) {
-      const cooldown = getDeletionCooldown(deletedGhost);
-      if (cooldown) {
-        return json(res, 403, {
-          error: "Account recently deleted",
-          accountDeleted: true,
-          canRecreateAt: cooldown.canRecreateAt,
-          remainingMs: cooldown.remainingMs,
-        }, corsHeaders(req.headers.origin));
-      }
-      deletedGhost.telegramId = null;
-      getDatabase().prepare("UPDATE users SET telegram_id = NULL WHERE id = ?").run(deletedGhost.id);
-    }
     user = createUserFromTelegram(db, tgUser);
     db.users[user.id] = user;
   } else {
@@ -619,7 +605,10 @@ async function handleStorageUpload(req, res) {
   if (!data || !contentType) return json(res, 400, { error: "Missing data" }, corsHeaders(req.headers.origin));
 
   const buffer = Buffer.from(data, "base64");
-  const maxSize = user.premium ? 50 * 1024 * 1024 : 15 * 1024 * 1024;
+  const cat = String(category ?? "post");
+  const maxSize = cat === "chat"
+    ? (user.premium ? 1024 * 1024 * 1024 : 10 * 1024 * 1024)
+    : (user.premium ? 50 * 1024 * 1024 : 15 * 1024 * 1024);
   if (buffer.length > maxSize) {
     return json(res, 400, { error: `File too large (max ${Math.round(maxSize / 1024 / 1024)}MB)` }, corsHeaders(req.headers.origin));
   }
@@ -852,7 +841,8 @@ async function handleSocial(req, res, url) {
   const viewMatch = url.match(/^\/api\/posts\/([^/]+)\/view$/);
   if (viewMatch && req.method === "POST") {
     const postId = decodeURIComponent(viewMatch[1]);
-    const views = incrementPostView(db, postId);
+    if (!user) { json(res, 401, { error: "Unauthorized" }, corsHeaders(origin)); return true; }
+    const views = incrementPostView(db, postId, user.id);
     if (views == null) json(res, 404, { error: "Not found" }, corsHeaders(origin));
     else { saveDb(db); json(res, 200, { views }, corsHeaders(origin)); }
     return true;
@@ -992,9 +982,17 @@ async function handleChat(req, res, url) {
     const raw = await readBody(req);
     let body = {};
     try { body = JSON.parse(raw || "{}"); } catch { /* */ }
-    const result = sendChatMessage(db, messagesMatch[1], user.id, body);
+    const result = await sendChatMessage(db, messagesMatch[1], user.id, body);
     if (!result.ok) json(res, 400, { error: result.error }, corsHeaders(origin));
     else { saveDb(db); json(res, 200, { message: result.message }, corsHeaders(origin)); }
+    return true;
+  }
+
+  const expireMsgMatch = url.match(/^\/api\/chats\/([^/]+)\/messages\/([^/]+)\/expire$/);
+  if (expireMsgMatch && req.method === "POST") {
+    const result = await expireChatMessage(db, expireMsgMatch[1], expireMsgMatch[2], user.id);
+    if (!result.ok) json(res, 400, { error: result.error }, corsHeaders(origin));
+    else { saveDb(db); json(res, 200, result, corsHeaders(origin)); }
     return true;
   }
 

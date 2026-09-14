@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { findUserById, findDeletedUserById, publicUser } from "./db.mjs";
+import { findUserById, publicUser } from "./db.mjs";
 
 export function ensureComments(db) {
   if (!db.comments) db.comments = {};
@@ -37,7 +37,22 @@ export function createComment(db, postId, userId, content) {
 }
 
 function serializeComment(db, comment) {
-  const author = findUserById(db, comment.authorId) ?? findDeletedUserById(db, comment.authorId);
+  if (comment.authorDeleted || comment.authorId === "deleted") {
+    return {
+      id: comment.id,
+      postId: comment.postId,
+      authorId: "deleted",
+      authorName: "Deleted Account",
+      authorUsername: null,
+      authorAvatar: "",
+      authorVerified: false,
+      authorPremium: false,
+      authorDeleted: true,
+      content: comment.content,
+      createdAt: comment.createdAt,
+    };
+  }
+  const author = findUserById(db, comment.authorId);
   const pub = publicUser(author);
   return {
     id: comment.id,
@@ -48,6 +63,7 @@ function serializeComment(db, comment) {
     authorAvatar: pub?.avatar ?? "",
     authorVerified: pub?.verified ?? false,
     authorPremium: pub?.premium ?? false,
+    authorDeleted: false,
     content: comment.content,
     createdAt: comment.createdAt,
   };

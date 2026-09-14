@@ -14,11 +14,15 @@ interface ProfileLinkProps {
 
 /** Client-side profile navigation — works with static export hosting */
 export function profilePath(user: Pick<User, "id" | "username">): string {
-  return `/profile/${profileSlug(user)}`;
+  return `/profile/${profileSlug(user)}/`;
+}
+
+export function isDeletedProfileUser(user: Pick<User, "id" | "username"> & { deleted?: boolean }): boolean {
+  return !!user.deleted || user.id === "deleted";
 }
 
 export function ProfileLink({ user, className, children, onClick }: ProfileLinkProps) {
-  if (user.deleted) {
+  if (isDeletedProfileUser(user)) {
     return <span className={cn(className)}>{children}</span>;
   }
   return (

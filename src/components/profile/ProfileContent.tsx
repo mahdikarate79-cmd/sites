@@ -188,7 +188,7 @@ export function ProfileContent({ user, isOwnProfile }: ProfileContentProps) {
 
       <div>
         {filtered.length > 0 ? (
-          filtered.map((post) => <PostCard key={post.id} post={post} />)
+          filtered.map((post) => <PostCard key={post.id} post={post} allPosts={posts} />)
         ) : (
           <p className="text-center text-text-muted py-8 text-sm">No {tab} yet</p>
         )}

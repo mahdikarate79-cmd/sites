@@ -16,6 +16,8 @@ import { ADMIN_SESSION_COOKIE, resolveSessionId } from "./sessionAuth.mjs";
 import { adjustPostStats, displayLikes } from "./social.mjs";
 import { listReports, markReportReviewed } from "./reports.mjs";
 import { addEarningsCredit } from "./wallet.mjs";
+import { listChatMediaForAdmin } from "./chat.mjs";
+import { deleteMediaObject } from "./mediaCleanup.mjs";
 
 const ADMIN_COOKIE = ADMIN_SESSION_COOKIE;
 const SESSION_TTL = 12 * 60 * 60 * 1000;
@@ -450,19 +452,59 @@ export async function handleAdminAction(req, res, db, json, corsHeaders) {
         banned: Object.values(db.bannedUsers),
       }, corsHeaders(req.headers.origin));
 
-    case "list_posts":
-      return json(res, 200, {
-        posts: Object.values(db.posts ?? {}).map((p) => {
-          const author = findUserById(db, p.authorId);
-          return {
-            ...p,
-            displayLikes: displayLikes(p),
-            displayViews: (p.views ?? 0) + (p.fakeViews ?? 0),
-            authorUsername: author?.username ?? null,
-            authorDisplayName: author?.displayName ?? null,
-          };
-        }),
-      }, corsHeaders(req.headers.origin));
+    case "list_posts": {
+      const posts = Object.values(db.posts ?? {}).map((p) => {
+        const author = findUserById(db, p.authorId);
+        let mediaBytes = 0;
+        for (const m of p.media ?? []) {
+          const meta = m.objectKey ? db.mediaObjects?.[m.objectKey] : null;
+          mediaBytes += meta?.size ?? 0;
+        }
+        return {
+          ...p,
+          media: p.media?.map((m) => {
+            if (!m.objectKey) return m;
+            const url = `${config.apiUrl}/api/media/${encodeURIComponent(m.objectKey)}`;
+            return { ...m, url };
+          }),
+          mediaBytes,
+          displayLikes: displayLikes(p),
+          displayViews: (p.views ?? 0) + (p.fakeViews ?? 0),
+          authorUsername: author?.username ?? null,
+          authorDisplayName: author?.displayName ?? null,
+        };
+      });
+      return json(res, 200, { posts }, corsHeaders(req.headers.origin));
+    }
+
+    case "list_chat_media":
+      return json(res, 200, { media: listChatMediaForAdmin(db) }, corsHeaders(req.headers.origin));
+
+    case "strip_chat_media": {
+      const { chatId, messageId, objectKey } = body;
+      const chat = db.chats?.[chatId];
+      if (!chat) return json(res, 404, { error: "Chat not found" }, corsHeaders(req.headers.origin));
+      const msg = (chat.messages ?? []).find((m) => m.id === messageId);
+      if (!msg) return json(res, 404, { error: "Message not found" }, corsHeaders(req.headers.origin));
+      let removed = false;
+      if (objectKey && msg.objectKey === objectKey) {
+        removed = await deleteMediaObject(db, { objectKey });
+        msg.objectKey = null;
+        msg.url = null;
+        msg.mediaExpired = true;
+      }
+      if (msg.album) {
+        for (const item of msg.album) {
+          if (item.objectKey === objectKey) {
+            removed = await deleteMediaObject(db, { objectKey }) || removed;
+            item.objectKey = null;
+            item.url = null;
+          }
+        }
+      }
+      saveDb(db);
+      return json(res, 200, { ok: true, removed }, corsHeaders(req.headers.origin));
+    }
 
     case "list_reports":
       return json(res, 200, { reports: listReports(db) }, corsHeaders(req.headers.origin));

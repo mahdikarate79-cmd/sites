@@ -7,7 +7,7 @@ import { ArrowLeft } from "lucide-react";
 import { User } from "@/lib/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { UserName } from "@/components/ui/UserName";
-import { ProfileLink } from "@/components/ui/ProfileLink";
+import { ProfileLink, profilePath } from "@/components/ui/ProfileLink";
 import { FollowButton } from "@/components/ui/FollowButton";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { fetchFollowers, fetchFollowing, fetchUserProfile } from "@/lib/api/social";
@@ -64,7 +64,7 @@ export function FollowListContent({ mode }: FollowListContentProps) {
     load();
   }, [mode, me?.id, me?.premium, isAuthenticated, targetSlug, isOwnList]);
 
-  const backHref = isOwnList ? "/settings/" : (targetUser?.username ? `/profile/${targetUser.username}/` : "/");
+  const backHref = isOwnList ? "/settings/" : (targetUser && !targetUser.deleted ? profilePath(targetUser) : "/");
 
   return (
     <div className="min-h-dvh pb-6">

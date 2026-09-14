@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { findUserById, findUserByUsername, findDeletedUserById, publicUser } from "./db.mjs";
+import { findUserById, findUserByUsername, publicUser } from "./db.mjs";
 import { config } from "./config.mjs";
 import { MIN_STARS_PAYMENT, isValidPaidStars } from "./constants.mjs";
 
@@ -17,6 +17,7 @@ export function ensureSocial(db) {
   if (!db.follows) db.follows = {};
   if (!db.postLikes) db.postLikes = {};
   if (!db.donations) db.donations = {};
+  if (!db.postViews) db.postViews = {};
 }
 
 export function displayFollowers(user) {
@@ -57,9 +58,26 @@ export function unfollowUser(db, followerId, followingId) {
   return { ok: true };
 }
 
+const DELETED_USER_PUBLIC = {
+  id: "deleted",
+  username: null,
+  displayName: "Deleted Account",
+  usernameSet: false,
+  avatar: "",
+  verified: false,
+  premium: false,
+  banned: false,
+  deleted: true,
+  followers: 0,
+  following: 0,
+  postsCount: 0,
+};
+
 function resolveListUser(db, id) {
-  const user = findUserById(db, id) ?? findDeletedUserById(db, id);
-  return user ? publicUser(user) : null;
+  if (!id || id === "deleted") return DELETED_USER_PUBLIC;
+  const user = findUserById(db, id);
+  if (user) return publicUser(user);
+  return DELETED_USER_PUBLIC;
 }
 
 export function getFollowersList(db, userId) {
@@ -196,9 +214,17 @@ export function createPost(db, authorId, body) {
   return { ok: true, post: serializePost(db, post, authorId) };
 }
 
-export function incrementPostView(db, postId) {
+export function incrementPostView(db, postId, viewerId = null) {
   const post = db.posts?.[postId];
   if (!post) return null;
+  if (!db.postViews) db.postViews = {};
+  if (viewerId) {
+    const key = `${viewerId}:${postId}`;
+    if (db.postViews[key]) {
+      return (post.views ?? 0) + (post.fakeViews ?? 0);
+    }
+    db.postViews[key] = { at: new Date().toISOString() };
+  }
   post.views = (post.views ?? 0) + 1;
   return (post.views ?? 0) + (post.fakeViews ?? 0);
 }

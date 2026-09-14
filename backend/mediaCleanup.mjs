@@ -4,7 +4,7 @@ import { deleteFromB2, isB2Configured } from "./b2.mjs";
 import { localMediaRoot } from "./localMedia.mjs";
 
 const INACTIVE_DAYS = Number(process.env.MEDIA_INACTIVE_DAYS ?? 30);
-const CHAT_MSG_LIMIT = Number(process.env.CHAT_MEDIA_MSG_LIMIT ?? 100);
+const CHAT_MSG_LIMIT = Number(process.env.CHAT_MEDIA_MSG_LIMIT ?? 50);
 
 function safeKey(objectKey) {
   const normalized = String(objectKey).replace(/\\/g, "/").replace(/^\/+/, "");

@@ -41,11 +41,14 @@ export function ProfileLoader({ username }: ProfileLoaderProps) {
     return <div className="min-h-[50dvh] flex items-center justify-center text-text-muted text-sm">Loading profile…</div>;
   }
 
-  if (!user) {
+  if (!user || user.deleted) {
+    const hideSlug = slug.startsWith("tg_") || slug === "deleted";
     return (
       <div className="min-h-[50dvh] flex flex-col items-center justify-center px-6 text-center">
-        <p className="text-lg font-semibold mb-2">User not found</p>
-        <p className="text-sm text-text-muted">@{slug}</p>
+        <p className="text-lg font-semibold mb-2">Account unavailable</p>
+        {!hideSlug && slug && !slug.includes("@") && (
+          <p className="text-sm text-text-muted">@{slug.replace(/^@/, "")}</p>
+        )}
       </div>
     );
   }

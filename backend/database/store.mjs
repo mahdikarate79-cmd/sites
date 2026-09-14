@@ -147,6 +147,7 @@ export function loadDb() {
   const unlockedPaidMedia = settings.unlockedPaidMedia ?? {};
   const comments = settings.comments ?? {};
   const reports = settings.reports ?? {};
+  const postViews = settings.postViews ?? {};
   delete settings.unlockedPosts;
   delete settings.earningsLedger;
   delete settings.follows;
@@ -155,13 +156,14 @@ export function loadDb() {
   delete settings.unlockedPaidMedia;
   delete settings.comments;
   delete settings.reports;
+  delete settings.postViews;
 
   return {
     users, sessions, adminSessions, settings, posts, notifications,
     verificationRequests, withdrawalRequests, bannedUsers, mediaObjects,
     paymentIntents, processedCharges, chats, reservedUsernames, deletedUserIds,
     unlockedPosts, earningsLedger, follows, postLikes, donations, unlockedPaidMedia,
-    comments, reports,
+    comments, reports, postViews,
   };
 }
 
@@ -207,6 +209,7 @@ export function saveDb(db) {
     if (db.unlockedPaidMedia) settingsToSave.unlockedPaidMedia = db.unlockedPaidMedia;
     if (db.comments) settingsToSave.comments = db.comments;
     if (db.reports) settingsToSave.reports = db.reports;
+    if (db.postViews) settingsToSave.postViews = db.postViews;
     for (const [k, v] of Object.entries(settingsToSave)) {
       insSetting.run(k, JSON.stringify(v));
     }

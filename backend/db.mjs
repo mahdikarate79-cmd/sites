@@ -168,7 +168,7 @@ export function deleteSessionsExcept(db, keepSessionId) {
 
 export function deleteAccount(db, userId) {
   const user = findUserById(db, userId) ?? db.users[userId];
-  if (!user || user.deleted) return false;
+  if (!user) return false;
 
   if (user.username) {
     const lower = user.username.toLowerCase();
@@ -180,43 +180,36 @@ export function deleteAccount(db, userId) {
     if (post.authorId === userId) delete db.posts[postId];
   }
 
+  for (const key of Object.keys(db.follows ?? {})) {
+    if (key.startsWith(`${userId}:`) || key.endsWith(`:${userId}`)) delete db.follows[key];
+  }
+
   for (const key of Object.keys(db.postLikes ?? {})) {
     if (key.startsWith(`${userId}:`)) delete db.postLikes[key];
   }
 
+  for (const comment of Object.values(db.comments ?? {})) {
+    if (comment.authorId === userId) {
+      comment.authorId = "deleted";
+      comment.authorDeleted = true;
+    }
+  }
+
+  for (const chat of Object.values(db.chats ?? {})) {
+    for (const msg of chat.messages ?? []) {
+      if (msg.senderId === userId) {
+        msg.senderId = "deleted";
+        msg.senderDeleted = true;
+      }
+    }
+  }
+
   delete db.notifications?.[userId];
   delete db.earningsLedger?.[userId];
+  delete db.unlockedPosts?.[userId];
+  delete db.unlockedPaidMedia?.[userId];
   deleteSessionsForUser(db, userId);
-
-  user.deleted = true;
-  user.deletedAt = new Date().toISOString();
-  user.displayName = "Deleted Account";
-  user.username = null;
-  user.usernameSet = false;
-  user.bio = null;
-  user.cover = null;
-  user.avatar = "";
-  user.premium = false;
-  user.premiumExpiresAt = null;
-  user.verified = false;
-  user.starBalance = 0;
-  user.earnings = 0;
-  user.banned = false;
-  user.verificationRequestPending = false;
-  // Keep telegram_id during cooldown so re-registration can be blocked
-
-  if (!db.deletedUserIds) db.deletedUserIds = [];
-  if (!db.deletedUserIds.includes(userId)) db.deletedUserIds.push(userId);
-
-  const sqlite = getDatabase();
-  sqlite.prepare(`
-    UPDATE users SET
-      display_name = ?, username = NULL, bio = NULL, cover = NULL, avatar = '',
-      premium = 0, premium_expires_at = NULL, verified = 0, star_balance = 0, earnings = 0,
-      deleted = 1, deleted_at = ?, username_set = 0, verification_request_pending = 0, banned = 0
-    WHERE id = ?
-  `).run(user.displayName, user.deletedAt, userId);
-
+  purgeDeletedUser(db, userId);
   return true;
 }
 
@@ -246,9 +239,9 @@ export function isDeletedUserId(db, userId) {
 
 export function publicUser(user, { includeTelegramId = false } = {}) {
   if (!user) return null;
-  if (user.deleted) {
+  if (user.deleted || user.id === "deleted") {
     return {
-      id: user.id,
+      id: "deleted",
       username: null,
       displayName: "Deleted Account",
       usernameSet: false,

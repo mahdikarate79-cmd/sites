@@ -41,8 +41,13 @@ export function PostActions({ post, onDonate }: PostActionsProps) {
 
   useEffect(() => {
     if (!isAuthenticated) return;
+    const viewKey = `viewed:${post.id}`;
+    if (typeof window !== "undefined" && sessionStorage.getItem(viewKey)) return;
     recordPostView(post.id)
-      .then(setViews)
+      .then((v) => {
+        setViews(v);
+        if (typeof window !== "undefined") sessionStorage.setItem(viewKey, "1");
+      })
       .catch(() => {});
   }, [post.id, isAuthenticated]);
   const [comments, setComments] = useState(getCommentCount(post.id, post.comments));

@@ -104,17 +104,25 @@ export function CommentsSheet({ open, onClose, postId, initialCount, onCountChan
                 <div className="my-3 h-px bg-gradient-to-r from-transparent via-white/12 to-transparent backdrop-blur-sm" aria-hidden />
               )}
               <div className="flex gap-2.5 py-1">
-                <ProfileLink user={{ id: c.authorId, username: c.authorUsername ?? undefined }} className="shrink-0 mt-0.5">
-                  <Avatar src={c.authorAvatar} alt="" size="sm" />
-                </ProfileLink>
+                {c.authorDeleted || c.authorId === "deleted" ? (
+                  <Avatar src="" alt="" size="sm" className="shrink-0 mt-0.5" />
+                ) : (
+                  <ProfileLink user={{ id: c.authorId, username: c.authorUsername ?? undefined }} className="shrink-0 mt-0.5">
+                    <Avatar src={c.authorAvatar} alt="" size="sm" />
+                  </ProfileLink>
+                )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1 flex-wrap">
-                    <ProfileLink user={{ id: c.authorId, username: c.authorUsername ?? undefined }}>
-                      <UserName
-                        user={{ displayName: c.authorName, verified: c.authorVerified, premium: c.authorPremium }}
-                        nameClassName="text-sm font-semibold"
-                      />
-                    </ProfileLink>
+                    {c.authorDeleted || c.authorId === "deleted" ? (
+                      <span className="text-sm font-semibold text-text-muted">Deleted Account</span>
+                    ) : (
+                      <ProfileLink user={{ id: c.authorId, username: c.authorUsername ?? undefined }}>
+                        <UserName
+                          user={{ displayName: c.authorName, verified: c.authorVerified, premium: c.authorPremium }}
+                          nameClassName="text-sm font-semibold"
+                        />
+                      </ProfileLink>
+                    )}
                     <span className="text-xs text-text-muted">{formatTimeAgo(c.createdAt)}</span>
                     {c.sendStatus === "sending" && <Loader2 className="w-3 h-3 animate-spin text-text-muted" />}
                   </div>
