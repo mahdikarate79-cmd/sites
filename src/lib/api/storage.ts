@@ -75,22 +75,42 @@ export function validateUpload(file: File, category: keyof typeof CATEGORY_LIMIT
   return { valid: true };
 }
 
+async function decodeImageFile(file: File): Promise<ImageBitmap> {
+  try {
+    return await createImageBitmap(file, { imageOrientation: "from-image" });
+  } catch {
+    return await createImageBitmap(file);
+  }
+}
+
+/** Compress image for upload; on decode failure returns original file bytes unchanged */
 async function compressImage(file: File, maxDim: number, quality = 0.82): Promise<File> {
   if (!file.type.startsWith("image/") || file.type === "image/gif") return file;
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
-  const width = Math.max(1, Math.round(bitmap.width * scale));
-  const height = Math.max(1, Math.round(bitmap.height * scale));
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return file;
-  ctx.drawImage(bitmap, 0, 0, width, height);
-  bitmap.close();
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
-  if (!blob) return file;
-  return new File([blob], file.name.replace(/\.\w+$/, ".jpg"), { type: "image/jpeg" });
+  let bitmap: ImageBitmap | null = null;
+  try {
+    bitmap = await decodeImageFile(file);
+    const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+    if (scale >= 1 && file.type === "image/jpeg" && file.size <= maxDim * maxDim) {
+      return file;
+    }
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(resolve, "image/jpeg", quality);
+    });
+    if (!blob?.size) return file;
+    return new File([blob], file.name.replace(/\.\w+$/, ".jpg") || "upload.jpg", { type: "image/jpeg" });
+  } catch {
+    return file;
+  } finally {
+    bitmap?.close();
+  }
 }
 
 function normalizeVideoMime(file: File): File {

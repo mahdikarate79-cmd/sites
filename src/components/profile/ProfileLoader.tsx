@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { User } from "@/lib/types";
 import { ProfileContent } from "./ProfileContent";
 import { fetchUserProfile } from "@/lib/api/social";
+import { fetchProfileSeo } from "@/lib/api/seo";
+import { SeoHead } from "@/components/seo/SeoHead";
 import { useAuth } from "@/lib/hooks/useAuth";
 
 interface ProfileLoaderProps {
@@ -25,15 +27,21 @@ export function ProfileLoader({ username }: ProfileLoaderProps) {
   const { user: me } = useAuth();
   const [slug, setSlug] = useState(() => resolveUsernameFromPath(username));
   const [user, setUser] = useState<User | null>(null);
+  const [seoMeta, setSeoMeta] = useState<Awaited<ReturnType<typeof fetchProfileSeo>>>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const resolved = resolveUsernameFromPath(username);
     setSlug(resolved);
     setLoading(true);
-    fetchUserProfile(resolved)
-      .then((data) => setUser(data.user))
-      .catch(() => setUser(null))
+    Promise.all([
+      fetchUserProfile(resolved).then((data) => data.user).catch(() => null),
+      fetchProfileSeo(resolved).catch(() => null),
+    ])
+      .then(([profileUser, meta]) => {
+        setUser(profileUser);
+        setSeoMeta(meta);
+      })
       .finally(() => setLoading(false));
   }, [username]);
 
@@ -54,5 +62,10 @@ export function ProfileLoader({ username }: ProfileLoaderProps) {
   }
 
   const isOwnProfile = me?.id === user.id || me?.username === user.username;
-  return <ProfileContent user={user} isOwnProfile={isOwnProfile} />;
+  return (
+    <>
+      <SeoHead meta={seoMeta} />
+      <ProfileContent user={user} isOwnProfile={isOwnProfile} />
+    </>
+  );
 }

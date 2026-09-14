@@ -42,7 +42,14 @@ import {
 import { getPostComments, createComment, ensureComments } from "./comments.mjs";
 import { createReport, ensureReports, markReportReviewed } from "./reports.mjs";
 import { createNotification, getUserNotifications } from "./notifications.mjs";
-import { startCleanupScheduler } from "./mediaCleanup.mjs";
+import { startCleanupScheduler, deleteMediaObject } from "./mediaCleanup.mjs";
+import { validateMediaBuffer } from "./mediaValidate.mjs";
+import {
+  handleSeoRequest,
+  handlePublicHtmlRequest,
+  getSeoMetaForProfile,
+  getSeoMetaForPost,
+} from "./seo.mjs";
 import { serveStatic, staticDirExists } from "./static.mjs";
 import { config } from "./config.mjs";
 import { getDatabase } from "./database/init.mjs";
@@ -72,6 +79,8 @@ import {
   displayFollowers,
   incrementPostView,
   incrementPostShare,
+  deleteUserPost,
+  updateUserPost,
 } from "./social.mjs";
 import {
   listChats,
@@ -138,6 +147,11 @@ function readBodyBuffer(req, maxBytes = 128 * 1024 * 1024) {
       settled = true;
       reject(err);
     };
+    const finish = (buf) => {
+      if (settled) return;
+      settled = true;
+      resolve(buf);
+    };
     req.on("data", (c) => {
       size += c.length;
       if (size > maxBytes) {
@@ -147,16 +161,9 @@ function readBodyBuffer(req, maxBytes = 128 * 1024 * 1024) {
       }
       chunks.push(c);
     });
-    req.on("end", () => {
-      if (settled) return;
-      settled = true;
-      resolve(Buffer.concat(chunks));
-    });
+    req.on("end", () => finish(Buffer.concat(chunks)));
     req.on("error", fail);
     req.on("aborted", () => fail(new Error("Request aborted")));
-    req.on("close", () => {
-      if (!settled && !req.complete) fail(new Error("Connection closed"));
-    });
   });
 }
 
@@ -528,16 +535,7 @@ async function handleTelegramWebhook(req, res) {
   }
 
   const message = update.message;
-  if (message?.chat?.id) {
-    try {
-      await sendWelcomeMessage(message.chat.id);
-    } catch (e) {
-      console.error("[bot] welcome message failed:", e.message);
-    }
-    return json(res, 200, { ok: true });
-  }
-
-  const payment = update.message?.successful_payment;
+  const payment = message?.successful_payment;
   if (payment) {
     const chargeId = payment.telegram_payment_charge_id;
     if (db.processedCharges?.[chargeId]) return json(res, 200, { ok: true });
@@ -599,6 +597,14 @@ async function handleTelegramWebhook(req, res) {
     return json(res, 200, { ok: true });
   }
 
+  if (message?.chat?.id && !message.successful_payment) {
+    try {
+      await sendWelcomeMessage(message.chat.id);
+    } catch (e) {
+      console.error("[bot] welcome message failed:", e.message);
+    }
+  }
+
   return json(res, 200, { ok: true });
 }
 
@@ -627,14 +633,20 @@ async function handleStorageUpload(req, res) {
 }
 
 async function persistUploadedBuffer(req, res, db, user, category, buffer, contentType) {
-  const ext = contentType.includes("video") ? ".mp4" : contentType.includes("gif") ? ".gif" : ".jpg";
+  const origin = req.headers.origin;
+  const validated = validateMediaBuffer(buffer, contentType, category);
+  if (!validated.ok) {
+    return json(res, 400, { error: validated.error }, corsHeaders(origin));
+  }
+  const normalizedType = validated.contentType;
+  const ext = validated.ext;
   const objectKey = `${category}/${user.id}/${crypto.randomBytes(16).toString("hex")}${ext}`;
   const proxyUrl = resolveObjectKeyUrl(objectKey);
-  const origin = req.headers.origin;
+  const uploadBuffer = Buffer.from(buffer);
 
   if (isB2Configured()) {
     try {
-      const uploaded = await uploadToB2(objectKey, buffer, contentType);
+      const uploaded = await uploadToB2(objectKey, uploadBuffer, normalizedType);
       db.mediaObjects[objectKey] = {
         ...uploaded,
         storage: "b2",
@@ -643,7 +655,7 @@ async function persistUploadedBuffer(req, res, db, user, category, buffer, conte
         url: proxyUrl,
       };
       saveDb(db);
-      return json(res, 200, { objectKey, url: proxyUrl, size: uploaded.size ?? buffer.length, storage: "b2" }, corsHeaders(origin));
+      return json(res, 200, { objectKey, url: proxyUrl, size: uploaded.size ?? uploadBuffer.length, storage: "b2" }, corsHeaders(origin));
     } catch (e) {
       console.error("B2 upload failed, trying local storage:", e.message);
     }
@@ -654,7 +666,7 @@ async function persistUploadedBuffer(req, res, db, user, category, buffer, conte
   }
 
   try {
-    const saved = saveLocalMedia(objectKey, buffer, contentType);
+    const saved = saveLocalMedia(objectKey, uploadBuffer, normalizedType);
     db.mediaObjects[objectKey] = {
       ...saved,
       userId: user.id,
@@ -662,7 +674,7 @@ async function persistUploadedBuffer(req, res, db, user, category, buffer, conte
       url: proxyUrl,
     };
     saveDb(db);
-    return json(res, 200, { objectKey, url: proxyUrl, size: saved.size ?? buffer.length, storage: "local" }, corsHeaders(origin));
+    return json(res, 200, { objectKey, url: proxyUrl, size: saved.size ?? uploadBuffer.length, storage: "local" }, corsHeaders(origin));
   } catch (e) {
     console.error("Local media upload failed:", e.message);
     return json(res, 503, { error: "upload_failed", message: e.message }, corsHeaders(origin));
@@ -728,6 +740,23 @@ async function handleMediaProxy(req, res, objectKey) {
   return json(res, 404, { error: "Not found" }, corsHeaders(origin));
 }
 
+function objectKeyFromMediaUrl(url) {
+  const m = String(url ?? "").match(/\/api\/media\/(.+?)(?:\?|$)/);
+  if (!m) return null;
+  try { return decodeURIComponent(m[1]); } catch { return null; }
+}
+
+async function removeUserMediaByUrl(db, url) {
+  const key = objectKeyFromMediaUrl(url);
+  if (key && db.mediaObjects?.[key]) {
+    await deleteMediaObject(db, { objectKey: key });
+  }
+}
+
+function defaultAvatarUrl(user) {
+  return `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.telegramId ?? user.id}`;
+}
+
 async function handleProfileUpdate(req, res) {
   const db = loadDb();
   const user = requireUser(req, db);
@@ -750,11 +779,15 @@ async function handleProfileUpdate(req, res) {
 
   if (body.bio !== undefined) user.bio = String(body.bio).slice(0, 500);
 
-  if (body.avatarObjectKey) {
+  if (body.removeAvatar === true || body.avatarObjectKey === null) {
+    await removeUserMediaByUrl(db, user.avatar);
+    user.avatar = defaultAvatarUrl(user);
+  } else if (body.avatarObjectKey) {
     const key = String(body.avatarObjectKey);
     if (!key.startsWith("avatar/") || !db.mediaObjects?.[key]) {
       return json(res, 400, { error: "Invalid avatar upload" }, corsHeaders(req.headers.origin));
     }
+    await removeUserMediaByUrl(db, user.avatar);
     user.avatar = resolveObjectKeyUrl(key);
   } else if (body.avatar) {
     const av = String(body.avatar);
@@ -764,11 +797,16 @@ async function handleProfileUpdate(req, res) {
     user.avatar = av;
   }
 
-  if (body.coverObjectKey !== undefined) {
+  if (body.removeCover === true || body.coverObjectKey === null) {
+    await removeUserMediaByUrl(db, user.cover);
+    user.cover = undefined;
+  } else if (body.coverObjectKey !== undefined) {
     const key = body.coverObjectKey ? String(body.coverObjectKey) : "";
     if (!key) {
+      await removeUserMediaByUrl(db, user.cover);
       user.cover = undefined;
     } else if (key.startsWith("cover/") && db.mediaObjects?.[key]) {
+      await removeUserMediaByUrl(db, user.cover);
       user.cover = resolveObjectKeyUrl(key);
     } else {
       return json(res, 400, { error: "Invalid cover upload" }, corsHeaders(req.headers.origin));
@@ -800,8 +838,12 @@ async function handleProfileUpdate(req, res) {
   }
 
   if (body.age !== undefined) {
-    const age = Math.max(18, Math.min(99, Number(body.age) || 0));
-    if (age >= 18) user.age = age;
+    if (body.age === null || body.age === "" || body.clearAge === true) {
+      user.age = null;
+    } else {
+      const age = Number(body.age);
+      if (Number.isFinite(age) && age >= 18 && age <= 99) user.age = age;
+    }
   }
   if (body.orientation !== undefined) {
     const allowed = ["straight", "gay", "lesbian", "bisexual", "trans", "pansexual", "asexual", "queer"];
@@ -949,6 +991,39 @@ async function handleSocial(req, res, url) {
   if (postMatch && req.method === "GET") {
     const post = getPostById(db, decodeURIComponent(postMatch[1]), user?.id ?? null);
     json(res, post ? 200 : 404, post ? { post } : { error: "Not found" }, corsHeaders(origin));
+    return true;
+  }
+
+  if (postMatch && req.method === "DELETE") {
+    if (!user) { json(res, 401, { error: "Unauthorized" }, corsHeaders(origin)); return true; }
+    const result = await deleteUserPost(db, decodeURIComponent(postMatch[1]), user.id);
+    if (!result.ok) json(res, result.error === "Forbidden" ? 403 : 404, { error: result.error }, corsHeaders(origin));
+    else { saveDb(db); json(res, 200, { ok: true }, corsHeaders(origin)); }
+    return true;
+  }
+
+  if (postMatch && req.method === "PATCH") {
+    if (!user) { json(res, 401, { error: "Unauthorized" }, corsHeaders(origin)); return true; }
+    const raw = await readBody(req);
+    let body = {};
+    try { body = JSON.parse(raw || "{}"); } catch { /* */ }
+    const result = updateUserPost(db, decodeURIComponent(postMatch[1]), user.id, body);
+    if (!result.ok) json(res, result.error === "Forbidden" ? 403 : 404, { error: result.error }, corsHeaders(origin));
+    else { saveDb(db); json(res, 200, { post: result.post }, corsHeaders(origin)); }
+    return true;
+  }
+
+  const seoProfileMatch = url.match(/^\/api\/seo\/profile\/([^/]+)$/);
+  if (seoProfileMatch && req.method === "GET") {
+    const meta = getSeoMetaForProfile(db, decodeURIComponent(seoProfileMatch[1]));
+    json(res, meta ? 200 : 404, meta ? { meta } : { error: "Not found" }, corsHeaders(origin));
+    return true;
+  }
+
+  const seoPostMatch = url.match(/^\/api\/seo\/post\/([^/]+)$/);
+  if (seoPostMatch && req.method === "GET") {
+    const meta = getSeoMetaForPost(db, decodeURIComponent(seoPostMatch[1]));
+    json(res, meta ? 200 : 404, meta ? { meta } : { error: "Not found" }, corsHeaders(origin));
     return true;
   }
 
@@ -1119,6 +1194,10 @@ const server = http.createServer(async (req, res) => {
   const url = req.url?.split("?")[0];
 
   try {
+    const dbForSeo = loadDb();
+    if (handleSeoRequest(req, res, url, dbForSeo)) return;
+    if (handlePublicHtmlRequest(req, res, url, dbForSeo)) return;
+
     if (url === "/api/health" && req.method === "GET") {
       const db = loadDb();
       ensureAdminSettings(db);

@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /chat
+Disallow: /settings
+Disallow: /api/
+
+Sitemap: https://api.venify.xyz/sitemap.xml

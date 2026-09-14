@@ -35,6 +35,7 @@ export default function NewPostPage() {
   const { getCurrentUser, addPost } = usePrototype();
   const { showToast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
+  const previewUrlRef = useRef<string | null>(null);
 
   const user = getCurrentUser();
   const uploadLimit = getUploadLimitBytes(!!user.premium);
@@ -68,7 +69,12 @@ export default function NewPostPage() {
       );
       return;
     }
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
     const url = URL.createObjectURL(file);
+    previewUrlRef.current = url;
     const type = file.type.startsWith("video/") ? "video" : "image";
     setMediaPreview(url);
     setMediaFile(file);
@@ -174,7 +180,15 @@ export default function NewPostPage() {
             )}
             <button
               type="button"
-              onClick={() => { setMedia(null); setMediaFile(null); setMediaPreview(null); }}
+              onClick={() => {
+                if (previewUrlRef.current) {
+                  URL.revokeObjectURL(previewUrlRef.current);
+                  previewUrlRef.current = null;
+                }
+                setMedia(null);
+                setMediaFile(null);
+                setMediaPreview(null);
+              }}
               className="absolute top-2 right-2 p-1.5 rounded-full glass-nav"
               aria-label="Remove media"
             >

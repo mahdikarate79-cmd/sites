@@ -65,7 +65,7 @@ export function EditProfileContent() {
   const { getCurrentUser, updateProfile } = usePrototype();
   const { isAuthenticated, refresh } = useAuth();
   const user = getCurrentUser();
-  const initialDob = defaultBirthDate(user.age);
+  const initialDob = user.age ? defaultBirthDate(user.age) : { day: "", month: "", year: "" };
   const { showToast } = useToast();
 
   const initialUsername = user.username ?? "";
@@ -114,33 +114,38 @@ export function EditProfileContent() {
   const usernameValid = usernameValidation.valid;
   const usernameError = !usernameValidation.valid ? usernameValidation.error : "";
 
-  const validateDob = (d: string, m: string, y: string): boolean => {
+  const dobFilled = !!(day && month && year);
+
+  const resolveAgeFromDob = (d: string, m: string, y: string): number | null => {
+    if (!d || !m || !y) return null;
     const dayNum = parseInt(d, 10);
     const monthNum = parseInt(m, 10);
     const yearNum = parseInt(y, 10);
+    if (!dayNum || !monthNum || !yearNum) return null;
+    return calculateAge(dayNum, monthNum, yearNum);
+  };
 
-    if (!dayNum || !monthNum || !yearNum) {
-      setDobError("Please enter your full date of birth");
+  const validateDob = (d: string, m: string, y: string): boolean => {
+    if (!d && !m && !y) {
+      setDobError("");
+      return true;
+    }
+    if (!d || !m || !y) {
+      setDobError("Enter full date of birth or clear all fields");
       return false;
     }
-
-    const age = calculateAge(dayNum, monthNum, yearNum);
-    if (age < 18) {
+    const age = resolveAgeFromDob(d, m, y);
+    if (age === null || age < 18) {
       setDobError("You must be at least 18 years old");
       return false;
     }
-
     setDobError("");
     return true;
   };
 
   const hasChanges = useMemo(() => {
-    const age = calculateAge(parseInt(day, 10), parseInt(month, 10), parseInt(year, 10));
-    const initialAge = user.age ?? calculateAge(
-      parseInt(initialDob.day, 10),
-      parseInt(initialDob.month, 10),
-      parseInt(initialDob.year, 10)
-    );
+    const nextAge = resolveAgeFromDob(day, month, year);
+    const initialAge = user.age ?? null;
 
     return (
       displayName.trim() !== initialDisplayName ||
@@ -149,12 +154,12 @@ export function EditProfileContent() {
       (orientation || "") !== initialOrientation ||
       avatar !== initialAvatar ||
       cover !== initialCover ||
-      age !== initialAge
+      nextAge !== initialAge
     );
   }, [
     displayName, username, bio, orientation, avatar, cover, day, month, year,
     initialDisplayName, initialUsername, initialBio, initialOrientation, initialAvatar, initialCover,
-    user.age, initialDob,
+    user.age,
   ]);
 
   const canSave = hasChanges && usernameValid && !dobError && displayName.trim().length > 0;
@@ -169,7 +174,7 @@ export function EditProfileContent() {
     }
     if (!validateDob(day, month, year)) return;
 
-    const age = calculateAge(parseInt(day, 10), parseInt(month, 10), parseInt(year, 10));
+    const age = resolveAgeFromDob(day, month, year);
     const payload = {
       displayName: displayName.trim(),
       username: username.trim().toLowerCase() || undefined,
@@ -221,11 +226,14 @@ export function EditProfileContent() {
           displayName: payload.displayName,
           username: payload.username,
           bio: payload.bio,
-          age: payload.age,
           orientation: payload.orientation,
         };
         if (avatarObjectKey) apiPayload.avatarObjectKey = avatarObjectKey;
-        if (coverObjectKey !== undefined) apiPayload.coverObjectKey = coverObjectKey;
+        else if (!avatarFile && !avatar && initialAvatar) apiPayload.removeAvatar = true;
+        if (coverObjectKey) apiPayload.coverObjectKey = coverObjectKey;
+        else if (!coverFile && !cover && initialCover) apiPayload.removeCover = true;
+        if (age === null && user.age) apiPayload.clearAge = true;
+        else if (age !== null) apiPayload.age = age;
         const updated = await updateProfileApi(apiPayload);
         updateProfile({
           displayName: updated.displayName,
@@ -233,12 +241,15 @@ export function EditProfileContent() {
           bio: updated.bio,
           avatar: updated.avatar,
           cover: updated.cover,
-          age: updated.age,
+          age: updated.age ?? undefined,
           orientation: updated.orientation,
         });
         await refresh();
       } else {
-        updateProfile({ ...payload });
+        updateProfile({
+          ...payload,
+          age: payload.age ?? undefined,
+        });
       }
       setAvatarFile(null);
       setCoverFile(null);
@@ -314,27 +325,50 @@ export function EditProfileContent() {
           {coverPreview && (
             <Image src={coverPreview} alt="Cover" fill className="object-cover" sizes="100vw" unoptimized={coverPreview.startsWith("data:") || coverPreview.startsWith("blob:")} />
           )}
-          <button
-            type="button"
-            className="absolute bottom-3 right-3 flex items-center gap-1.5 px-3 py-1.5 rounded-full glass-nav text-xs font-medium"
-            onClick={() => coverInputRef.current?.click()}
-          >
-            <Camera className="w-4 h-4" />
-            Change cover
-          </button>
+          <div className="absolute bottom-3 right-3 flex items-center gap-2">
+            <button
+              type="button"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full glass-nav text-xs font-medium"
+              onClick={() => coverInputRef.current?.click()}
+            >
+              <Camera className="w-4 h-4" />
+              Replace
+            </button>
+            {coverPreview && (
+              <button
+                type="button"
+                className="px-3 py-1.5 rounded-full glass-nav text-xs font-medium text-like"
+                onClick={() => { setCover(""); setCoverFile(null); }}
+              >
+                Remove
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="px-4 -mt-10 mb-6">
           <div className="relative inline-block">
             <Avatar src={avatarPreview} alt={displayName} size="xl" className="border-4 border-bg" />
-            <button
-              type="button"
-              className="absolute bottom-1 right-1 p-1.5 rounded-full glass-nav"
-              onClick={() => avatarInputRef.current?.click()}
-              aria-label="Change profile photo"
-            >
-              <Camera className="w-4 h-4" />
-            </button>
+            <div className="absolute -bottom-1 -right-1 flex gap-1">
+              <button
+                type="button"
+                className="p-1.5 rounded-full glass-nav"
+                onClick={() => avatarInputRef.current?.click()}
+                aria-label="Replace profile photo"
+              >
+                <Camera className="w-4 h-4" />
+              </button>
+              {avatarPreview && (
+                <button
+                  type="button"
+                  className="p-1.5 rounded-full glass-nav text-like"
+                  onClick={() => { setAvatar(""); setAvatarFile(null); }}
+                  aria-label="Remove profile photo"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -398,7 +432,7 @@ export function EditProfileContent() {
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-text-muted mb-1.5">Date of birth</label>
+            <label className="block text-xs font-medium text-text-muted mb-1.5">Date of birth <span className="text-text-muted/70">(optional)</span></label>
             <div className="grid grid-cols-3 gap-2">
               <select
                 value={day}

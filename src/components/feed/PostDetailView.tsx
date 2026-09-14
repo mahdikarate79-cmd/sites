@@ -5,18 +5,26 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Post } from "@/lib/types";
 import { getPostById, getFeedPosts } from "@/lib/api/posts";
+import { fetchPostSeo } from "@/lib/api/seo";
+import { SeoHead } from "@/components/seo/SeoHead";
 import { PostCard } from "./PostCard";
 
 export function PostDetailView({ postId }: { postId: string }) {
   const [post, setPost] = useState<Post | null>(null);
   const [allPosts, setAllPosts] = useState<Post[]>([]);
+  const [seoMeta, setSeoMeta] = useState<Awaited<ReturnType<typeof fetchPostSeo>>>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([getPostById(postId), getFeedPosts()])
-      .then(([p, feed]) => {
+    Promise.all([
+      getPostById(postId),
+      getFeedPosts(),
+      fetchPostSeo(postId).catch(() => null),
+    ])
+      .then(([p, feed, meta]) => {
         setPost(p ?? null);
         setAllPosts(feed);
+        setSeoMeta(meta);
       })
       .finally(() => setLoading(false));
   }, [postId]);
@@ -36,6 +44,7 @@ export function PostDetailView({ postId }: { postId: string }) {
 
   return (
     <div>
+      <SeoHead meta={seoMeta} />
       <div className="sticky top-0 z-30 bg-bg/90 backdrop-blur-sm border-b border-border safe-top">
         <div className="flex items-center gap-3 px-4 h-14 max-w-2xl mx-auto">
           <Link href="/" className="p-2 -ml-2 rounded-full hover:bg-surface transition-colors" aria-label="Back">

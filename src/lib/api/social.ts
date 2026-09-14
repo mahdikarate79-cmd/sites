@@ -64,3 +64,18 @@ export async function fetchPost(postId: string): Promise<Post> {
   const data = await apiFetch<{ post: Post }>(`/api/posts/${encodeURIComponent(postId)}`);
   return data.post;
 }
+
+export async function deletePostApi(postId: string): Promise<void> {
+  await apiFetch(`/api/posts/${encodeURIComponent(postId)}`, { method: "DELETE" });
+}
+
+export async function updatePostApi(
+  postId: string,
+  body: { content?: string; tags?: string[]; privacy?: Post["privacy"] }
+): Promise<Post> {
+  const data = await apiFetch<{ post: Post }>(`/api/posts/${encodeURIComponent(postId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+  return data.post;
+}

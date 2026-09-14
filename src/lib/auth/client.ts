@@ -66,7 +66,10 @@ export async function updateProfile(data: {
   cover?: string;
   avatarObjectKey?: string;
   coverObjectKey?: string | null;
-  age?: number;
+  removeAvatar?: boolean;
+  removeCover?: boolean;
+  age?: number | null;
+  clearAge?: boolean;
   orientation?: string;
 }): Promise<AuthUser> {
   const res = await apiFetch<{ user: AuthUser }>("/api/profile/update", {

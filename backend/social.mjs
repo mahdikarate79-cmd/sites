@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { findUserById, findUserByUsername, publicUser } from "./db.mjs";
 import { config } from "./config.mjs";
 import { MIN_STARS_PAYMENT, isValidPaidStars } from "./constants.mjs";
+import { deletePostMedia } from "./mediaCleanup.mjs";
 
 function mediaUrl(m) {
   if (!m) return m;
@@ -285,6 +286,30 @@ export function togglePostLike(db, userId, postId) {
     post.likes = (post.likes ?? 0) + 1;
   }
   return { ok: true, liked: !liked, likes: displayLikes(post) };
+}
+
+export async function deleteUserPost(db, postId, userId) {
+  ensureSocial(db);
+  const post = db.posts?.[postId];
+  if (!post) return { ok: false, error: "Post not found" };
+  if (post.authorId !== userId) return { ok: false, error: "Forbidden" };
+  await deletePostMedia(db, post);
+  delete db.posts[postId];
+  const author = findUserById(db, userId);
+  if (author) author.postsCount = Math.max(0, (author.postsCount ?? 1) - 1);
+  return { ok: true };
+}
+
+export function updateUserPost(db, postId, userId, body) {
+  ensureSocial(db);
+  const post = db.posts?.[postId];
+  if (!post) return { ok: false, error: "Post not found" };
+  if (post.authorId !== userId) return { ok: false, error: "Forbidden" };
+  if (body.content !== undefined) post.content = String(body.content ?? "").slice(0, 5000);
+  if (body.tags !== undefined) post.tags = Array.isArray(body.tags) ? body.tags.slice(0, 12) : post.tags;
+  if (body.privacy !== undefined) post.privacy = body.privacy;
+  post.updatedAt = new Date().toISOString();
+  return { ok: true, post: serializePost(db, post, userId) };
 }
 
 export function recordDonation(db, postId, donorId, stars, anonymous) {
