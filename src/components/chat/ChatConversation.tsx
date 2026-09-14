@@ -107,8 +107,9 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
   } = usePrototype();
   const currentUser = getCurrentUser();
   const { showToast } = useToast();
-  const { user: authUser, isAuthenticated } = useAuth();
-  const viewerId = authUser?.id ?? currentUser.id;
+  const { user: authUser, isAuthenticated, loading: authLoading } = useAuth();
+  const [serverViewerId, setServerViewerId] = useState<string | null>(null);
+  const viewerId = serverViewerId ?? authUser?.id ?? null;
   const [paying, setPaying] = useState(false);
   const blocked = chat ? isBlocked(chat.participant.id) : false;
 
@@ -119,18 +120,30 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
 
   const syncMessages = useCallback(() => {
     getChatMessages(chatId).then((data) => {
-      setMessages(data.filter((m) => !m.expired && !isTempMediaExpired(chatId, m.id)));
+      if (data.viewerId) setServerViewerId(data.viewerId);
+      setMessages(data.messages.filter((m) => !m.expired && !isTempMediaExpired(chatId, m.id)));
     }).catch(() => {});
   }, [chatId, isTempMediaExpired]);
 
   useEffect(() => {
     setLoading(true);
-    getChat(chatId).then(setChat);
+    setServerViewerId(null);
+    getChat(chatId).then((data) => {
+      if (data) {
+        setChat(data.chat);
+        if (data.viewerId) setServerViewerId(data.viewerId);
+      }
+    });
     getChatMessages(chatId).then((data) => {
-      setMessages(data.filter((m) => !m.expired && !isTempMediaExpired(chatId, m.id)));
+      if (data.viewerId) setServerViewerId(data.viewerId);
+      setMessages(data.messages.filter((m) => !m.expired && !isTempMediaExpired(chatId, m.id)));
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [chatId, isTempMediaExpired]);
+
+  useEffect(() => {
+    if (authUser?.id) setServerViewerId((prev) => prev ?? authUser.id);
+  }, [authUser?.id]);
 
   useEffect(() => {
     const interval = setInterval(syncMessages, 8000);
@@ -186,7 +199,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
     type: "text" | "image" | "video" | "gif" = "text",
     extras?: Partial<ChatMessage>
   ) => {
-    if (blocked || !viewerId || !isAuthenticated) return;
+    if (blocked || !viewerId || !isAuthenticated || authLoading) return;
     const clientId = makeOptimisticId();
     const optimistic: ChatMessage = {
       id: clientId,
@@ -220,7 +233,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
   };
 
   const retrySend = async (msg: ChatMessage) => {
-    if (!msg.clientId) return;
+    if (!msg.clientId || !viewerId) return;
     upsertMessage(msg.clientId, { ...msg, sendStatus: "sending" });
     try {
       const sent = await sendMessage(chatId, {
@@ -237,7 +250,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
   };
 
   const handleSendAlbum = async (items: SelectedMedia[], caption: string) => {
-    if (blocked || items.length === 0 || !viewerId || !isAuthenticated) return;
+    if (blocked || items.length === 0 || !viewerId || !isAuthenticated || authLoading) return;
     const replyId = replyTo?.id;
     const clientId = makeOptimisticId();
     const first = items[0];
@@ -307,7 +320,7 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
   };
 
   const handleForward = async (targetChatIds: string[]) => {
-    if (!forwardMsg || targetChatIds.length === 0) return;
+    if (!forwardMsg || targetChatIds.length === 0 || !viewerId) return;
     const sourceUser = forwardMsg.senderId === viewerId ? currentUser : chat?.participant;
     const forwardedFrom = {
       userId: sourceUser?.id ?? forwardMsg.senderId,
@@ -622,7 +635,10 @@ export function ChatConversation({ chatId }: ChatConversationProps) {
       )}
 
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 py-2 space-y-3">
-        {messages.filter((m) => !m.expired && !isTempMediaExpired(chatId, m.id)).map((msg) => {
+        {!viewerId && !loading && (
+          <div className="text-center text-xs text-text-muted py-4">Sign in to view messages</div>
+        )}
+        {viewerId && messages.filter((m) => !m.expired && !isTempMediaExpired(chatId, m.id)).map((msg) => {
           const isMe = msg.senderId === viewerId;
           const replySource = msg.replyTo ? messages.find((m) => m.id === msg.replyTo) : null;
 

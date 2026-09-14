@@ -606,9 +606,6 @@ async function handleStorageUpload(req, res) {
   const db = loadDb();
   const user = requireUser(req, db);
   if (!user) return json(res, 401, { error: "Unauthorized" }, corsHeaders(req.headers.origin));
-  if (!isB2Configured()) {
-    return json(res, 503, { error: "B2 storage required — configure B2 credentials" }, corsHeaders(req.headers.origin));
-  }
 
   const raw = await readBody(req);
   let body = {};
@@ -633,33 +630,60 @@ async function persistUploadedBuffer(req, res, db, user, category, buffer, conte
   const ext = contentType.includes("video") ? ".mp4" : contentType.includes("gif") ? ".gif" : ".jpg";
   const objectKey = `${category}/${user.id}/${crypto.randomBytes(16).toString("hex")}${ext}`;
   const proxyUrl = resolveObjectKeyUrl(objectKey);
+  const origin = req.headers.origin;
+
+  if (isB2Configured()) {
+    try {
+      const uploaded = await uploadToB2(objectKey, buffer, contentType);
+      db.mediaObjects[objectKey] = {
+        ...uploaded,
+        storage: "b2",
+        userId: user.id,
+        createdAt: new Date().toISOString(),
+        url: proxyUrl,
+      };
+      saveDb(db);
+      return json(res, 200, { objectKey, url: proxyUrl, size: uploaded.size ?? buffer.length, storage: "b2" }, corsHeaders(origin));
+    } catch (e) {
+      console.error("B2 upload failed, trying local storage:", e.message);
+    }
+  }
+
+  if (!isLocalMediaAvailable()) {
+    return json(res, 503, { error: "storage_unavailable", message: "Media storage is not available" }, corsHeaders(origin));
+  }
 
   try {
-    const uploaded = await uploadToB2(objectKey, buffer, contentType);
+    const saved = saveLocalMedia(objectKey, buffer, contentType);
     db.mediaObjects[objectKey] = {
-      ...uploaded,
-      storage: "b2",
+      ...saved,
       userId: user.id,
       createdAt: new Date().toISOString(),
       url: proxyUrl,
     };
     saveDb(db);
-    return json(res, 200, { objectKey, url: proxyUrl, size: uploaded.size ?? buffer.length, storage: "b2" }, corsHeaders(req.headers.origin));
+    return json(res, 200, { objectKey, url: proxyUrl, size: saved.size ?? buffer.length, storage: "local" }, corsHeaders(origin));
   } catch (e) {
-    console.error("B2 upload failed:", e.message);
-    return json(res, 503, { error: "b2_upload_failed", message: e.message }, corsHeaders(req.headers.origin));
+    console.error("Local media upload failed:", e.message);
+    return json(res, 503, { error: "upload_failed", message: e.message }, corsHeaders(origin));
   }
+}
+
+function uploadCategoryFromRequest(req) {
+  try {
+    const q = new URL(req.url ?? "", "http://localhost").searchParams.get("category");
+    if (q) return String(q);
+  } catch { /* */ }
+  const header = req.headers["x-upload-category"];
+  return String(header ?? "post");
 }
 
 async function handleStorageUploadBinary(req, res) {
   const db = loadDb();
   const user = requireUser(req, db);
   if (!user) return json(res, 401, { error: "Unauthorized" }, corsHeaders(req.headers.origin));
-  if (!isB2Configured()) {
-    return json(res, 503, { error: "B2 storage required — configure B2 credentials" }, corsHeaders(req.headers.origin));
-  }
 
-  const category = String(req.headers["x-upload-category"] ?? "post");
+  const category = uploadCategoryFromRequest(req);
   const contentType = String(req.headers["content-type"] ?? "application/octet-stream");
   const maxSize = uploadMaxBytes(user, category);
 
@@ -1020,7 +1044,7 @@ async function handleChat(req, res, url) {
   }
 
   if (url === "/api/chats" && req.method === "GET") {
-    json(res, 200, { chats: listChats(db, user.id) }, corsHeaders(origin));
+    json(res, 200, { chats: listChats(db, user.id), viewerId: user.id }, corsHeaders(origin));
     return true;
   }
 
@@ -1030,7 +1054,7 @@ async function handleChat(req, res, url) {
     try { body = JSON.parse(raw || "{}"); } catch { /* */ }
     const result = startChat(db, user.id, String(body.userId ?? ""));
     if (!result.ok) json(res, 400, { error: result.error }, corsHeaders(origin));
-    else { saveDb(db); json(res, 200, { chat: result.chat }, corsHeaders(origin)); }
+    else { saveDb(db); json(res, 200, { chat: result.chat, viewerId: user.id }, corsHeaders(origin)); }
     return true;
   }
 
@@ -1038,7 +1062,7 @@ async function handleChat(req, res, url) {
   if (messagesMatch && req.method === "GET") {
     const messages = getChatMessages(db, messagesMatch[1], user.id);
     if (!messages) json(res, 404, { error: "Not found" }, corsHeaders(origin));
-    else json(res, 200, { messages }, corsHeaders(origin));
+    else json(res, 200, { messages, viewerId: user.id }, corsHeaders(origin));
     return true;
   }
 
@@ -1048,7 +1072,7 @@ async function handleChat(req, res, url) {
     try { body = JSON.parse(raw || "{}"); } catch { /* */ }
     const result = await sendChatMessage(db, messagesMatch[1], user.id, body);
     if (!result.ok) json(res, 400, { error: result.error }, corsHeaders(origin));
-    else { saveDb(db); json(res, 200, { message: result.message }, corsHeaders(origin)); }
+    else { saveDb(db); json(res, 200, { message: result.message, viewerId: user.id }, corsHeaders(origin)); }
     return true;
   }
 
@@ -1063,7 +1087,7 @@ async function handleChat(req, res, url) {
   const chatMatch = url.match(/^\/api\/chats\/([^/]+)$/);
   if (chatMatch && req.method === "GET") {
     const chat = getChat(db, chatMatch[1], user.id);
-    json(res, chat ? 200 : 404, chat ? { chat } : { error: "Not found" }, corsHeaders(origin));
+    json(res, chat ? 200 : 404, chat ? { chat, viewerId: user.id } : { error: "Not found" }, corsHeaders(origin));
     return true;
   }
 

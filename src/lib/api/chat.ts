@@ -6,20 +6,20 @@ export async function getChats(): Promise<Chat[]> {
   return data.chats ?? [];
 }
 
-export async function getChat(chatId: string): Promise<Chat | null> {
+export async function getChat(chatId: string): Promise<{ chat: Chat; viewerId: string } | null> {
   try {
-    const data = await apiFetch<{ chat: Chat }>(`/api/chats/${encodeURIComponent(chatId)}`);
-    return data.chat;
+    const data = await apiFetch<{ chat: Chat; viewerId: string }>(`/api/chats/${encodeURIComponent(chatId)}`);
+    return { chat: data.chat, viewerId: data.viewerId };
   } catch {
     return null;
   }
 }
 
-export async function getChatMessages(chatId: string): Promise<ChatMessage[]> {
-  const data = await apiFetch<{ messages: ChatMessage[] }>(
+export async function getChatMessages(chatId: string): Promise<{ messages: ChatMessage[]; viewerId: string }> {
+  const data = await apiFetch<{ messages: ChatMessage[]; viewerId: string }>(
     `/api/chats/${encodeURIComponent(chatId)}/messages`
   );
-  return data.messages ?? [];
+  return { messages: data.messages ?? [], viewerId: data.viewerId };
 }
 
 export async function startChatWithUser(userId: string): Promise<Chat> {
