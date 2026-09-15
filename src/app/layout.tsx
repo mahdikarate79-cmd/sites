@@ -83,18 +83,43 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             __html: JSON.stringify({
               "@context": "https://schema.org",
-              "@type": "WebSite",
-              name: "Sheytoni",
-              alternateName: ["شیطونی"],
-              url: SITE_URL,
-              description:
-                "Sheytoni (شیطونی) is a social community platform for profiles, posts, and public discovery.",
-              publisher: {
-                "@type": "Organization",
-                name: "Sheytoni",
-                url: SITE_URL,
-                logo: `${SITE_URL}/logo.png`,
-              },
+              "@graph": [
+                {
+                  "@type": "Organization",
+                  "@id": `${SITE_URL}/#organization`,
+                  name: "Sheytoni",
+                  alternateName: ["شیطونی"],
+                  url: SITE_URL,
+                  logo: `${SITE_URL}/logo.png`,
+                  description:
+                    "Sheytoni (شیطونی) is a social community platform for profiles, posts, reels, messaging, and creator monetization on Telegram.",
+                },
+                {
+                  "@type": "WebSite",
+                  "@id": `${SITE_URL}/#website`,
+                  name: "Sheytoni",
+                  alternateName: ["شیطونی"],
+                  url: SITE_URL,
+                  description:
+                    "Sheytoni (شیطونی) is a social community platform for profiles, posts, and public discovery.",
+                  publisher: { "@id": `${SITE_URL}/#organization` },
+                  potentialAction: {
+                    "@type": "SearchAction",
+                    target: `${SITE_URL}/search/?q={search_term_string}`,
+                    "query-input": "required name=search_term_string",
+                  },
+                },
+                {
+                  "@type": "WebApplication",
+                  name: "Sheytoni",
+                  alternateName: ["شیطونی"],
+                  url: SITE_URL,
+                  applicationCategory: "SocialNetworkingApplication",
+                  operatingSystem: "Web, Telegram",
+                  description:
+                    "Social community Mini App for posts, profiles, reels, chat, and Telegram Stars payments.",
+                },
+              ],
             }),
           }}
         />

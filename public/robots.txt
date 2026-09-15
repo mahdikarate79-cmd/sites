@@ -1,8 +1,21 @@
 User-agent: *
 Allow: /
+Allow: /about/
 Disallow: /admin
 Disallow: /chat
 Disallow: /settings
 Disallow: /api/
 
+# AI crawlers
+User-agent: GPTBot
+Allow: /
+Allow: /about/
+Allow: /llms.txt
+
+User-agent: Claude-Web
+Allow: /
+Allow: /about/
+Allow: /llms.txt
+
 Sitemap: https://api.venify.xyz/sitemap.xml
+Sitemap: https://x.venify.xyz/sitemap.xml

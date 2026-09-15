@@ -44,6 +44,13 @@ Options -Indexes
   # SEO sitemap hosted on API
   RewriteRule ^sitemap\.xml$ https://api.venify.xyz/sitemap.xml [R=302,L]
 
+  # Crawler-friendly profile/post pages (full HTML + meta from API)
+  RewriteCond %{HTTP_USER_AGENT} (googlebot|bingbot|slurp|duckduckbot|baiduspider|yandex|GPTBot|Claude-Web|anthropic-ai|PerplexityBot|Bytespider|facebookexternalhit|Twitterbot|LinkedInBot) [NC]
+  RewriteRule ^profile/([^/]+)/?$ https://api.venify.xyz/public/profile/$1 [R=302,L]
+
+  RewriteCond %{HTTP_USER_AGENT} (googlebot|bingbot|slurp|duckduckbot|baiduspider|yandex|GPTBot|Claude-Web|anthropic-ai|PerplexityBot|Bytespider|facebookexternalhit|Twitterbot|LinkedInBot) [NC]
+  RewriteRule ^post/([^/]+)/?$ https://api.venify.xyz/public/post/$1 [R=302,L]
+
   # /route without extension → route.html
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME}.html -f

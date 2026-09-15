@@ -62,20 +62,23 @@ export function verifyWebhookSecret(req, secret) {
 
 export async function sendWelcomeMessage(chatId) {
   const text = [
-    "Welcome to Sheytoni (شیطونی)!",
+    "<b><tg-emoji emoji-id=\"5852921864640276616\">😈</tg-emoji> Welcome to the Naughty World</b>",
     "",
-    "Post freely, connect with others, and earn on our social community platform.",
+    "<blockquote>Here you can post freely, earn money, connect with others</blockquote>",
     "",
-    "Tap the button below to open the app and get started.",
+    "To enter the web app and start your experience, click the button below<tg-emoji emoji-id=\"5470177992950946662\">👇</tg-emoji>",
   ].join("\n");
 
   return botCall("sendMessage", {
     chat_id: chatId,
     text,
+    parse_mode: "HTML",
     reply_markup: {
       inline_keyboard: [[{
-        text: "Open Sheytoni",
+        text: "Let's Go",
+        icon_custom_emoji_id: "5447602197439218445",
         web_app: { url: SITE_URL },
+        style: "primary",
       }]],
     },
   });

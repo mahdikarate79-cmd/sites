@@ -3,6 +3,7 @@ import { MediaObject, UploadValidation } from "@/lib/types";
 import { getApiBase } from "./base";
 import { apiFetch } from "./fetch";
 import { getAuthHeaders } from "./tokens";
+import { snapshotFile } from "@/lib/utils/snapshotFile";
 
 export const UPLOAD_VALIDATION: UploadValidation = {
   maxSizeBytes: 50 * 1024 * 1024,
@@ -272,7 +273,8 @@ export async function uploadMedia(
   category: "avatar" | "cover" | "post" | "chat",
   options?: { maxImageDim?: number; onProgress?: (pct: number) => void; isPremium?: boolean }
 ): Promise<UploadResult> {
-  const prepared = await prepareUploadFile(file, category, options);
+  const snapshotted = await snapshotFile(file);
+  const prepared = await prepareUploadFile(snapshotted, category, options);
   const validation = validateUpload(prepared, category, options?.isPremium);
   if (!validation.valid) throw new Error(validation.error);
 

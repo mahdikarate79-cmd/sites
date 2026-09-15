@@ -37,7 +37,10 @@ function mediaUrl(m) {
 }
 
 export function listIndexableUrls(db) {
-  const urls = [{ loc: `${SITE_URL}/`, changefreq: "daily", priority: "1.0" }];
+  const urls = [
+    { loc: `${SITE_URL}/`, changefreq: "daily", priority: "1.0" },
+    { loc: `${SITE_URL}/about/`, changefreq: "monthly", priority: "0.9" },
+  ];
   for (const user of Object.values(db.users ?? {})) {
     if (user.deleted || user.banned) continue;
     const pub = publicUser(user);
@@ -136,7 +139,6 @@ export function renderProfileHtml(db, usernameOrId) {
   <meta name="twitter:image" content="${esc(image)}"/>
   <meta name="rating" content="adult"/>
   ${jsonLdScript(schema)}
-  <meta http-equiv="refresh" content="0;url=${esc(url)}"/>
 </head>
 <body>
   <main>
@@ -144,6 +146,7 @@ export function renderProfileHtml(db, usernameOrId) {
     <p>${esc(desc)}</p>
     <p>${esc(stats)}</p>
     <p><a href="${esc(url)}">View profile on Sheytoni</a></p>
+    <p>Sheytoni (شیطونی) — social community platform at <a href="${esc(SITE_URL)}">${esc(SITE_URL)}</a></p>
   </main>
 </body>
 </html>`;
@@ -195,7 +198,6 @@ export function renderPostHtml(db, postId, viewerId = null) {
   <meta name="twitter:image" content="${esc(image)}"/>
   <meta name="rating" content="adult"/>
   ${jsonLdScript(schema)}
-  <meta http-equiv="refresh" content="0;url=${esc(url)}"/>
 </head>
 <body>
   <article>
@@ -203,6 +205,7 @@ export function renderPostHtml(db, postId, viewerId = null) {
     <p>${esc(post.content ?? "")}</p>
     ${mediaHtml}
     <p><a href="${esc(url)}">View on Sheytoni</a> · <a href="${esc(profileUrl(author))}">Author profile</a></p>
+    <p>Sheytoni (شیطونی) — social community platform at <a href="${esc(SITE_URL)}">${esc(SITE_URL)}</a></p>
   </article>
 </body>
 </html>`;

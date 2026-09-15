@@ -51,19 +51,19 @@ async function uploadSelectedMedia(item: SelectedMedia, isPremium = false) {
       objectKey: item.item.objectKey,
     };
   }
-  const file = item.item.sourceFile;
-  if (file) {
-    const uploaded = await uploadMedia(file, "chat", { isPremium });
-    return { type: item.item.type, url: uploaded.media.url, objectKey: uploaded.objectKey };
-  }
   const displayUrl = item.croppedUrl ?? item.item.url;
-  if (displayUrl.startsWith("blob:")) {
+  if (displayUrl.startsWith("blob:") || displayUrl.startsWith("data:")) {
     const res = await fetch(displayUrl);
     const blob = await res.blob();
     const ext = item.item.type === "video" ? ".mp4" : ".jpg";
     const mime = blob.type || (item.item.type === "video" ? "video/mp4" : "image/jpeg");
     const f = new File([blob], `chat${ext}`, { type: mime });
     const uploaded = await uploadMedia(f, "chat", { isPremium });
+    return { type: item.item.type, url: uploaded.media.url, objectKey: uploaded.objectKey };
+  }
+  const file = item.item.sourceFile;
+  if (file) {
+    const uploaded = await uploadMedia(file, "chat", { isPremium });
     return { type: item.item.type, url: uploaded.media.url, objectKey: uploaded.objectKey };
   }
   throw new Error("Upload media via gallery");

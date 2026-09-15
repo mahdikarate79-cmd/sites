@@ -15,6 +15,7 @@ import { UploadProgressOverlay } from "@/components/ui/UploadProgressOverlay";
 import { validateUsername } from "@/lib/utils/username";
 import { resolveMediaUrl } from "@/lib/utils/mediaUrl";
 import { cn } from "@/lib/utils/cn";
+import { snapshotFile } from "@/lib/utils/snapshotFile";
 
 const ORIENTATIONS: { value: Orientation; label: string }[] = [
   { value: "straight", label: "Straight" },
@@ -263,25 +264,35 @@ export function EditProfileContent() {
     }
   };
 
-  const handleAvatarPick = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !file.type.startsWith("image/")) {
       showToast("Please select an image file");
       return;
     }
-    readImageFile(file, setAvatar);
-    setAvatarFile(file);
+    try {
+      const ready = await snapshotFile(file);
+      readImageFile(ready, setAvatar);
+      setAvatarFile(ready);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Could not read file");
+    }
     e.target.value = "";
   };
 
-  const handleCoverPick = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCoverPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !file.type.startsWith("image/")) {
       showToast("Please select an image file");
       return;
     }
-    readImageFile(file, setCover);
-    setCoverFile(file);
+    try {
+      const ready = await snapshotFile(file);
+      readImageFile(ready, setCover);
+      setCoverFile(ready);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Could not read file");
+    }
     e.target.value = "";
   };
 

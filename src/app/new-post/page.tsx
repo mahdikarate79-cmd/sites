@@ -10,6 +10,7 @@ import { createPostApi } from "@/lib/api/social";
 import { uploadMedia } from "@/lib/api/storage";
 import { UploadProgressOverlay } from "@/components/ui/UploadProgressOverlay";
 import { captureVideoThumbnail } from "@/lib/utils/videoThumbnail";
+import { snapshotFile } from "@/lib/utils/snapshotFile";
 import { useToast } from "@/components/ui/ToastProvider";
 import { Post, PostMedia } from "@/lib/types";
 import {
@@ -60,8 +61,15 @@ export default function NewPostPage() {
   const canPost = content.trim().length > 0 || !!media;
   const tagsValid = tags.length >= 3;
 
-  const handleFile = (file: File) => {
-    if (file.size > uploadLimit) {
+  const handleFile = async (file: File) => {
+    let ready = file;
+    try {
+      ready = await snapshotFile(file);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Could not read file");
+      return;
+    }
+    if (ready.size > uploadLimit) {
       showToast(
         user.premium
           ? `File exceeds ${formatUploadLimit(uploadLimit)} limit`
@@ -73,11 +81,11 @@ export default function NewPostPage() {
       URL.revokeObjectURL(previewUrlRef.current);
       previewUrlRef.current = null;
     }
-    const url = URL.createObjectURL(file);
+    const url = URL.createObjectURL(ready);
     previewUrlRef.current = url;
-    const type = file.type.startsWith("video/") ? "video" : "image";
+    const type = ready.type.startsWith("video/") ? "video" : "image";
     setMediaPreview(url);
-    setMediaFile(file);
+    setMediaFile(ready);
     setMedia({
       type,
       url,
@@ -210,7 +218,7 @@ export default function NewPostPage() {
           className="hidden"
           onChange={(e) => {
             const file = e.target.files?.[0];
-            if (file) handleFile(file);
+            if (file) void handleFile(file);
             e.target.value = "";
           }}
         />
