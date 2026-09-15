@@ -1,11 +1,17 @@
 "use client";
 
-import { createContext, useCallback, useContext, useState, ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from "react";
 import { Comment, Donator, Post, PostDonationState, PrototypeState, User } from "@/lib/types";
 import { canViewPostMedia, PostAccessContext, shouldShowInFeed } from "@/lib/utils/postAccess";
 import { assertValidStarSpend, assertValidUnlock, sanitizePostContent, sanitizeTags } from "@/lib/security/validate";
-import { loadState, saveState, getPostDonation, ensureStarBalance, createTransaction } from "@/lib/store/prototypeStore";
-import { currentUser as baseCurrentUser } from "@/data/mock/users";
+import {
+  AUTH_STORAGE_EVENT,
+  loadState,
+  saveState,
+  getPostDonation,
+  ensureStarBalance,
+  createTransaction,
+} from "@/lib/store/prototypeStore";
 import { useAuth } from "@/lib/hooks/useAuth";
 
 interface PrototypeContextValue {
@@ -19,6 +25,7 @@ interface PrototypeContextValue {
   markNotInterested: (post: Post) => void;
   hidePost: (postId: string) => void;
   getDonation: (postId: string, initial?: PostDonationState) => PostDonationState;
+  syncDonation: (postId: string, data: PostDonationState) => void;
   donate: (postId: string, stars: number, anonymous: boolean, authorId: string) => void;
   toggleLike: (postId: string) => boolean;
   toggleBookmark: (postId: string) => boolean;
@@ -26,6 +33,8 @@ interface PrototypeContextValue {
   isBookmarked: (postId: string) => boolean;
   clearChatUnread: () => void;
   clearNotificationUnread: () => void;
+  setChatUnread: (count: number) => void;
+  setNotificationUnread: (count: number) => void;
   deleteChat: (chatId: string) => void;
   isChatDeleted: (chatId: string) => boolean;
   unlockPaidMedia: (stars: number) => void;
@@ -60,17 +69,28 @@ const PrototypeContext = createContext<PrototypeContextValue | null>(null);
 
 export function PrototypeProvider({ children }: { children: ReactNode }) {
   const { user: authUser } = useAuth();
+  const userId = authUser?.id ?? null;
   const [state, setState] = useState<PrototypeState>(() =>
-    typeof window !== "undefined" ? loadState() : DEFAULT_LOAD
+    typeof window !== "undefined" ? loadState(userId) : DEFAULT_LOAD
   );
+
+  useEffect(() => {
+    setState(loadState(userId));
+  }, [userId]);
+
+  useEffect(() => {
+    const reload = () => setState(loadState(userId));
+    window.addEventListener(AUTH_STORAGE_EVENT, reload);
+    return () => window.removeEventListener(AUTH_STORAGE_EVENT, reload);
+  }, [userId]);
 
   const update = useCallback((fn: (s: PrototypeState) => PrototypeState) => {
     setState((prev) => {
       const next = fn(prev);
-      saveState(next);
+      saveState(next, userId);
       return next;
     });
-  }, []);
+  }, [userId]);
 
   const isFollowing = useCallback((userId: string) => state.following.includes(userId), [state.following]);
   const isBlocked = useCallback((userId: string) => state.blocked.includes(userId), [state.blocked]);
@@ -129,14 +149,28 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
   );
 
   const resolveUser = useCallback((): User => {
-    if (authUser) return { ...authUser, ...state.profileEdits, premium: authUser.premium };
-    return { ...baseCurrentUser, ...state.profileEdits };
+    if (authUser) {
+      return {
+        ...authUser,
+        ...state.profileEdits,
+        premium: authUser.premium,
+        verified: authUser.verified,
+      };
+    }
+    return { ...GUEST_USER, ...state.profileEdits };
   }, [authUser, state.profileEdits]);
+
+  const syncDonation = useCallback((postId: string, data: PostDonationState) => {
+    update((s) => ({
+      ...s,
+      donations: { ...s.donations, [postId]: data },
+    }));
+  }, [update]);
 
   const donate = useCallback((postId: string, stars: number, anonymous: boolean, authorId: string) => {
     update((s) => {
       const existing = getPostDonation(s, postId);
-      const user = authUser ? { ...authUser, ...s.profileEdits, premium: authUser.premium } : { ...baseCurrentUser, ...s.profileEdits };
+      const user = authUser ? { ...authUser, premium: authUser.premium } : { ...GUEST_USER, ...s.profileEdits };
       const prevUser = existing.topDonators.find((d) => d.user.id === user.id);
       const newDonator: Donator = {
         rank: 0,
@@ -199,6 +233,14 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
 
   const clearNotificationUnread = useCallback(() => {
     update((s) => ({ ...s, notificationUnread: 0 }));
+  }, [update]);
+
+  const setChatUnread = useCallback((count: number) => {
+    update((s) => ({ ...s, chatUnread: count }));
+  }, [update]);
+
+  const setNotificationUnread = useCallback((count: number) => {
+    update((s) => ({ ...s, notificationUnread: count }));
   }, [update]);
 
   const deleteChat = useCallback((chatId: string) => {
@@ -348,7 +390,7 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
   );
 
   const addComment = useCallback((postId: string, content: string): Comment => {
-    const user = authUser ? { ...authUser, ...state.profileEdits, premium: authUser.premium } : { ...baseCurrentUser, ...state.profileEdits };
+    const user = authUser ? { ...authUser, ...state.profileEdits, premium: authUser.premium } : { ...GUEST_USER, ...state.profileEdits };
     const comment: Comment = {
       id: `cmt_${Date.now()}`,
       postId,
@@ -433,7 +475,7 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
   const getUserPosts = useCallback(() => state.userPosts, [state.userPosts]);
 
   const accessCtx = useCallback((): PostAccessContext => {
-    const user = authUser ? { ...authUser, ...state.profileEdits, premium: authUser.premium } : { ...baseCurrentUser, ...state.profileEdits };
+    const user = authUser ? { ...authUser, ...state.profileEdits, premium: authUser.premium } : { ...GUEST_USER, ...state.profileEdits };
     return { viewerId: user.id, isFollowing, isUnlocked: isPaidPostUnlocked };
   }, [state.profileEdits, authUser, isFollowing, isPaidPostUnlocked]);
 
@@ -460,6 +502,7 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
         markNotInterested,
         hidePost,
         getDonation,
+        syncDonation,
         donate,
         toggleLike,
         toggleBookmark,
@@ -467,6 +510,8 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
         isBookmarked,
         clearChatUnread,
         clearNotificationUnread,
+        setChatUnread,
+        setNotificationUnread,
         deleteChat,
         isChatDeleted,
         unlockPaidMedia,
@@ -502,6 +547,18 @@ export function PrototypeProvider({ children }: { children: ReactNode }) {
   );
 }
 
+const GUEST_USER: User = {
+  id: "guest",
+  username: "",
+  displayName: "Guest",
+  avatar: "",
+  verified: false,
+  premium: false,
+  followers: 0,
+  following: 0,
+  postsCount: 0,
+};
+
 const DEFAULT_LOAD: PrototypeState = {
   following: [],
   blocked: [],
@@ -514,23 +571,12 @@ const DEFAULT_LOAD: PrototypeState = {
   likes: {},
   bookmarks: {},
   savedReels: [],
-  chatUnread: 3,
-  notificationUnread: 10,
+  chatUnread: 0,
+  notificationUnread: 0,
   deletedChats: [],
-  earnings: 2500,
-  starBalance: 999_999,
-  transactions: [
-    {
-      id: "t1",
-      type: "donation",
-      amount: 150,
-      label: "Donation from @alex",
-      date: "2026-09-10T14:30:00Z",
-      from: "u2",
-      status: "completed",
-      hash: "0xa1b2c3d4",
-    },
-  ],
+  earnings: 0,
+  starBalance: 0,
+  transactions: [],
   unlockedPaidMedia: {},
   expiredTempMedia: {},
   viewedTempMedia: {},

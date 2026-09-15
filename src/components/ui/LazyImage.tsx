@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils/cn";
+import { resolveMediaUrl } from "@/lib/utils/mediaUrl";
 
 interface LazyImageProps {
   src: string;
@@ -24,7 +25,9 @@ export function LazyImage({
 }: LazyImageProps) {
   const [loaded, setLoaded] = useState(false);
   const fitClass = objectFit === "contain" ? "object-contain" : "object-cover";
-  const placeholder = thumbnail && thumbnail !== src ? thumbnail : null;
+  const resolvedSrc = resolveMediaUrl(src) || src;
+  const resolvedThumb = thumbnail ? resolveMediaUrl(thumbnail) || thumbnail : undefined;
+  const placeholder = resolvedThumb && resolvedThumb !== resolvedSrc ? resolvedThumb : null;
 
   return (
     <div className={cn("relative overflow-hidden bg-surface", className)} style={{ aspectRatio }}>
@@ -37,7 +40,7 @@ export function LazyImage({
         />
       )}
       <img
-        src={src}
+        src={resolvedSrc}
         alt={alt}
         className={cn(
           "absolute inset-0 w-full h-full",

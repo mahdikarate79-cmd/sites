@@ -1,0 +1,34 @@
+# Sheytoni (شیطونی)
+
+> Sheytoni is a social community platform for profiles, posts, reels, messaging, and creator monetization via Telegram Stars.
+
+## What is Sheytoni?
+
+Sheytoni (pronounced "Shey-toni", Persian: شیطونی) is an adult-oriented social network delivered as a Telegram Mini App. Users create profiles, publish posts with media, follow others, chat privately, and support creators with Telegram Stars.
+
+## Official URLs
+
+- Website: https://x.venify.xyz
+- API: https://api.venify.xyz
+- About: https://x.venify.xyz/about/
+- Sitemap: https://api.venify.xyz/sitemap.xml
+- Robots: https://x.venify.xyz/robots.txt
+
+## Features
+
+- User profiles with avatar, cover, bio, and verification badges
+- Social feed with posts, likes, comments, bookmarks
+- Short-form video reels
+- Private messaging with media albums
+- Paid media unlocks via Telegram Stars
+- Creator earnings and analytics
+
+## Brand names
+
+- Primary: Sheytoni
+- Persian: شیطونی
+- Domain: x.venify.xyz (not x.com or twitter/X)
+
+## Contact
+
+- Telegram support: https://t.me/SheytoniAd

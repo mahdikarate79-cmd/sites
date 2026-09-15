@@ -1,30 +1,45 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils/cn";
 import { usePrototype } from "@/lib/hooks/usePrototype";
 import { useTelegramGate } from "@/lib/hooks/useTelegramGate";
+import { followUserApi } from "@/lib/api/social";
 import { PremiumParticles } from "./PremiumParticles";
 
 interface FollowButtonProps {
   userId: string;
   size?: "sm" | "md";
   className?: string;
+  initialFollowing?: boolean;
 }
 
-export function FollowButton({ userId, size = "md", className }: FollowButtonProps) {
+export function FollowButton({ userId, size = "md", className, initialFollowing }: FollowButtonProps) {
   const { isFollowing, toggleFollow } = usePrototype();
   const { requireMiniApp } = useTelegramGate();
-  const following = isFollowing(userId);
+  const [following, setFollowing] = useState(initialFollowing ?? isFollowing(userId));
   const [burst, setBurst] = useState(false);
 
-  const handleClick = () => {
+  useEffect(() => {
+    if (initialFollowing !== undefined) setFollowing(initialFollowing);
+    else setFollowing(isFollowing(userId));
+  }, [initialFollowing, isFollowing, userId]);
+
+  const handleClick = async () => {
     if (!requireMiniApp()) return;
-    if (!following) {
+    const next = !following;
+    if (next) {
       setBurst(true);
       setTimeout(() => setBurst(false), 600);
     }
+    setFollowing(next);
     toggleFollow(userId);
+    try {
+      await followUserApi(userId, !next);
+    } catch {
+      setFollowing(!next);
+      toggleFollow(userId);
+    }
   };
 
   return (

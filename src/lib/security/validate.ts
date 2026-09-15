@@ -3,6 +3,8 @@
 const MAX_POST_CONTENT = 4000;
 const MAX_TAG_COUNT = 12;
 const MAX_TAG_LENGTH = 32;
+import { MIN_STARS_PAYMENT } from "@/lib/constants/stars";
+
 const MAX_STAR_SPEND_PER_ACTION = 25_000;
 const MIN_ACTION_INTERVAL_MS = 400;
 
@@ -17,7 +19,7 @@ export function sanitizeTags(tags: string[]): string[] {
 }
 
 export function assertValidStarSpend(stars: number, balance: number, actionKey = "default"): boolean {
-  if (!Number.isFinite(stars) || stars <= 0 || stars > MAX_STAR_SPEND_PER_ACTION) return false;
+  if (!Number.isFinite(stars) || stars < MIN_STARS_PAYMENT || stars > MAX_STAR_SPEND_PER_ACTION) return false;
   if (!Number.isFinite(balance) || balance < stars) return false;
   const now = Date.now();
   const last = lastActionAt[actionKey] ?? 0;
@@ -28,6 +30,6 @@ export function assertValidStarSpend(stars: number, balance: number, actionKey =
 
 export function assertValidUnlock(postId: string, stars: number, balance: number, alreadyUnlocked: boolean): boolean {
   if (alreadyUnlocked) return false;
-  if (!postId || stars <= 0) return false;
+  if (!postId || stars < MIN_STARS_PAYMENT) return false;
   return assertValidStarSpend(stars, balance, `unlock:${postId}`);
 }

@@ -10,6 +10,7 @@ import { TemporaryMediaSheet } from "./TemporaryMediaSheet";
 import { RotateCropSheet } from "./RotateCropSheet";
 import { GalleryItem, TemporaryMode } from "@/lib/types";
 import { cn } from "@/lib/utils/cn";
+import { snapshotFile } from "@/lib/utils/snapshotFile";
 
 export interface SelectedMedia {
   item: GalleryItem;
@@ -33,15 +34,17 @@ interface MediaGalleryPickerProps {
   onSend: (items: SelectedMedia[], caption: string) => void;
 }
 
-function fileToGalleryItem(file: File, index: number): GalleryItem {
-  const url = URL.createObjectURL(file);
-  const isVideo = file.type.startsWith("video/");
-  const isGif = file.type === "image/gif";
+async function fileToGalleryItem(file: File, index: number): Promise<GalleryItem> {
+  const ready = await snapshotFile(file);
+  const url = URL.createObjectURL(ready);
+  const isVideo = ready.type.startsWith("video/");
+  const isGif = ready.type === "image/gif";
   return {
     id: `device_${Date.now()}_${index}`,
     type: isVideo ? "video" : isGif ? "gif" : "image",
     url,
     thumbnail: isVideo ? url : undefined,
+    sourceFile: ready,
   };
 }
 
@@ -69,10 +72,18 @@ export function MediaGalleryPicker({ open, onClose, onSend }: MediaGalleryPicker
     }
   }, [open, galleryItems.length]);
 
-  const handleFiles = (files: FileList | null) => {
+  const handleFiles = async (files: FileList | null) => {
     if (!files?.length) return;
     const imageVideo = Array.from(files).filter((f) => f.type.startsWith("image/") || f.type.startsWith("video/"));
-    const newItems = imageVideo.map((f, i) => fileToGalleryItem(f, i));
+    const newItems: GalleryItem[] = [];
+    for (let i = 0; i < imageVideo.length; i++) {
+      try {
+        newItems.push(await fileToGalleryItem(imageVideo[i], i));
+      } catch {
+        // skip unreadable files
+      }
+    }
+    if (!newItems.length) return;
     setGalleryItems((prev) => [...prev, ...newItems]);
     setSelected((prev) => new Set([...prev, ...newItems.map((n) => n.id)]));
   };
@@ -147,7 +158,7 @@ export function MediaGalleryPicker({ open, onClose, onSend }: MediaGalleryPicker
         accept="image/*,video/*"
         multiple
         className="hidden"
-        onChange={(e) => { handleFiles(e.target.files); e.target.value = ""; }}
+        onChange={(e) => { void handleFiles(e.target.files); e.target.value = ""; }}
       />
 
       <BottomSheet open={open && !previewId} onClose={handleClose} className="max-h-[90dvh]">
